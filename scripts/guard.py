@@ -53,7 +53,8 @@ HISTORY_REVS = ["--all"]
 class Term:
     def __init__(self, text: str, lineno: int) -> None:
         self.lineno = lineno
-        if text.startswith("re:"):
+        self.is_regex = text.startswith("re:")
+        if self.is_regex:
             self.text = text[3:]
             self.regex = re.compile(self.text, re.IGNORECASE)
         else:
@@ -61,9 +62,12 @@ class Term:
             body = r"\s+".join(re.escape(word) for word in text.split())
             self.regex = re.compile(rf"(?<![a-z0-9]){body}(?![a-z0-9])", re.IGNORECASE)
 
-    def label(self) -> str:
+    def label(self, matched: str) -> str:
+        """The term for a plain line; the matched text for a regex line, whose pattern says little."""
         if os.environ.get("LEAK_GUARD_REDACT") == "1":
             return f"denylist line {self.lineno}"
+        if self.is_regex:
+            return f'"{matched}" (denylist line {self.lineno})'
         return f'"{self.text}"'
 
 
@@ -173,11 +177,12 @@ def blob_sizes(shas: list[str]) -> dict[str, int]:
     return {line.split()[0]: int(line.split()[2]) for line in out.decode().splitlines()}
 
 
-def find_terms(terms: list[Term], text: str) -> list[tuple[Term, int]]:
+def find_terms(terms: list[Term], text: str) -> list[tuple[str, int]]:
+    """(label, line number) for every denylist match in the text."""
     hits = []
     for term in terms:
         for match in term.regex.finditer(text):
-            hits.append((term, text.count("\n", 0, match.start()) + 1))
+            hits.append((term.label(match.group()), text.count("\n", 0, match.start()) + 1))
     return hits
 
 
@@ -192,8 +197,8 @@ def check_leak(scope: str, msg_file: str | None) -> list[str]:
     if scope == "msg":
         text = Path(msg_file or "").read_text(encoding="utf-8", errors="replace")
         text = "\n".join(line for line in text.splitlines() if not line.startswith("#"))
-        for term, lineno in find_terms(terms, text):
-            findings.append(f"{term.label()} in the commit message, line {lineno}")
+        for label, lineno in find_terms(terms, text):
+            findings.append(f"{label} in the commit message, line {lineno}")
         return findings
     blobs = changes_in(scope)
     seen_paths = set()
@@ -202,15 +207,15 @@ def check_leak(scope: str, msg_file: str | None) -> list[str]:
             path = place.split(" (commit ")[0]
             if path not in seen_paths:
                 seen_paths.add(path)
-                for term, _ in find_terms(terms, path):
-                    findings.append(f"{term.label()} in the file name {path}")
+                for label, _ in find_terms(terms, path):
+                    findings.append(f"{label} in the file name {path}")
     contents = read_blobs(list(blobs))
     for sha, data in contents.items():
-        for term, lineno in find_terms(terms, data.decode("utf-8", errors="replace")):
-            findings.append(f"{term.label()} in {where(blobs[sha])}, line {lineno}")
+        for label, lineno in find_terms(terms, data.decode("utf-8", errors="replace")):
+            findings.append(f"{label} in {where(blobs[sha])}, line {lineno}")
     for place, body in messages_in(scope):
-        for term, lineno in find_terms(terms, body):
-            findings.append(f"{term.label()} in {place}, line {lineno}")
+        for label, lineno in find_terms(terms, body):
+            findings.append(f"{label} in {place}, line {lineno}")
     return findings
 
 
@@ -220,7 +225,10 @@ def file_problem(path: str) -> str | None:
             return reason
     in_fixtures = "fixtures" in path.split("/")[:-1]
     if FIXTURE_ONLY.search(path) and not in_fixtures and not TOOL_JSON.search(path):
-        return "this file type is only allowed under fixtures/ (JSON tool configs are listed in scripts/guard.py)"
+        kind = path.rsplit(".", 1)[-1].lower()
+        if kind == "json":
+            return "JSON is only allowed under fixtures/ or as a tool config listed in scripts/guard.py (TOOL_JSON)"
+        return f"{kind} files are only allowed under fixtures/ (generated fake data)"
     return None
 
 
