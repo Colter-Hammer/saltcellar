@@ -1,0 +1,3 @@
+# Funds are the one place money carries over
+
+Budgeting is tracking-style: budgets compare a target with actual spending and nothing carries over. Play money and sinking funds are the deliberate exception. Both are **funds**, running balances that build up from contributions and are spent down through a single category, with leftover money carrying forward. Play money really does accumulate in practice, and a sinking fund that resets after coming in under budget would misstate the money actually set aside. Using one fund mechanism for both keeps envelope behaviour contained to these two features rather than spreading it across all budgets.

@@ -1,0 +1,3 @@
+# Self-contained SQLite, not a shared Postgres
+
+The app stores its data in its own SQLite file (WAL mode), even if a shared Postgres later exists on the homelab for other projects. The app holding financial data should not depend on, or share credentials with, infrastructure other projects use; at two users and tens of thousands of rows SQLite is faster and has fewer failure points, and backup is a file copy. Encryption at rest comes from encrypted host storage plus `age`-encrypted backups, not SQLCipher: the key would sit on the same host the app runs on, so SQLCipher adds build fragility for little real protection. sqlx keeps a later move to Postgres feasible.

@@ -1,0 +1,6 @@
+# gitleaks: secrets (tokens, keys, credentials). Personal terms are the leak guard's job
+# (scripts/guard.py), since its denylist can't live in the repo.
+title = "budget app"
+
+[extend]
+useDefault = true

@@ -1,0 +1,37 @@
+# Default-deny for personal data (docs/adr/0008-nothing-personal-in-the-repo.md).
+# scripts/guard.py enforces the same rules on commit and push; keep the two in sync.
+
+# Planning notes and real data never leave this machine.
+.scratch/
+data/
+
+# Secrets and backups, everywhere (fixtures included).
+.env*
+*.age
+*.bak
+*.backup
+backup/
+backups/
+
+# Data dumps: only generated fake data under a fixtures/ folder.
+*.csv
+*.ofx
+*.qfx
+*.qbo
+*.json
+*.zip
+*.sqlite*
+!**/fixtures/**/*.csv
+!**/fixtures/**/*.ofx
+!**/fixtures/**/*.qfx
+!**/fixtures/**/*.qbo
+!**/fixtures/**/*.json
+!**/fixtures/**/*.zip
+!**/fixtures/**/*.sqlite*
+
+# Tool config files that have to be JSON, listed one by one.
+!package.json
+!package-lock.json
+!tsconfig*.json
+!renovate.json
+!/.claude/settings.json

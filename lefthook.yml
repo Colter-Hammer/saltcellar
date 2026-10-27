@@ -1,0 +1,27 @@
+# Local guards (docs/standards.md). CI repeats them over the full history.
+# Install with `just setup`. Skipping them (--no-verify) is denied in Claude sessions.
+
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+    leak-guard:
+      run: python3 scripts/guard.py leak staged
+    file-rule:
+      run: python3 scripts/guard.py files staged
+
+commit-msg:
+  commands:
+    leak-guard:
+      run: python3 scripts/guard.py leak msg {1}
+
+pre-push:
+  parallel: true
+  commands:
+    gitleaks:
+      run: gitleaks git --log-opts="--branches --tags --not --remotes" --redact --no-banner
+    leak-guard:
+      run: python3 scripts/guard.py leak push
+    file-rule:
+      run: python3 scripts/guard.py files push
