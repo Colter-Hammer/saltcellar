@@ -1,4 +1,4 @@
--- Budgeting v1: target schema (SQLite, STRICT, WAL).
+-- Saltcellar v1: target schema (SQLite, STRICT, WAL).
 -- Vocabulary: /GLOSSARY.md. Behaviour behind each table: docs/spec/.
 -- This is the design the migrations build toward, milestone by milestone; it is not itself a migration.
 -- Each table's comment names the milestone that first needs it (M1–M6).

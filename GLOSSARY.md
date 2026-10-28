@@ -1,4 +1,4 @@
-# Budgeting
+# Saltcellar
 
 A self-hosted, Mint-style personal finance tracker: money is tracked against targets, not assigned to envelopes.
 

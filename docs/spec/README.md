@@ -1,8 +1,10 @@
-# Budgeting v1 spec
+# Saltcellar v1 spec
 
 A self-hosted, Mint-style budgeting app for one household: bank data comes in, transactions get categorized with as little effort as possible, and spending is compared against targets. Tracking-style budgeting, not envelopes: budgets compare a target with actual spending and nothing carries over, except in funds ([ADR-0003](../adr/0003-funds-carry-over.md)).
 
 This spec is enough to build milestone 1 without asking the owner anything, and describes every later milestone except the bank sync parts, which are added separately (see [Milestone 2](m2-bank-data.md)). Visual styling is not in it: the screens below are layouts, and a styling pass happens once milestone 1 runs on real data.
+
+The app is called **Saltcellar** (as in "worth their salt": a place to keep track of what money is worth). Machine names use `saltcellar`: the repo, image, crate prefix and database file *(agent)*.
 
 ## How to read it
 
@@ -60,4 +62,4 @@ After launch, in order and with no new app code: VPN access for phones away from
 - Alerts beyond the review reminder and the backup / restore-drill alerts (over budget, large charge, broken sync: leave room behind the notifier seam).
 - Order-history matching (e.g. splitting an online-store charge by its order).
 - Receipt photos, typed natural-language budget entry.
-- Publishing for others: public images, a licence, end-user docs, support.
+- Publishing for others: public images, end-user docs, support. (The licence is already chosen: AGPL-3.0, [ADR-0009](../adr/0009-agpl-licence.md).)
