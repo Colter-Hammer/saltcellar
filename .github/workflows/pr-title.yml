@@ -1,0 +1,27 @@
+# PR titles are Conventional Commits (docs/standards.md). Squash merges use the title as the commit
+# subject, so this is what keeps `main`'s history conventional. A separate workflow so that editing
+# a title reruns only this check.
+
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+          if [[ "$TITLE" =~ ^($types)(\([a-z0-9._/-]+\))?!?:\ [^[:space:]] ]]; then
+            echo "ok: $TITLE"
+          else
+            echo "::error::PR title \"$TITLE\" isn't a Conventional Commit: <type>(<scope>)?: <summary>, with <type> one of ${types//|/, }."
+            exit 1
+          fi
