@@ -1,0 +1,51 @@
+import { describe, expect, it } from 'vitest'
+import { formatDate, formatMoney } from './format'
+
+describe('formatMoney', () => {
+  it('turns minor units into the currency with its own decimal places', () => {
+    expect(formatMoney(123456, { currency: 'USD', locale: 'en-US' })).toBe('$1,234.56')
+  })
+
+  it('shows money leaving as negative', () => {
+    expect(formatMoney(-5, { currency: 'USD', locale: 'en-US' })).toBe('-$0.05')
+  })
+
+  it('knows currencies without minor units', () => {
+    expect(formatMoney(1500, { currency: 'JPY', locale: 'en-US' })).toBe('¥1,500')
+  })
+
+  it('knows currencies with three decimal places', () => {
+    expect(formatMoney(1234, { currency: 'KWD', locale: 'en-US' })).toBe('KWD\u00a01.234')
+  })
+
+  it('uses the locale for separators and symbol placement', () => {
+    expect(formatMoney(123456, { currency: 'EUR', locale: 'de-DE' })).toBe('1.234,56\u00a0€')
+  })
+
+  it('is exact past the point where floats lose cents', () => {
+    expect(formatMoney(900719925474099, { currency: 'USD', locale: 'en-US' })).toBe(
+      '$9,007,199,254,740.99',
+    )
+  })
+
+  it('defaults to USD in en-US until setup chooses a currency', () => {
+    expect(formatMoney(100)).toBe('$1.00')
+  })
+})
+
+describe('formatDate', () => {
+  it('formats a plain date in the locale', () => {
+    expect(formatDate('2026-03-01', { locale: 'en-US' })).toBe('Mar 1, 2026')
+    expect(formatDate('2026-03-01', { locale: 'en-GB' })).toBe('1 Mar 2026')
+  })
+
+  it("doesn't shift the day with the browser's timezone", () => {
+    expect(formatDate('2026-01-01', { locale: 'en-US' })).toBe('Jan 1, 2026')
+    expect(formatDate('2026-12-31', { locale: 'en-US' })).toBe('Dec 31, 2026')
+  })
+
+  it('rejects anything but YYYY-MM-DD', () => {
+    expect(() => formatDate('2026-3-1')).toThrow('2026-3-1')
+    expect(() => formatDate('2026-02-30')).toThrow('2026-02-30')
+  })
+})

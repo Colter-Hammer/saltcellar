@@ -35,9 +35,13 @@ backups/
 !tsconfig*.json
 !renovate.json
 !/.claude/settings.json
+!/web/components.json
 # sqlx offline query data (query text and column types only).
 !/.sqlx/query-*.json
 
 # Build output.
 /target/
+node_modules/
+/web/dist/
+/web/coverage/
 __pycache__/
