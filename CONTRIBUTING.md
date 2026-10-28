@@ -39,7 +39,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 `main` is protected: nothing lands except through a pull request, and nobody can bypass it.
 
 1. Branch from an up-to-date `main`: `git switch -c <type>/<topic> origin/main`.
-2. Commit, run `just check`, push, and open a PR: `gh pr create`.
+2. Commit, run `just check`, push, and open a PR: `gh pr create`. If the PR finishes an issue, put `Closes #N` in its body; the merge closes the issue.
 3. Title the PR as a Conventional Commit, `<type>(<scope>)?: <summary>` with `<type>` one of `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test` (e.g. `feat(import): read closed accounts`). The `pr-title` check enforces it.
 4. Every CI job must pass, on a branch that is up to date with `main` (rebase or use *Update branch* when it isn't).
 5. Squash-merge (the only method). The PR title becomes the commit subject on `main`; the branch is deleted on merge.
