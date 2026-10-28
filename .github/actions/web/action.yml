@@ -1,0 +1,17 @@
+# Node from .nvmrc, with the frontend's dependencies installed from web/package-lock.json.
+
+name: Web
+description: Install Node and the frontend's dependencies
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - name: Install the frontend's dependencies
+      shell: bash
+      run: npm --prefix web ci

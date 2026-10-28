@@ -23,15 +23,17 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 ## First time
 
 1. Put the leak-guard denylist at `~/.config/budget-leak-denylist.txt`, or set `BUDGET_LEAK_DENYLIST` to its path. It is personal, so it is never in the repo; ask the owner for it. The hooks and `just check` fail until it exists.
-2. `just setup` installs the git hooks.
+2. `nvm install` in the repo root, then `just setup`: it installs the git hooks and the frontend's dependencies (`npm --prefix web ci`).
 
 ## Every change
 
 - `just check` runs exactly what CI runs. Run it before opening a PR. `just --list` shows each check as its own recipe (`just clippy`, `just test`, …).
-- `just dev-api` runs the server on <http://localhost:8080> with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port.
+- `just dev` runs the API and the frontend together: open <http://localhost:5173>. Vite reloads on every change and proxies `/api` to the API on port 8080; `BUDGET_LISTEN=127.0.0.1:8090 just dev` moves both.
+- `just dev-api` runs only the server, on <http://localhost:8080>, with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port. The server also serves the frontend from `web/dist` once it's built (`npm --prefix web run build`).
+- After adding or changing frontend dependencies, commit `web/package-lock.json` with `web/package.json`; CI installs with `npm ci`.
 - After adding or changing a sqlx query, run `just sqlx-prepare` and commit the new `.sqlx/` files.
 - A schema change is a new file in `migrations/`; a migration already on `main` is never edited.
-- When `just coverage` says the floor can go up, raise it in `coverage-floors.txt` in the same PR.
+- When `just coverage` or `just web-coverage` says a floor can go up, raise it in `coverage-floors.txt` in the same PR.
 - The hooks run the fast subset on every commit and push. Don't skip them: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.
 
 ## Pull requests

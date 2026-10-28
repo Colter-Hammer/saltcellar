@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Line coverage of each crate in coverage-floors.txt is at or above its floor, and no floor is
-lower than on main (scripts/base.py). Runs the crate's tests under cargo-llvm-cov.
+"""Line coverage of each entry in coverage-floors.txt is at or above its floor, and no floor is
+lower than on main (scripts/base.py). A crate's tests run under cargo-llvm-cov; `web` is the
+frontend's logic, measured by Vitest (web/vite.config.ts says which files).
 
-coverage-floors.txt: one `<crate> <percent>` per line; `#` starts a comment.
+    coverage.py [rust|web]   only the crates, or only the frontend; both by default
+
+coverage-floors.txt: one `<crate or web> <percent>` per line; `#` starts a comment.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from base import base_commit, show
 
 FILE = "coverage-floors.txt"
 CHECK = "coverage"
+WEB = "web"
 
 
 def parse(text: str) -> dict[str, float]:
@@ -37,6 +41,8 @@ def parse(text: str) -> dict[str, float]:
 
 
 def measure(crate: str) -> float:
+    if crate == WEB:
+        return measure_web()
     result = subprocess.run(
         ["cargo", "llvm-cov", "nextest", "--locked", "-p", crate, "--json", "--summary-only"],
         stdout=subprocess.PIPE, text=True, check=False,
@@ -47,13 +53,35 @@ def measure(crate: str) -> float:
     return json.loads(result.stdout)["data"][0]["totals"]["lines"]["percent"]
 
 
+def measure_web() -> float:
+    result = subprocess.run(
+        ["npm", "--prefix", WEB, "run", "coverage", "--", "--coverage.reporter=json-summary"],
+        stdout=subprocess.DEVNULL, check=False,
+    )
+    if result.returncode != 0:
+        print(f"{CHECK}: vitest coverage failed for {WEB}", file=sys.stderr)
+        sys.exit(2)
+    summary = json.loads(Path(WEB, "coverage", "coverage-summary.json").read_text())
+    return summary["total"]["lines"]["pct"]
+
+
+def selected(name: str, only: str | None) -> bool:
+    return only is None or (name == WEB) == (only == WEB)
+
+
 def main() -> int:
-    floors = parse(Path(FILE).read_text())
+    only = sys.argv[1] if len(sys.argv) > 1 else None
+    if only not in (None, "rust", WEB) or len(sys.argv) > 2:
+        print(f"usage: coverage.py [rust|{WEB}]", file=sys.stderr)
+        return 2
+    floors = {name: floor for name, floor in parse(Path(FILE).read_text()).items() if selected(name, only)}
     problems = []
 
     base = base_commit(CHECK)
     shipped = show(base, FILE) if base else None
     for crate, old in (parse(shipped.decode()) if shipped else {}).items():
+        if not selected(crate, only):
+            continue
         if crate not in floors:
             problems.append(f"{crate}: the floor ({old:g}%) was removed; coverage floors only go up")
         elif floors[crate] < old:

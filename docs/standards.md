@@ -20,7 +20,7 @@ Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`)
 
 | Rule | Check | Where |
 | --- | --- | --- |
-| Personal data files are never committed: `.env*`, `data/`, backups, `*.sqlite*`, `*.zip`, `*.age`, and `*.csv` / `*.ofx` / `*.qfx` / `*.qbo` / `*.json` outside `fixtures/` (tool JSON configs listed one by one). `.scratch/` stays local. | `.gitignore` default-deny | `git add` |
+| Personal data files are never committed: `.env*`, `data/`, backups, `*.sqlite*`, `*.zip`, `*.age`, and `*.csv` / `*.ofx` / `*.qfx` / `*.qbo` / `*.json` outside `fixtures/` (tool JSON configs listed one by one, `web/components.json` among them). `.scratch/` stays local. | `.gitignore` default-deny | `git add` |
 | The same file types can't be committed even if forced past `.gitignore`; no file over 1 MiB. | File rule: `scripts/guard.py files` | hook: pre-commit (staged), pre-push (the commits being pushed); check, CI `file-rule`: full history |
 | No personal terms (names, account suffixes, banks, places, domains, IPs, payees) in any file, file name or commit message. No excluded paths. The denylist lives outside the repo. | Leak guard: `scripts/guard.py leak` | hook: pre-commit (staged), commit-msg, pre-push (the commits being pushed); check, CI `leak-guard`: full history (denylist from the `LEAK_DENYLIST` Actions secret) |
 | The leak guard never passes without a denylist. | `scripts/guard.py` exits with an error naming the expected path | everywhere the leak guard runs |
@@ -39,16 +39,31 @@ Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`)
 | Builds never need a database: the sqlx query data in `.sqlx/` is checked in and matches every query and the migrations. Regenerate it with `just sqlx-prepare`. | `scripts/sqlx-offline.sh check` (`cargo sqlx prepare --check` against a fresh database); `SQLX_OFFLINE` in `.cargo/config.toml` | check, CI `sqlx-offline` |
 | Migrations are append-only: one that exists on `main` is never edited or deleted. New ones are named `NNNN_snake_case.sql` and numbered after `main`'s newest. | `scripts/migrations.py` (compares `migrations/` with `main`); sqlx also refuses to start on a changed applied migration | check, CI `migrations`; startup |
 
+## Frontend
+
+The frontend is `web/`. Its checks run with `npm --prefix web run <script>`; `just web-<check>` wraps each.
+
+| Rule | Check | Where |
+| --- | --- | --- |
+| TypeScript is `strict`, with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, in `.ts` and `.vue` files alike. | `vue-tsc -b` with `web/tsconfig.app.json` and `web/tsconfig.node.json` | check, CI `web-typecheck` |
+| ESLint `typescript-eslint` strict-type-checked and stylistic-type-checked, plus `eslint-plugin-vue` recommended; zero warnings. That includes no `any` and no non-null `!`. | `eslint --max-warnings 0` with `web/eslint.config.ts` | check, CI `web-lint` |
+| Import boundaries: views → components → API client. Only `src/api/` calls `fetch` (bare, or on `window`, `globalThis` or `self`); components never import views; `src/api/` and `src/lib/` import neither. | `no-restricted-globals`, `no-restricted-properties` and `no-restricted-imports` in `web/eslint.config.ts`; `web/checks/lint.test.ts` proves each rule fires | check, CI `web-lint`, `web-test` |
+| Code is Prettier-formatted. | `prettier --check` (config in `web/package.json`) | check, CI `web-format` |
+| No unused files, exports or dependencies. | `knip` | check, CI `web-knip` |
+| The frontend builds. | `vite build` into `web/dist` | check, CI `web-build` |
+| One Node version for everyone; dependencies installed exactly from the lockfile. | `.nvmrc`; `npm ci` in `.github/actions/web` | CI |
+
 ## Tests
 
 | Rule | Check | Where |
 | --- | --- | --- |
 | Every Rust test passes. | `cargo nextest run --workspace` | check, CI `test` |
-| Line coverage of `domain` is at or above its floor, and floors only go up: lowering or removing one fails. | `scripts/coverage.py` with `coverage-floors.txt` (`cargo llvm-cov nextest`) | check, CI `coverage` |
+| Every Vitest test passes. | `vitest run` | check, CI `web-test` |
+| Line coverage of `domain` is at or above its floor, and floors only go up: lowering or removing one fails. | `scripts/coverage.py rust` with `coverage-floors.txt` (`cargo llvm-cov nextest`) | check, CI `coverage` |
+| Line coverage of the frontend's logic (the TypeScript modules in `web/src/`, tests and `main.ts` aside) is at or above the `web` floor, which only goes up the same way. | `scripts/coverage.py web` with `coverage-floors.txt` (Vitest coverage, v8) | check, CI `web-coverage` |
 
 ## Hygiene
 
 | Rule | Check | Where |
 | --- | --- | --- |
 | UTF-8, LF line endings, final newline, no trailing whitespace, spaces for indentation. | `.editorconfig` | editor |
-| One Node version for everyone. | `.nvmrc` | `nvm use` |

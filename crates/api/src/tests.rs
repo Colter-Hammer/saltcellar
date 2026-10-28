@@ -65,6 +65,16 @@ async fn unknown_paths_get_the_error_envelope() {
 }
 
 #[tokio::test]
+async fn unknown_paths_outside_v1_get_the_error_envelope_too() {
+    let app = app().await;
+    for uri in ["/api", "/api/", "/api/nope", "/api/v2/health"] {
+        let (status, body) = send(app.router.clone(), get(uri)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        assert_eq!(body["error"]["code"], "not_found", "{uri}");
+    }
+}
+
+#[tokio::test]
 async fn wrong_methods_get_the_error_envelope() {
     let app = app().await;
     let request = Request::put("/api/v1/health")
