@@ -7,8 +7,10 @@ Two checks, each over one scope:
     guard.py files staged|push|history   denied file types outside fixtures/, and files over 1 MiB
     guard.py leak  msg <file>            denylisted terms in a commit message file (commit-msg hook)
 
-Scopes: `staged` is the index (pre-commit); `push` is every commit on a local branch or tag that
-no remote has yet (pre-push); `history` is every commit reachable from any ref (CI, `just check`).
+Scopes: `staged` is the index (pre-commit); `push` is the commits being pushed (pre-push, via
+scripts/pre-push, which puts git's list of pushed commits in GUARD_PUSH_REVS; run by hand without
+it, every commit on a local branch or tag that no remote has yet); `history` is every commit
+reachable from any ref (CI, `just check`).
 
 The denylist is personal, so it never lives in the repo. It is read from the path in
 BUDGET_LEAK_DENYLIST, default ~/.config/budget-leak-denylist.txt. One term per line, matched
@@ -142,7 +144,10 @@ def changes_in(scope: str) -> dict[str, list[str]]:
 
 
 def revs_for(scope: str) -> list[str]:
-    return PUSH_REVS if scope == "push" else HISTORY_REVS
+    if scope != "push":
+        return HISTORY_REVS
+    pushed = os.environ.get("GUARD_PUSH_REVS", "").split()
+    return [*pushed, "--not", "--remotes"] if pushed else PUSH_REVS
 
 
 def commits_in(scope: str) -> list[str]:

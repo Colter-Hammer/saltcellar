@@ -17,11 +17,7 @@ commit-msg:
       run: python3 scripts/guard.py leak msg {1}
 
 pre-push:
-  parallel: true
-  commands:
-    gitleaks:
-      run: gitleaks git --log-opts="--branches --tags --not --remotes" --redact --no-banner
-    leak-guard:
-      run: python3 scripts/guard.py leak push
-    file-rule:
-      run: python3 scripts/guard.py files push
+  scripts:
+    "guards.sh":
+      runner: bash
+      use_stdin: true

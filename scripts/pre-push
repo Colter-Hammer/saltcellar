@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# pre-push hook body (lefthook.yml): run every push check over exactly the commits git is about to
+# send, read from the hook's stdin, so a commit pushed by its id (not on any local branch) is checked
+# too. Anything a remote already has is skipped.
+set -uo pipefail
+
+shas=()
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  [[ "$local_sha" =~ ^0+$ ]] && continue # deleting a remote ref sends nothing
+  shas+=("$local_sha")
+done
+[[ ${#shas[@]} -eq 0 ]] && exit 0
+
+export GUARD_PUSH_REVS="${shas[*]}"
+status=0
+python3 scripts/guard.py leak push || status=1
+python3 scripts/guard.py files push || status=1
+gitleaks git --log-opts="${shas[*]} --not --remotes" --redact --no-banner || status=1
+exit "$status"
