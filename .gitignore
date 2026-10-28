@@ -36,6 +36,8 @@ backups/
 !renovate.json
 !/.claude/settings.json
 !/web/components.json
+# The generated OpenAPI document (scripts/gen-api.sh).
+!/web/src/api/openapi.json
 # sqlx offline query data (query text and column types only).
 !/.sqlx/query-*.json
 

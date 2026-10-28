@@ -1,13 +1,36 @@
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
 import { createAppRouter } from './router'
 
+function serverUp() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve(Response.json({ status: 'ok' }))),
+  )
+}
+
+function serverDown() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+  )
+}
+
+beforeEach(serverUp)
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
+})
+
 async function open(path: string) {
   const router = createAppRouter(createMemoryHistory())
   await router.push(path)
-  const wrapper = mount(App, { global: { plugins: [router] } })
+  const queryClient = new QueryClient()
+  const wrapper = mount(App, { global: { plugins: [router, [VueQueryPlugin, { queryClient }]] } })
   await flushPromises()
   return { router, wrapper }
 }
@@ -73,5 +96,29 @@ describe('the app shell', () => {
   it('says so for an address that is no screen', async () => {
     const { wrapper } = await open('/transactions/whatever')
     expect(wrapper.get('h1').text()).toBe('Not found')
+  })
+})
+
+describe('the server banner', () => {
+  it("isn't there while the server answers", async () => {
+    const { wrapper } = await open('/')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('says so when the server is unreachable', async () => {
+    serverDown()
+    const { wrapper } = await open('/')
+    expect(wrapper.get('[role="alert"]').text()).toContain("Can't reach the server")
+  })
+
+  it('goes away once the server answers again', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    serverDown()
+    const { wrapper } = await open('/')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    serverUp()
+    await vi.advanceTimersByTimeAsync(5_000)
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 })

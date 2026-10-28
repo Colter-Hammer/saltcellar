@@ -32,6 +32,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 - `just dev-api` runs only the server, on <http://localhost:8080>, with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port. The server also serves the frontend from `web/dist` once it's built (`npm --prefix web run build`).
 - After adding or changing frontend dependencies, commit `web/package-lock.json` with `web/package.json`; CI installs with `npm ci`.
 - After adding or changing a sqlx query, run `just sqlx-prepare` and commit the new `.sqlx/` files.
+- After changing a route or a type the API sends or takes, run `just gen-api` and commit `web/src/api/openapi.json` and `web/src/api/generated/` with the Rust change. The frontend imports those types only through `web/src/api/`.
 - A schema change is a new file in `migrations/`; a migration already on `main` is never edited.
 - When `just coverage` or `just web-coverage` says a floor can go up, raise it in `coverage-floors.txt` in the same PR.
 - The hooks run the fast subset on every commit and push. Don't skip them: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.

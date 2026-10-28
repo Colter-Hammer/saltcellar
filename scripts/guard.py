@@ -40,6 +40,7 @@ TOOL_JSON = re.compile(
     r"(^|/)(package\.json|package-lock\.json|tsconfig[^/]*\.json|renovate\.json)$"
     r"|^\.claude/settings\.json$"
     r"|^web/components\.json$"
+    r"|^web/src/api/openapi\.json$"
     r"|^\.sqlx/query-[0-9a-f]{64}\.json$"
 )
 # Never allowed anywhere, fixtures included.

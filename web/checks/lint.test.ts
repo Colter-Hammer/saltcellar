@@ -82,6 +82,42 @@ describe('import boundaries', () => {
   })
 })
 
+describe('the API contract', () => {
+  it('stops a component importing the generated types', async () => {
+    const ids = await ruleIds(
+      'src/components/Some.vue',
+      sfc(
+        "import type { components } from '@/api/generated/schema'\ntype H = components['schemas']['Health']\ndefineProps<{ health: H }>()",
+      ),
+    )
+    expect(ids).toContain('no-restricted-imports')
+  })
+
+  it('stops a view importing the generated types by a relative path', async () => {
+    const ids = await ruleIds(
+      'src/views/SomeView.vue',
+      sfc("import type { paths } from '../api/generated/schema'\ndefineProps<{ p: paths }>()"),
+    )
+    expect(ids).toContain('no-restricted-imports')
+  })
+
+  it('stops a view making its own typed client', async () => {
+    const ids = await ruleIds(
+      'src/views/SomeView.vue',
+      sfc("import createClient from 'openapi-fetch'\nvoid createClient"),
+    )
+    expect(ids).toContain('no-restricted-imports')
+  })
+
+  it('lets the API client use the generated types', async () => {
+    const ids = await ruleIds(
+      'src/api/some.ts',
+      "import type { components } from './generated/schema'\nexport type Health = components['schemas']['Health']\n",
+    )
+    expect(ids).toEqual([])
+  })
+})
+
 describe('type safety', () => {
   it('rejects any', async () => {
     const ids = await ruleIds('src/lib/some.ts', 'export const x: any = 1\n')
