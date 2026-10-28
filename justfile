@@ -11,7 +11,7 @@ setup:
     lefthook install
     npm --prefix web ci
 
-# The API and the frontend together: open http://localhost:5173 (Vite, proxying /api to the API).
+# The API and the frontend together: open http://localhost:5173 (Vite, proxying /api to the API at BUDGET_LISTEN).
 dev:
     #!/usr/bin/env bash
     set -euo pipefail

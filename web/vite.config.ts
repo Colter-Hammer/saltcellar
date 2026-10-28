@@ -6,8 +6,12 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  // `just dev`: the API runs on 8080 and Vite proxies /api to it.
-  server: { port: 5173, strictPort: true, proxy: { '/api': 'http://127.0.0.1:8080' } },
+  // `just dev`: Vite proxies /api to the API, at BUDGET_LISTEN like `just dev-api`.
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: { '/api': `http://${process.env.BUDGET_LISTEN ?? '127.0.0.1:8080'}` },
+  },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.ts', 'checks/**/*.test.ts'],

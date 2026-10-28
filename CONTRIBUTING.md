@@ -28,7 +28,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 ## Every change
 
 - `just check` runs exactly what CI runs. Run it before opening a PR. `just --list` shows each check as its own recipe (`just clippy`, `just test`, …).
-- `just dev` runs the API and the frontend together: open <http://localhost:5173>. Vite reloads on every change and proxies `/api` to the API on port 8080.
+- `just dev` runs the API and the frontend together: open <http://localhost:5173>. Vite reloads on every change and proxies `/api` to the API on port 8080; `BUDGET_LISTEN=127.0.0.1:8090 just dev` moves both.
 - `just dev-api` runs only the server, on <http://localhost:8080>, with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port. The server also serves the frontend from `web/dist` once it's built (`npm --prefix web run build`).
 - After adding or changing frontend dependencies, commit `web/package-lock.json` with `web/package.json`; CI installs with `npm ci`.
 - After adding or changing a sqlx query, run `just sqlx-prepare` and commit the new `.sqlx/` files.
