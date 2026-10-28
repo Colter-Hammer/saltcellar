@@ -1,0 +1,3 @@
+# Line-coverage floors, in percent, checked by scripts/coverage.py.
+# They only go up: raising one is a normal change; lowering one, or removing it, fails the check.
+domain 100.0

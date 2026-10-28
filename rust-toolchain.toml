@@ -1,0 +1,5 @@
+# The one Rust toolchain for everyone, CI included. Renovate doesn't bump this; raise it by hand.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt", "llvm-tools-preview"]
+profile = "minimal"

@@ -39,6 +39,7 @@ FIXTURE_ONLY = re.compile(r"\.(csv|ofx|qfx|qbo|json|zip|sqlite[^/]*)$", re.IGNOR
 TOOL_JSON = re.compile(
     r"(^|/)(package\.json|package-lock\.json|tsconfig[^/]*\.json|renovate\.json)$"
     r"|^\.claude/settings\.json$"
+    r"|^\.sqlx/query-[0-9a-f]{64}\.json$"
 )
 # Never allowed anywhere, fixtures included.
 ALWAYS_DENIED = [

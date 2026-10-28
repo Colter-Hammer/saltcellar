@@ -1,0 +1,112 @@
+use std::collections::BTreeMap;
+
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use serde::Serialize;
+
+/// Every error the API returns:
+/// `{ "error": { "code": "snake_case_code", "message": "Human sentence." } }` with a fitting status.
+/// Validation errors add `"fields": { name: message }`.
+#[derive(Debug)]
+pub struct ApiError {
+    status: StatusCode,
+    code: &'static str,
+    message: String,
+    fields: BTreeMap<String, String>,
+}
+
+#[derive(Serialize)]
+struct Envelope<'a> {
+    error: Body<'a>,
+}
+
+#[derive(Serialize)]
+struct Body<'a> {
+    code: &'a str,
+    message: &'a str,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    fields: &'a BTreeMap<String, String>,
+}
+
+impl ApiError {
+    pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
+        ApiError {
+            status,
+            code,
+            message: message.into(),
+            fields: BTreeMap::new(),
+        }
+    }
+
+    /// A 422 naming each field that's wrong and why.
+    pub fn validation(message: impl Into<String>, fields: BTreeMap<String, String>) -> Self {
+        ApiError {
+            fields,
+            ..ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation_failed",
+                message,
+            )
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let envelope = Envelope {
+            error: Body {
+                code: self.code,
+                message: &self.message,
+                fields: &self.fields,
+            },
+        };
+        (self.status, Json(envelope)).into_response()
+    }
+}
+
+pub async fn not_found() -> ApiError {
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "There's nothing at this address.",
+    )
+}
+
+pub async fn method_not_allowed() -> ApiError {
+    ApiError::new(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "method_not_allowed",
+        "This address doesn't accept that method.",
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::to_bytes;
+    use serde_json::{Value, json};
+
+    use super::*;
+
+    async fn render(error: ApiError) -> (StatusCode, Value) {
+        let response = error.into_response();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn validation_errors_name_their_fields() {
+        let fields = BTreeMap::from([("name".to_owned(), "Give it a name.".to_owned())]);
+        let (status, body) = render(ApiError::validation("Check the form.", fields)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            body,
+            json!({ "error": {
+                "code": "validation_failed",
+                "message": "Check the form.",
+                "fields": { "name": "Give it a name." },
+            } })
+        );
+    }
+}

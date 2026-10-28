@@ -1,0 +1,48 @@
+# cargo-deny (docs/standards.md): advisories, licences, bans and duplicates, sources.
+
+[graph]
+# Only the platforms the app is built for, so Windows- and macOS-only crates don't count.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-unknown-linux-musl",
+]
+all-features = true
+
+[advisories]
+# Every RustSec advisory fails, unmaintained and unsound included. Ignoring one needs an entry with a reason.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Permissive licences compatible with AGPL-3.0, only those in use (an unused one warns).
+# Adding one is a reviewed change: ISC, BSD-2-Clause and MPL-2.0 would also be fine.
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.93
+
+[licenses.private]
+# The workspace's own crates are AGPL-3.0-only and never published.
+ignore = true
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+# Each skip names the crates still on the older version; drop it when they move.
+skip = [
+  { crate = "hashbrown@0.16", reason = "sqlx-core and hashlink are on 0.16; indexmap is on 0.17" },
+  { crate = "syn@2", reason = "sqlx-macros and tracing-attributes are on syn 2; the rest are on 3" },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

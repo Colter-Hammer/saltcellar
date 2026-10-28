@@ -27,6 +27,25 @@ Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`)
 | No secrets (tokens, keys, credentials). | `gitleaks` with `.gitleaks.toml` (default rules) | hook: pre-commit (staged), pre-push (the commits being pushed); check, CI `gitleaks`: full history |
 | Hooks aren't skipped by agents. | `.claude/settings.json` denies `--no-verify`, `-n`, `core.hooksPath` overrides and `LEFTHOOK=0` | Claude sessions |
 
+## Rust
+
+| Rule | Check | Where |
+| --- | --- | --- |
+| One toolchain for everyone, with `clippy`, `rustfmt` and `llvm-tools-preview`. | `rust-toolchain.toml` (pinned by hand; Renovate doesn't bump it) | `cargo`, CI |
+| Code is `rustfmt`-formatted. | `cargo fmt --all --check` | check, CI `fmt` |
+| Clippy `pedantic` is denied, and so is every warning. `unwrap`, `expect`, `panic!`, `todo!`, `dbg!` and `println!` are denied outside tests. `unsafe` is forbidden. Every crate takes the workspace lints. | `[workspace.lints]` in `Cargo.toml`, `clippy.toml` (the in-tests allowances), `cargo clippy --workspace --all-targets -- -D warnings` | check, CI `clippy` |
+| No dependency with a RustSec advisory (unmaintained and unsound included) or yanked; only the licences in `deny.toml`; one version of each crate (each exception listed with its reason); crates.io only. | `cargo deny check` with `deny.toml` | check, CI `deny` |
+| `domain` is pure logic: its dependency tree has no `axum`, `sqlx` or `tokio` crate. | `scripts/layering.py` | check, CI `layering` |
+| Builds never need a database: the sqlx query data in `.sqlx/` is checked in and matches every query and the migrations. Regenerate it with `just sqlx-prepare`. | `scripts/sqlx-offline.sh check` (`cargo sqlx prepare --check` against a fresh database); `SQLX_OFFLINE` in `.cargo/config.toml` | check, CI `sqlx-offline` |
+| Migrations are append-only: one that exists on `main` is never edited or deleted. New ones are named `NNNN_snake_case.sql` and numbered after `main`'s newest. | `scripts/migrations.py` (compares `migrations/` with `main`); sqlx also refuses to start on a changed applied migration | check, CI `migrations`; startup |
+
+## Tests
+
+| Rule | Check | Where |
+| --- | --- | --- |
+| Every Rust test passes. | `cargo nextest run --workspace` | check, CI `test` |
+| Line coverage of `domain` is at or above its floor, and floors only go up: lowering or removing one fails. | `scripts/coverage.py` with `coverage-floors.txt` (`cargo llvm-cov nextest`) | check, CI `coverage` |
+
 ## Hygiene
 
 | Rule | Check | Where |
