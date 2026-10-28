@@ -8,7 +8,11 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 
 | Tool | Version | Install |
 | --- | --- | --- |
-| `rustup` | 1.29.2 | `curl https://sh.rustup.rs -sSf \| sh -s -- -y --profile minimal` |
+| `rustup` | 1.29.2 | `curl https://sh.rustup.rs -sSf \| sh -s -- -y --profile minimal`; the toolchain itself comes from `rust-toolchain.toml` on first use |
+| `cargo-deny` | 0.20.2 | release binary from [EmbarkStudios/cargo-deny](https://github.com/EmbarkStudios/cargo-deny/releases) into `~/.local/bin` |
+| `cargo-nextest` | 0.9.150 | release binary from [nextest-rs/nextest](https://github.com/nextest-rs/nextest/releases) into `~/.local/bin` |
+| `cargo-llvm-cov` | 0.9.1 | release binary from [taiki-e/cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov/releases) into `~/.local/bin` |
+| `sqlx-cli` | 0.9.0 | `cargo install sqlx-cli --locked --version 0.9.0 --no-default-features --features sqlite` |
 | `just` | 1.59.0 | release binary from [casey/just](https://github.com/casey/just/releases) into `~/.local/bin` |
 | `lefthook` | 2.2.2 | release binary from [evilmartians/lefthook](https://github.com/evilmartians/lefthook/releases) into `~/.local/bin` |
 | `gitleaks` | 8.30.1 | release binary from [gitleaks/gitleaks](https://github.com/gitleaks/gitleaks/releases) into `~/.local/bin` |
@@ -23,7 +27,11 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 
 ## Every change
 
-- `just check` runs exactly what CI runs. Run it before opening a PR.
+- `just check` runs exactly what CI runs. Run it before opening a PR. `just --list` shows each check as its own recipe (`just clippy`, `just test`, …).
+- `just dev-api` runs the server on <http://localhost:8080> with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port.
+- After adding or changing a sqlx query, run `just sqlx-prepare` and commit the new `.sqlx/` files.
+- A schema change is a new file in `migrations/`; a migration already on `main` is never edited.
+- When `just coverage` says the floor can go up, raise it in `coverage-floors.txt` in the same PR.
 - The hooks run the fast subset on every commit and push. Don't skip them: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.
 
 ## Pull requests

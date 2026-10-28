@@ -1,0 +1,15 @@
+[package]
+name = "domain"
+description = "Pure logic: money, dates and the rules on them. No axum, sqlx, tokio or I/O (scripts/layering.py)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+jiff.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

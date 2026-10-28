@@ -10,8 +10,12 @@ default:
 setup:
     lefthook install
 
+# Run the server on http://localhost:8080, with its data in ./data (git-ignored).
+dev-api:
+    BUDGET_DATA_DIR="${BUDGET_DATA_DIR:-data}" BUDGET_LISTEN="${BUDGET_LISTEN:-127.0.0.1:8080}" cargo run --locked --bin budget
+
 # Every check CI runs.
-check: leak-guard file-rule gitleaks
+check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations
 
 # Denylisted personal terms anywhere in the history.
 leak-guard:
@@ -24,3 +28,39 @@ file-rule:
 # Secrets anywhere in the history.
 gitleaks:
     gitleaks git --redact --no-banner
+
+# Rust formatting.
+fmt:
+    cargo fmt --all --check
+
+# Clippy with the workspace lints, warnings denied.
+clippy:
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+
+# Advisories, licences, bans and duplicates, sources.
+deny:
+    cargo deny --locked check
+
+# `domain` doesn't depend on axum, sqlx or tokio.
+layering:
+    python3 scripts/layering.py
+
+# Every Rust test.
+test:
+    cargo nextest run --workspace --locked
+
+# Line coverage of `domain` at or above its floor in coverage-floors.txt, and no floor lowered.
+coverage:
+    python3 scripts/coverage.py
+
+# The checked-in sqlx query data (.sqlx/) matches the queries and the migrations.
+sqlx-offline:
+    scripts/sqlx-offline.sh check
+
+# Regenerate .sqlx/ after adding or changing a query.
+sqlx-prepare:
+    scripts/sqlx-offline.sh prepare
+
+# Migrations that exist on main are unchanged; new ones are numbered after them.
+migrations:
+    python3 scripts/migrations.py

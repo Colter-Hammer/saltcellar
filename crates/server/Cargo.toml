@@ -1,0 +1,25 @@
+[package]
+name = "server"
+description = "The `budget` binary: config, startup and the HTTP server."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "budget"
+path = "src/main.rs"
+
+[dependencies]
+api.workspace = true
+axum.workspace = true
+db.workspace = true
+ipnet.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

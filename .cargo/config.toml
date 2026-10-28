@@ -1,0 +1,4 @@
+# Builds read the checked-in query data in .sqlx/ and never need a database.
+# `just sqlx-prepare` regenerates it against a fresh database (it sets SQLX_OFFLINE=false).
+[env]
+SQLX_OFFLINE = "true"
