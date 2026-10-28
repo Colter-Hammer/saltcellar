@@ -29,8 +29,16 @@ export function createAppRouter(history: RouterHistory): Router {
       },
       { path: '/accounts', component: AccountsView, meta: { title: 'Accounts', tab: 'accounts' } },
       { path: '/more', component: MoreView, meta: { title: 'More', tab: 'more' } },
-      { path: '/categories', component: CategoriesView, meta: { title: 'Categories', tab: 'more' } },
-      { path: '/import', component: ImportView, meta: { title: 'Import from Actual', tab: 'more' } },
+      {
+        path: '/categories',
+        component: CategoriesView,
+        meta: { title: 'Categories', tab: 'more' },
+      },
+      {
+        path: '/import',
+        component: ImportView,
+        meta: { title: 'Import from Actual', tab: 'more' },
+      },
       { path: '/settings', component: SettingsView, meta: { title: 'Settings', tab: 'more' } },
       { path: '/:unknown(.*)*', component: NotFoundView, meta: { title: 'Not found' } },
     ],

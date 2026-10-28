@@ -25,7 +25,11 @@ describe('the app shell', () => {
 
   it('has the milestone 1 tabs on phones', async () => {
     const { wrapper } = await open('/')
-    expect(links(wrapper, 'Tabs').map((a) => a.text())).toEqual(['Transactions', 'Accounts', 'More'])
+    expect(links(wrapper, 'Tabs').map((a) => a.text())).toEqual([
+      'Transactions',
+      'Accounts',
+      'More',
+    ])
   })
 
   it('lists every milestone 1 screen in the desktop sidebar', async () => {
@@ -42,11 +46,12 @@ describe('the app shell', () => {
   it('lists the rest under More', async () => {
     const { wrapper } = await open('/more')
     expect(wrapper.get('h1').text()).toBe('More')
-    expect(wrapper.get('main').findAll('a').map((a) => a.text())).toEqual([
-      'Categories',
-      'Import from Actual',
-      'Settings',
-    ])
+    expect(
+      wrapper
+        .get('main')
+        .findAll('a')
+        .map((a) => a.text()),
+    ).toEqual(['Categories', 'Import from Actual', 'Settings'])
   })
 
   it('marks More as the current tab on the screens it lists', async () => {

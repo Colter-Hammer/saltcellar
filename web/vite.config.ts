@@ -10,6 +10,13 @@ export default defineConfig({
   server: { port: 5173, strictPort: true, proxy: { '/api': 'http://127.0.0.1:8080' } },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'checks/**/*.test.ts'],
+    // The floor in ../coverage-floors.txt (`web`) is on frontend logic: the TypeScript modules.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/main.ts', 'src/env.d.ts'],
+      reporter: ['text', 'json-summary'],
+    },
   },
 })

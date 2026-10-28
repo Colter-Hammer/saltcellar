@@ -45,3 +45,6 @@ node_modules/
 /web/dist/
 /web/coverage/
 __pycache__/
+
+# Throwaway files web/checks/lint.test.ts writes while it runs.
+__lint_probe__*

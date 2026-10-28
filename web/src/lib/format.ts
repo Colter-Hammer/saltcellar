@@ -18,7 +18,9 @@ export function formatMoney(minor: number, formatting: Formatting = DEFAULT): st
   })
   const places = format.resolvedOptions().maximumFractionDigits ?? 0
   // A decimal string, never a float, so large amounts keep their last digit.
-  const digits = Math.abs(minor).toString().padStart(places + 1, '0')
+  const digits = Math.abs(minor)
+    .toString()
+    .padStart(places + 1, '0')
   const whole = digits.slice(0, digits.length - places)
   const fraction = digits.slice(digits.length - places)
   const decimal = `${minor < 0 ? '-' : ''}${whole}${places ? `.${fraction}` : ''}`
@@ -40,7 +42,8 @@ export function formatDate(date: string, formatting: Pick<Formatting, 'locale'> 
   ) {
     throw new RangeError(`not a YYYY-MM-DD date: ${date}`)
   }
-  return new Intl.DateTimeFormat(formatting.locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(
-    instant,
-  )
+  return new Intl.DateTimeFormat(formatting.locale, {
+    dateStyle: 'medium',
+    timeZone: 'UTC',
+  }).format(instant)
 }
