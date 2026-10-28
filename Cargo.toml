@@ -29,6 +29,7 @@ tower = "0.5.3"
 tower-http = { version = "0.7.1", features = ["fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+utoipa = "6.0.0"
 
 # The Rust rules in docs/standards.md. Every crate opts in with `[lints] workspace = true`.
 # Warnings are denied by `-D warnings` on the clippy run; clippy.toml lets tests unwrap, panic and print.

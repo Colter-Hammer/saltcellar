@@ -4,6 +4,7 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// Every error the API returns:
 /// `{ "error": { "code": "snake_case_code", "message": "Human sentence." } }` with a fitting status.
@@ -16,16 +17,21 @@ pub struct ApiError {
     fields: BTreeMap<String, String>,
 }
 
-#[derive(Serialize)]
-struct Envelope<'a> {
-    error: Body<'a>,
+/// The body of every error response.
+#[derive(Serialize, ToSchema)]
+pub(crate) struct ErrorEnvelope<'a> {
+    error: ErrorBody<'a>,
 }
 
-#[derive(Serialize)]
-struct Body<'a> {
+#[derive(Serialize, ToSchema)]
+pub(crate) struct ErrorBody<'a> {
+    /// What went wrong, for code to branch on: `snake_case`, stable.
     code: &'a str,
+    /// What went wrong, for a person to read.
     message: &'a str,
+    /// Validation errors only: each field that's wrong and why.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[schema(required = false)]
     fields: &'a BTreeMap<String, String>,
 }
 
@@ -54,8 +60,8 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let envelope = Envelope {
-            error: Body {
+        let envelope = ErrorEnvelope {
+            error: ErrorBody {
                 code: self.code,
                 message: &self.message,
                 fields: &self.fields,
