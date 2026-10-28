@@ -1,6 +1,7 @@
 //! `budget`: the whole app in one binary.
 
 mod config;
+mod web;
 
 use std::process::ExitCode;
 
@@ -55,7 +56,15 @@ async fn run(config: Config) -> Result<(), StartError> {
         .map_err(|error| StartError::Listen(config.listen, error))?;
     tracing::info!(listen = %config.listen, data_dir = %config.data_dir.display(), "listening");
 
-    axum::serve(listener, api::router(api::AppState { pool: pool.clone() }))
+    let dist = std::path::Path::new(web::DIST);
+    if !dist.join("index.html").is_file() {
+        tracing::warn!(
+            dist = web::DIST,
+            "no built frontend; only the API is served (build it with `npm --prefix web run build`)"
+        );
+    }
+    let app = web::app(api::router(api::AppState { pool: pool.clone() }), dist);
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
         .await
         .map_err(StartError::Serve)?;
