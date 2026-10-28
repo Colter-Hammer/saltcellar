@@ -6,7 +6,7 @@ The v1 spec is `docs/spec/` (start at `docs/spec/README.md`); the domain vocabul
 
 ### Issue tracker
 
-Issues and specs are local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Implementation issues are GitHub Issues, mirrored as local markdown under `.scratch/<feature>/`; planning stays local. The repo is public: guard-check issue text before posting. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
