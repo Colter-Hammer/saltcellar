@@ -251,6 +251,7 @@ jobs:
       - run: npm --prefix web run e2e
         env:
           E2E_BASE_URL: http://localhost:8080
+          E2E_APP_LOGS: docker logs app
       - name: The app's log
         if: failure()
         run: docker logs app

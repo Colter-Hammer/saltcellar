@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT failed_at FROM login_failures WHERE username = ? ORDER BY failed_at DESC LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "failed_at",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_failures",
+            "name": "failed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "686dfc30a06165614f3d8522ee68e492851c1b274e8565a3474476f4cdedb95b"
+}

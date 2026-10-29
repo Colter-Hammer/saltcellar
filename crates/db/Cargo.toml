@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 domain.workspace = true
+jiff.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 

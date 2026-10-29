@@ -40,7 +40,9 @@ skip = [
   { crate = "hashbrown@0.16", reason = "sqlx-core and hashlink are on 0.16; indexmap is on 0.17" },
   { crate = "syn@2", reason = "sqlx-macros and tracing-attributes are on syn 2; the rest are on 3" },
 ]
-skip-tree = []
+skip-tree = [
+  { crate = "sha2@0.10", reason = "sqlx-core is on sha2 0.10 and its digest 0.10 tree; argon2 and the api crate are on 0.11" },
+]
 
 [sources]
 unknown-registry = "deny"

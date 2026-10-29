@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO household (id, currency_code, timezone, setup_done_at) VALUES (1, ?1, ?2, ?3)\n         ON CONFLICT (id) DO UPDATE SET currency_code = ?1, timezone = ?2, setup_done_at = ?3\n         WHERE setup_done_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1b63f3e7e2dd10ec2d9c88a97e0cc0fced3bc450b87b2ed0beb413a298b1887c"
+}

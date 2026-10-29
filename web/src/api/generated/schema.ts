@@ -21,10 +21,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/household": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/household`: the household's currency and timezone. */
+        get: operations["getHousehold"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/setup`: whether setup is finished. */
+        get: operations["getSetup"];
+        put?: never;
+        /**
+         * `POST /api/v1/setup`: finishes setup. Writes the household and the first login in one go, and
+         *     logs that login in.
+         */
+        post: operations["finishSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/setup/code`: whether this is the setup code, for the wizard's first step. */
+        post: operations["checkSetupCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/currencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/setup/currencies`: the currencies the household can choose. */
+        get: operations["getCurrencies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CheckSetupCode: {
+            /** @description As typed: case, spaces and dashes don't matter. */
+            code: string;
+        };
         ErrorBody: {
             /** @description What went wrong, for code to branch on: `snake_case`, stable. */
             code: string;
@@ -39,12 +115,42 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
+        FinishSetup: {
+            /** @description The setup code again, as typed. */
+            code: string;
+            /** @description ISO 4217, one of `GET /api/v1/setup/currencies`. */
+            currency: string;
+            display_name: string;
+            /** @description At least 12 characters. */
+            password: string;
+            /** @description The password typed again. */
+            password_again: string;
+            /** @description An IANA timezone name. */
+            timezone: string;
+            username: string;
+        };
         Health: {
             /**
              * @description Always `ok`: any other state is an error response.
              * @example ok
              */
             status: string;
+        };
+        Household: {
+            /**
+             * @description ISO 4217: every amount is in minor units of it.
+             * @example USD
+             */
+            currency: string;
+            /**
+             * @description IANA: it decides what "today" is.
+             * @example America/Chicago
+             */
+            timezone: string;
+        };
+        SetupStatus: {
+            /** @description Whether setup is finished. Until it is, the app shows only the setup wizard. */
+            done: boolean;
         };
     };
     responses: never;
@@ -80,6 +186,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getHousehold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The household. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Household"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether setup is finished. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    finishSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishSetup"];
+            };
+        };
+        responses: {
+            /** @description Setup is finished and the new login is logged in. */
+            204: {
+                headers: {
+                    /** @description The session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `setup_code_wrong`: the code isn't the setup code. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_done`: setup is already finished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`, naming each field that's wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `too_many_attempts`: too many wrong codes; wait. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    checkSetupCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckSetupCode"];
+            };
+        };
+        responses: {
+            /** @description It's the setup code. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `setup_code_wrong`: it isn't. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_done`: setup is already finished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `too_many_attempts`: too many wrong codes; wait. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getCurrencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every ISO 4217 code in circulation, sorted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
                 };
             };
         };

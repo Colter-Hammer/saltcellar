@@ -1,10 +1,15 @@
 //! The SQLite database: one file in the data dir, in WAL mode, owned by the app alone.
 
+mod auth;
+mod household;
+
 use std::path::Path;
 use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
+pub use auth::{FinishSetupError, NewSetup, finish_setup, recent_failures, record_failure};
+pub use household::{Household, household};
 pub use sqlx::SqlitePool;
 
 /// The database file's name inside `BUDGET_DATA_DIR`.
@@ -19,6 +24,22 @@ pub enum Error {
     Sqlx(#[from] sqlx::Error),
     #[error("migration failed: {0}")]
     Migrate(#[from] sqlx::migrate::MigrateError),
+    /// A stored value the app can't read back, e.g. a currency no longer on the list.
+    #[error("the database holds {what} the app can't read: {value:?}")]
+    Unreadable { what: &'static str, value: String },
+}
+
+/// How timestamps are stored: UTC to the millisecond, the same text SQLite's
+/// `strftime('%Y-%m-%dT%H:%M:%fZ','now')` writes, so the text sorts in time order.
+fn stamp(at: jiff::Timestamp) -> String {
+    at.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
+fn parse_stamp(text: String) -> Result<jiff::Timestamp, Error> {
+    text.parse().map_err(|_| Error::Unreadable {
+        what: "a timestamp",
+        value: text,
+    })
 }
 
 /// Opens the database at `path`, creating the file if it's missing.
@@ -67,6 +88,13 @@ mod tests {
         (dir, pool)
     }
 
+    /// A fresh database with every migration applied.
+    pub(crate) async fn migrated() -> (tempfile::TempDir, SqlitePool) {
+        let (dir, pool) = fresh().await;
+        migrate(&pool).await.unwrap();
+        (dir, pool)
+    }
+
     #[tokio::test]
     async fn creates_the_file_in_wal_mode() {
         let (dir, pool) = fresh().await;
@@ -94,7 +122,16 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(tables, ["household", "settings"]);
+        assert_eq!(
+            tables,
+            [
+                "household",
+                "login_failures",
+                "sessions",
+                "settings",
+                "users"
+            ]
+        );
     }
 
     #[tokio::test]
@@ -104,6 +141,14 @@ mod tests {
         let insert = "INSERT INTO household (id, currency_code, timezone) VALUES (?, 'USD', 'America/New_York')";
         sqlx::query(insert).bind(1).execute(&pool).await.unwrap();
         assert!(sqlx::query(insert).bind(2).execute(&pool).await.is_err());
+    }
+
+    #[test]
+    fn stamps_sort_as_text_in_time_order() {
+        let at: jiff::Timestamp = "2026-10-28T09:05:03.04Z".parse().unwrap();
+        assert_eq!(stamp(at), "2026-10-28T09:05:03.040Z");
+        assert_eq!(parse_stamp(stamp(at)).unwrap(), at);
+        assert!(parse_stamp("yesterday".to_owned()).is_err());
     }
 
     #[tokio::test]

@@ -112,6 +112,7 @@ web-build:
     npm --prefix web run build
 
 # Playwright against the app image: compose builds it from source and starts it on a fresh volume, at http://localhost:E2E_PORT (8180).
+# The setup test reads the setup code from its log.
 e2e:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -121,4 +122,4 @@ e2e:
     "${compose[@]}" down -v >/dev/null 2>&1
     "${compose[@]}" up -d --build --wait
     [ "$(docker image inspect -f '{{{{.Config.User}}' "$BUDGET_IMAGE")" = nonroot ] || { echo "e2e: the image must run as nonroot" >&2; exit 1; }
-    E2E_BASE_URL="http://localhost:$BUDGET_PORT" npm --prefix web run e2e
+    E2E_BASE_URL="http://localhost:$BUDGET_PORT" E2E_APP_LOGS="docker compose -p saltcellar-e2e logs --no-color budget" npm --prefix web run e2e
