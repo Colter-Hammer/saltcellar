@@ -21,6 +21,10 @@ People say someone is "worth their salt", and a salt cellar is where the salt wa
 
 Rust (axum, sqlx) and SQLite on the server; Vue 3, TypeScript, Tailwind and shadcn-vue in the browser. It runs with Docker Compose behind your own HTTPS reverse proxy, on a home network or a private VPN. It isn't meant for the public internet.
 
+## How it's built
+
+The code is written with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding agent, working from a written spec. The design is mine: I decide the architecture, the behaviour and every trade-off, and I record the hard-to-reverse ones as decisions in [docs/adr/](docs/adr/). Claude writes the code against that, and I review every change before it is merged. Changes also have to pass the same checks and merge gate as any other contribution.
+
 ## Docs
 
 - [Spec](docs/spec/README.md): what is being built, milestone by milestone.
