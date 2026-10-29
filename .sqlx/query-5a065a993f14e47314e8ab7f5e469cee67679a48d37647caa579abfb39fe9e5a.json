@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT users.username FROM password_resets JOIN users ON users.id = password_resets.user_id\n         WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? AND users.removed_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "username",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "username"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5a065a993f14e47314e8ab7f5e469cee67679a48d37647caa579abfb39fe9e5a"
+}

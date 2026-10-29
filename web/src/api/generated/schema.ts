@@ -38,6 +38,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/password-reset`: sets a new password with a reset link, which then stops working,
+         *     and logs in. The login's other sessions end *(agent)*.
+         */
+        post: operations["usePasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/password-reset/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/password-reset/check`: whether a reset link still works, for the page to say so
+         *     before anyone types a password.
+         */
+        post: operations["checkPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/profile`: the logged-in login's profile. */
+        get: operations["getProfile"];
+        /** `PUT /api/v1/profile`: saves the display name, locale and week start. */
+        put: operations["changeProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/profile/password`: changes the password, given the current one. Wrong current
+         *     passwords count towards the login throttle, keyed on the username *(agent)*. Every session
+         *     stays logged in; Log out everywhere ends them.
+         */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -52,6 +131,26 @@ export interface paths {
         post: operations["logIn"];
         /** `DELETE /api/v1/session`: logs out, deleting this session. */
         delete: operations["logOut"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * `DELETE /api/v1/sessions`: logs out everywhere, deleting every session this login has, this
+         *     one included.
+         */
+        delete: operations["logOutEverywhere"];
         options?: never;
         head?: never;
         patch?: never;
@@ -116,6 +215,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ChangePassword: {
+            current_password: string;
+            /** @description At least 12 characters. */
+            password: string;
+            /** @description The new password typed again. */
+            password_again: string;
+        };
+        ChangeProfile: {
+            /** @description BCP 47, like `de-DE`; null = the browser's locale. */
+            display_locale?: string | null;
+            display_name: string;
+            /**
+             * Format: int64
+             * @description 0 = Sunday … 6 = Saturday; null = from the locale.
+             */
+            week_start?: number | null;
+        };
+        CheckReset: {
+            /** @description The token from the link's fragment. */
+            token: string;
+        };
         CheckSetupCode: {
             /** @description As typed: case, spaces and dashes don't matter. */
             code: string;
@@ -172,6 +292,17 @@ export interface components {
             /** @description As typed: case and surrounding spaces don't matter. */
             username: string;
         };
+        Profile: {
+            /** @description BCP 47, like `de-DE`; null = the browser's locale. */
+            display_locale?: string | null;
+            display_name: string;
+            username: string;
+            /**
+             * Format: int32
+             * @description 0 = Sunday … 6 = Saturday; null = from the locale.
+             */
+            week_start?: number | null;
+        };
         Session: {
             display_name: string;
             username: string;
@@ -179,6 +310,14 @@ export interface components {
         SetupStatus: {
             /** @description Whether setup is finished. Until it is, the app shows only the setup wizard. */
             done: boolean;
+        };
+        UseReset: {
+            /** @description At least 12 characters. */
+            password: string;
+            /** @description The password typed again. */
+            password_again: string;
+            /** @description The token from the link's fragment. */
+            token: string;
         };
     };
     responses: never;
@@ -238,6 +377,244 @@ export interface operations {
             };
             /** @description `setup_required`: setup isn't finished. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    usePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UseReset"];
+            };
+        };
+        responses: {
+            /** @description The password is set and this browser is logged in. */
+            204: {
+                headers: {
+                    /** @description The session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `reset_link_dead`: it expired, was used, or a newer one replaced it. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`, naming each field that's wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    checkPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckReset"];
+            };
+        };
+        responses: {
+            /** @description The link works. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `reset_link_dead`: it expired, was used, or a newer one replaced it. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeProfile"];
+            };
+        };
+        responses: {
+            /** @description The saved profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`, naming each field that's wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePassword"];
+            };
+        };
+        responses: {
+            /** @description The password is changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`, naming each field that's wrong, the current password among them. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `too_many_attempts`: too many wrong passwords for this login; wait. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -346,6 +723,44 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Logged out. */
+            204: {
+                headers: {
+                    /** @description Clears the session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    logOutEverywhere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every session of this login has ended. */
             204: {
                 headers: {
                     /** @description Clears the session cookie. */

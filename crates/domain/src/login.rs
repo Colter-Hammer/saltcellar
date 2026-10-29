@@ -7,6 +7,9 @@ use jiff::SignedDuration;
 /// How long a session lasts since it was last used: 30 days, sliding.
 pub const SESSION_LIFETIME: SignedDuration = SignedDuration::from_hours(30 * 24);
 
+/// How long a password reset link works for, once *(agent)*.
+pub const RESET_LIFETIME: SignedDuration = SignedDuration::from_hours(24);
+
 /// What a login types to log in: letters, digits, dots, dashes and underscores, kept in lower case
 /// so that `Sam` and `sam` are the same login *(agent)*.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -1,9 +1,12 @@
-//! `budget`: the whole app in one binary. `budget healthcheck` asks a running one for its health.
+//! `budget`: the whole app in one binary. `budget healthcheck` asks a running one for its health;
+//! `budget reset-password <login>` prints a one-time link that sets a new password.
 
 mod config;
 mod healthcheck;
+mod reset_password;
 mod web;
 
+use std::io::Write;
 use std::process::ExitCode;
 
 use config::{Auth, Config};
@@ -19,7 +22,8 @@ async fn main() -> ExitCode {
         }
     };
 
-    match std::env::args().nth(1).as_deref() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
         None => {}
         Some("healthcheck") => {
             return match healthcheck::check(config.listen) {
@@ -30,8 +34,27 @@ async fn main() -> ExitCode {
                 }
             };
         }
+        Some("reset-password") => {
+            let [_, username] = args.as_slice() else {
+                eprintln!("budget: usage: budget reset-password <login>");
+                return ExitCode::from(2);
+            };
+            return match reset_password::run(&config, username, jiff::Timestamp::now()).await {
+                // The link goes to the person running this, on stdout, and nowhere else.
+                Ok(out) => match std::io::stdout().write_all(out.as_bytes()) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(_) => ExitCode::FAILURE,
+                },
+                Err(error) => {
+                    eprintln!("budget: no reset link: {error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Some(other) => {
-            eprintln!("budget: unknown command {other:?}; expected none or healthcheck");
+            eprintln!(
+                "budget: unknown command {other:?}; expected none, healthcheck or reset-password"
+            );
             return ExitCode::from(2);
         }
     }

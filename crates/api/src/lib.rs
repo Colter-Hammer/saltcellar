@@ -5,6 +5,8 @@ mod error;
 mod health;
 mod household;
 mod middleware;
+mod profile;
+mod reset;
 mod session;
 mod setup;
 #[cfg(test)]
@@ -12,13 +14,14 @@ mod tests;
 
 use std::sync::Arc;
 
-use axum::routing::{any, get, post};
+use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
 use domain::SetupCode;
 use jiff::Timestamp;
 use utoipa::OpenApi;
 
 pub use error::ApiError;
+pub use reset::{IssueResetError, ResetLink, issue_password_reset};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -32,6 +35,12 @@ pub use error::ApiError;
         session::get,
         session::log_in,
         session::log_out,
+        reset::check,
+        reset::use_reset,
+        profile::get,
+        profile::change,
+        profile::change_password,
+        profile::log_out_everywhere,
         household::get
     ),
     components(schemas(error::ErrorEnvelope))
@@ -107,7 +116,8 @@ impl AppState {
 /// The whole API, with the shared rules applied to every route:
 /// one log line per request, and mutating requests must be JSON.
 /// Until setup is finished, everything but health and the setup routes answers `setup_required`;
-/// after, everything but those and logging in answers `login_required` without a live session.
+/// after, everything but those, logging in and the reset link answers `login_required` without a
+/// live session.
 /// Every path under `/api` is the API's, so an unknown one gets the JSON 404, never the frontend.
 pub fn router(state: AppState) -> Router {
     let open = Router::new()
@@ -117,6 +127,9 @@ pub fn router(state: AppState) -> Router {
         .route("/setup/code", post(setup::check_code));
     let logged_in = Router::new()
         .route("/session", get(session::get).delete(session::log_out))
+        .route("/sessions", delete(profile::log_out_everywhere))
+        .route("/profile", get(profile::get).put(profile::change))
+        .route("/profile/password", post(profile::change_password))
         .route("/household", get(household::get))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -124,6 +137,8 @@ pub fn router(state: AppState) -> Router {
         ));
     let gated = Router::new()
         .route("/session", post(session::log_in))
+        .route("/password-reset", post(reset::use_reset))
+        .route("/password-reset/check", post(reset::check))
         .merge(logged_in)
         .method_not_allowed_fallback(error::method_not_allowed)
         .layer(axum::middleware::from_fn_with_state(

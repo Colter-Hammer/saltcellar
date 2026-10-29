@@ -1,31 +1,82 @@
 // Every number and date the UI shows goes through here (docs/spec/foundations.md#frontend).
 import { computed, type ComputedRef } from 'vue'
 import { useHousehold } from '@/api/household'
+import { useProfile } from '@/api/profile'
 
 export interface Formatting {
   /** The household currency, ISO 4217. */
   currency: string
   /** The login's locale, BCP 47. */
   locale: string
+  /** The day the login's weeks start on: 0 is Sunday, 6 is Saturday. */
+  weekStart: number
 }
 
 // What the pure functions below use when not told otherwise.
-const DEFAULT: Formatting = { currency: 'USD', locale: 'en-US' }
+const DEFAULT: Formatting = { currency: 'USD', locale: 'en-US', weekStart: 0 }
 
 /**
- * How a screen formats: the household currency, in the browser's locale until the profile lets a
- * login choose one (issue #10). USD until the household has loaded.
+ * How a screen formats: the household currency, in the login's locale (the browser's unless the
+ * profile chose one), with weeks starting on the profile's day or the locale's. USD in the
+ * browser's locale until both have loaded.
  */
 export function useFormatting(): ComputedRef<Formatting> {
   const household = useHousehold()
-  return computed(() => ({
-    currency: household.data.value?.currency ?? DEFAULT.currency,
-    locale: navigator.language,
-  }))
+  const profile = useProfile()
+  return computed(() => {
+    const locale = usable(profile.data.value?.display_locale) ?? navigator.language
+    return {
+      currency: household.data.value?.currency ?? DEFAULT.currency,
+      locale,
+      weekStart: profile.data.value?.week_start ?? localeWeekStart(locale),
+    }
+  })
+}
+
+/** `locale`, if the browser can format with it. */
+function usable(locale: string | null | undefined): string | undefined {
+  if (locale == null) return undefined
+  try {
+    return Intl.getCanonicalLocales(locale)[0]
+  } catch {
+    return undefined
+  }
+}
+
+/** Week info, which browsers offer as a method or, in older ones, a getter. */
+type WithWeekInfo = Intl.Locale & {
+  getWeekInfo?: () => { firstDay: number }
+  weekInfo?: { firstDay: number }
+}
+
+/**
+ * The day `locale`'s weeks start on, 0 (Sunday) to 6 (Saturday). Monday where the browser can't
+ * say *(agent)*.
+ */
+export function localeWeekStart(locale: string): number {
+  let info: WithWeekInfo
+  try {
+    info = new Intl.Locale(locale)
+  } catch {
+    return 1
+  }
+  // Intl counts 1 (Monday) to 7 (Sunday).
+  const firstDay = info.getWeekInfo?.().firstDay ?? info.weekInfo?.firstDay ?? 1
+  return firstDay % 7
+}
+
+/** The name of day `day` (0 is Sunday) in `locale`, like `Monday`. */
+export function weekdayName(day: number, locale: string): string {
+  // 2026-03-01 is a Sunday.
+  const instant = new Date(Date.UTC(2026, 2, 1 + day))
+  return new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(instant)
 }
 
 /** An amount in integer minor units, in the currency's decimal places and the locale's style. */
-export function formatMoney(minor: number, formatting: Formatting = DEFAULT): string {
+export function formatMoney(
+  minor: number,
+  formatting: Pick<Formatting, 'currency' | 'locale'> = DEFAULT,
+): string {
   const format = new Intl.NumberFormat(formatting.locale, {
     style: 'currency',
     currency: formatting.currency,

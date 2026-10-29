@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE password_resets SET used_at = ?1\n           WHERE token_hash = ?2 AND used_at IS NULL AND expires_at > ?1\n             AND user_id IN (SELECT id FROM users WHERE removed_at IS NULL)\n           RETURNING user_id AS \"user_id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "password_resets",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f32f5dde042c173df53548a301291c6b090d7fba8423a6f770e9b6cb0d0e9e33"
+}

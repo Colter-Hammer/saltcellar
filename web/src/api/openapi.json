@@ -72,6 +72,276 @@
         }
       }
     },
+    "/api/v1/password-reset": {
+      "post": {
+        "tags": [
+          "reset"
+        ],
+        "summary": "`POST /api/v1/password-reset`: sets a new password with a reset link, which then stops working,\nand logs in. The login's other sessions end *(agent)*.",
+        "operationId": "usePasswordReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UseReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The password is set and this browser is logged in.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The session cookie."
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "`reset_link_dead`: it expired, was used, or a newer one replaced it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`, naming each field that's wrong.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/password-reset/check": {
+      "post": {
+        "tags": [
+          "reset"
+        ],
+        "summary": "`POST /api/v1/password-reset/check`: whether a reset link still works, for the page to say so\nbefore anyone types a password.",
+        "operationId": "checkPasswordReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The link works."
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "`reset_link_dead`: it expired, was used, or a newer one replaced it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "`GET /api/v1/profile`: the logged-in login's profile.",
+        "operationId": "getProfile",
+        "responses": {
+          "200": {
+            "description": "The profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "`PUT /api/v1/profile`: saves the display name, locale and week start.",
+        "operationId": "changeProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeProfile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The saved profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`, naming each field that's wrong.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/password": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "`POST /api/v1/profile/password`: changes the password, given the current one. Wrong current\npasswords count towards the login throttle, keyed on the username *(agent)*. Every session\nstays logged in; Log out everywhere ends them.",
+        "operationId": "changePassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The password is changed."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`, naming each field that's wrong, the current password among them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`too_many_attempts`: too many wrong passwords for this login; wait.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/session": {
       "get": {
         "tags": [
@@ -181,6 +451,48 @@
         "responses": {
           "204": {
             "description": "Logged out.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Clears the session cookie."
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions": {
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "`DELETE /api/v1/sessions`: logs out everywhere, deleting every session this login has, this\none included.",
+        "operationId": "logOutEverywhere",
+        "responses": {
+          "204": {
+            "description": "Every session of this login has ended.",
             "headers": {
               "Set-Cookie": {
                 "schema": {
@@ -385,6 +697,65 @@
   },
   "components": {
     "schemas": {
+      "ChangePassword": {
+        "type": "object",
+        "required": [
+          "current_password",
+          "password",
+          "password_again"
+        ],
+        "properties": {
+          "current_password": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "At least 12 characters."
+          },
+          "password_again": {
+            "type": "string",
+            "description": "The new password typed again."
+          }
+        }
+      },
+      "ChangeProfile": {
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "properties": {
+          "display_locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "BCP 47, like `de-DE`; null = the browser's locale."
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "week_start": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "0 = Sunday … 6 = Saturday; null = from the locale."
+          }
+        }
+      },
+      "CheckReset": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The token from the link's fragment."
+          }
+        }
+      },
       "CheckSetupCode": {
         "type": "object",
         "required": [
@@ -524,6 +895,38 @@
           }
         }
       },
+      "Profile": {
+        "type": "object",
+        "required": [
+          "username",
+          "display_name"
+        ],
+        "properties": {
+          "display_locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "BCP 47, like `de-DE`; null = the browser's locale."
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "week_start": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "0 = Sunday … 6 = Saturday; null = from the locale.",
+            "maximum": 6,
+            "minimum": 0
+          }
+        }
+      },
       "Session": {
         "type": "object",
         "required": [
@@ -548,6 +951,28 @@
           "done": {
             "type": "boolean",
             "description": "Whether setup is finished. Until it is, the app shows only the setup wizard."
+          }
+        }
+      },
+      "UseReset": {
+        "type": "object",
+        "required": [
+          "token",
+          "password",
+          "password_again"
+        ],
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "At least 12 characters."
+          },
+          "password_again": {
+            "type": "string",
+            "description": "The password typed again."
+          },
+          "token": {
+            "type": "string",
+            "description": "The token from the link's fragment."
           }
         }
       }

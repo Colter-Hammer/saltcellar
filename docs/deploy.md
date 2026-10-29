@@ -19,6 +19,8 @@ The app is then at <http://localhost:8080>, on this machine only. Other devices 
 - **Health.** The image's `HEALTHCHECK` runs `budget healthcheck`, which asks `GET /api/v1/health` and passes only on a 200. That endpoint answers 200 when the database answers.
 - **Logs.** `docker compose logs budget`: one line per request, never amounts, payees or secrets. The setup code is the one secret printed, on purpose.
 
+**Forgotten password.** There's no email: run `docker compose exec budget budget reset-password <login>` on the server. It prints a link that sets a new password and logs in. The link works once, within 24 hours, and a newer one replaces it; setting the password ends that login's other sessions. With `BUDGET_BASE_URL` set it prints the whole link; without, only its path (`/reset-password#…`), to put after the app's address. It goes only to your terminal, never to the log. An unknown login is refused with an error.
+
 ## Environment
 
 Only what's needed before anyone can log in, or what touches the host. Everything else is in the app's Settings. Startup fails with a message naming the variable if one is missing or invalid.
