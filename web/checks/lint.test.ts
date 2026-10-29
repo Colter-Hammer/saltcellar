@@ -2,7 +2,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { ESLint } from 'eslint'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 const eslint = new ESLint()
 
@@ -24,6 +24,12 @@ async function ruleIds(filePath: string, code: string): Promise<string[]> {
 
 const sfc = (script: string, template = '<div />') =>
   `<script setup lang="ts">\n${script}\n</script>\n\n<template>${template}</template>\n`
+
+// The first lint loads the TypeScript program for type-aware rules, which takes several seconds
+// on a cold CI runner; pay it once here so each test below keeps the default timeout.
+beforeAll(async () => {
+  await ruleIds('src/views/WarmUp.vue', sfc(''))
+}, 60_000)
 
 describe('import boundaries', () => {
   it('stops a view calling fetch', async () => {
