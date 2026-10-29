@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use axum::Json;
-use axum::extract::{FromRequest, Request};
+use axum::extract::{FromRequest, FromRequestParts, Path, Request};
 use axum::http::StatusCode;
+use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -121,6 +122,20 @@ impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for Body<T> {
                 "invalid_body",
                 "The request body isn't the JSON this address expects.",
             )),
+        }
+    }
+}
+
+/// A numeric id from the path; one that isn't a number is `not_found`, in the error envelope.
+pub struct Id(pub i64);
+
+impl<S: Send + Sync> FromRequestParts<S> for Id {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        match Path::<i64>::from_request_parts(parts, state).await {
+            Ok(Path(id)) => Ok(Id(id)),
+            Err(_) => Err(not_found().await),
         }
     }
 }

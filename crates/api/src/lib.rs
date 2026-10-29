@@ -1,6 +1,7 @@
 //! The HTTP API: JSON under `/api/v1/…` (docs/spec/foundations.md#http-api).
 
 mod auth;
+mod categories;
 mod error;
 mod health;
 mod household;
@@ -14,7 +15,7 @@ mod tests;
 
 use std::sync::Arc;
 
-use axum::routing::{any, delete, get, post};
+use axum::routing::{any, delete, get, patch, post, put};
 use axum::{Json, Router};
 use domain::SetupCode;
 use jiff::Timestamp;
@@ -41,7 +42,16 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         profile::change,
         profile::change_password,
         profile::log_out_everywhere,
-        household::get
+        household::get,
+        categories::list,
+        categories::use_starter,
+        categories::order,
+        categories::add_group,
+        categories::change_group,
+        categories::delete_group,
+        categories::add_category,
+        categories::change_category,
+        categories::delete_category
     ),
     components(schemas(error::ErrorEnvelope))
 )]
@@ -131,6 +141,21 @@ pub fn router(state: AppState) -> Router {
         .route("/profile", get(profile::get).put(profile::change))
         .route("/profile/password", post(profile::change_password))
         .route("/household", get(household::get))
+        .route(
+            "/categories",
+            get(categories::list).post(categories::add_category),
+        )
+        .route("/categories/starter", post(categories::use_starter))
+        .route("/categories/order", put(categories::order))
+        .route(
+            "/categories/{id}",
+            patch(categories::change_category).delete(categories::delete_category),
+        )
+        .route("/category-groups", post(categories::add_group))
+        .route(
+            "/category-groups/{id}",
+            patch(categories::change_group).delete(categories::delete_group),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             session::require_login,

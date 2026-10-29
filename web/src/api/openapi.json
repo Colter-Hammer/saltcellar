@@ -10,6 +10,455 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`GET /api/v1/categories`: every group in order, each with its categories in order.",
+        "operationId": "getCategories",
+        "responses": {
+          "200": {
+            "description": "Every group and category, hidden ones included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`POST /api/v1/categories`: adds a category at the end of its group.",
+        "operationId": "addCategory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCategory"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The category is added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the name is empty, too long or taken in the group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories/order": {
+      "put": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`PUT /api/v1/categories/order`: puts every group and category in order.",
+        "operationId": "orderCategories",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The order is saved."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`categories_changed`: the order doesn't list every group and category exactly once; `name_taken`: a moved category's name is taken in its new group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories/starter": {
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`POST /api/v1/categories/starter`: writes the starter categories and the always-review payees.",
+        "operationId": "useStarterCategories",
+        "responses": {
+          "204": {
+            "description": "The starter categories are written."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`categories_exist`: there's a group already.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories/{id}": {
+      "delete": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`DELETE /api/v1/categories/{id}`: deletes a category. Until transactions exist nothing uses\none, so every category can be; after, one in use answers `category_in_use` and can be hidden.",
+        "operationId": "deleteCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The category.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The category is deleted."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`PATCH /api/v1/categories/{id}`: renames a category, hides it or shows it again.",
+        "operationId": "changeCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The category.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The category is changed."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the name is empty, too long or taken in its group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/category-groups": {
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`POST /api/v1/category-groups`: adds a group at the end.",
+        "operationId": "addCategoryGroup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCategoryGroup"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The group is added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the name is empty, too long or taken.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/category-groups/{id}": {
+      "delete": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`DELETE /api/v1/category-groups/{id}`: deletes an empty group.",
+        "operationId": "deleteCategoryGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The group.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The group is deleted."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`group_not_empty`: it still holds categories, hidden ones included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "`PATCH /api/v1/category-groups/{id}`: renames a group, hides it or shows it again.",
+        "operationId": "changeCategoryGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The group.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The group is changed."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the name is empty, too long or taken.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -697,6 +1146,136 @@
   },
   "components": {
     "schemas": {
+      "Category": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "hidden"
+        ],
+        "properties": {
+          "hidden": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryChange": {
+        "type": "object",
+        "description": "What a change to a group or a category sets; a field left out stays as it is.",
+        "properties": {
+          "hidden": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CategoryGroup": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "hidden",
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "description": "In order, hidden ones included."
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "A hidden group hides its categories with it."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CategoryGroupKind"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryGroupKind": {
+        "type": "string",
+        "description": "Whether a group's categories are spending or money coming in.",
+        "enum": [
+          "expense",
+          "income"
+        ]
+      },
+      "CategoryGroupPlace": {
+        "type": "object",
+        "required": [
+          "id",
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The group's categories' ids, in order."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CategoryList": {
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryGroup"
+            },
+            "description": "In order, hidden ones included."
+          }
+        }
+      },
+      "CategoryOrder": {
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryGroupPlace"
+            },
+            "description": "Every group, in order, each listing its categories: every group and every category exactly\nonce, hidden ones included. A category listed under another group moves to it."
+          }
+        }
+      },
       "ChangePassword": {
         "type": "object",
         "required": [
@@ -765,6 +1344,18 @@
           "code": {
             "type": "string",
             "description": "As typed: case, spaces and dashes don't matter."
+          }
+        }
+      },
+      "Created": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -892,6 +1483,37 @@
           "username": {
             "type": "string",
             "description": "As typed: case and surrounding spaces don't matter."
+          }
+        }
+      },
+      "NewCategory": {
+        "type": "object",
+        "required": [
+          "group_id",
+          "name"
+        ],
+        "properties": {
+          "group_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "NewCategoryGroup": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CategoryGroupKind"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },

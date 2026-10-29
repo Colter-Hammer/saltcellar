@@ -3,6 +3,7 @@
 //! No axum, no sqlx, no tokio, no I/O: `scripts/layering.py` fails the check if any of them
 //! reaches this crate's dependency tree.
 
+pub mod categories;
 mod currency;
 mod date;
 pub mod login;

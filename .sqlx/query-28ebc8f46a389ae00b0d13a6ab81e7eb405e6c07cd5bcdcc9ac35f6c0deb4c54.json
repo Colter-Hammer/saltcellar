@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE categories SET name = coalesce(?, name), hidden = coalesce(?, hidden) WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "28ebc8f46a389ae00b0d13a6ab81e7eb405e6c07cd5bcdcc9ac35f6c0deb4c54"
+}
