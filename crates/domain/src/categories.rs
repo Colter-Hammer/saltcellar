@@ -194,6 +194,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_starter_group_but_income_is_spending() {
+        for group in &STARTER_GROUPS[..STARTER_GROUPS.len() - 1] {
+            assert_eq!(
+                *group,
+                expense(group.name, group.categories),
+                "{}",
+                group.name
+            );
+        }
+        assert_eq!(
+            STARTER_GROUPS.last().map(|g| g.kind),
+            Some(GroupKind::Income)
+        );
+    }
+
+    #[test]
     fn kinds_read_back_what_they_store() {
         for kind in [GroupKind::Expense, GroupKind::Income] {
             assert_eq!(kind.as_str().parse::<GroupKind>(), Ok(kind));
