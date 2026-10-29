@@ -1,4 +1,6 @@
 // Every number and date the UI shows goes through here (docs/spec/foundations.md#frontend).
+import { computed, type ComputedRef } from 'vue'
+import { useHousehold } from '@/api/household'
 
 export interface Formatting {
   /** The household currency, ISO 4217. */
@@ -7,8 +9,20 @@ export interface Formatting {
   locale: string
 }
 
-// Until setup and the profile exist (issues #8 and #10), every screen formats in USD and en-US.
+// What the pure functions below use when not told otherwise.
 const DEFAULT: Formatting = { currency: 'USD', locale: 'en-US' }
+
+/**
+ * How a screen formats: the household currency, in the browser's locale until the profile lets a
+ * login choose one (issue #10). USD until the household has loaded.
+ */
+export function useFormatting(): ComputedRef<Formatting> {
+  const household = useHousehold()
+  return computed(() => ({
+    currency: household.data.value?.currency ?? DEFAULT.currency,
+    locale: navigator.language,
+  }))
+}
 
 /** An amount in integer minor units, in the currency's decimal places and the locale's style. */
 export function formatMoney(minor: number, formatting: Formatting = DEFAULT): string {

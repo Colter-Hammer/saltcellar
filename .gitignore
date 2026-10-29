@@ -48,6 +48,7 @@ node_modules/
 /web/coverage/
 /web/test-results/
 /web/playwright-report/
+/web/playwright/.auth/
 __pycache__/
 
 # Throwaway files web/checks/lint.test.ts writes while it runs.

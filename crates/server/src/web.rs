@@ -41,7 +41,10 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let pool = db::connect(&data.path().join(db::FILE_NAME)).await.unwrap();
         db::migrate(&pool).await.unwrap();
-        let router = app(api::router(api::AppState { pool }), dist.path());
+        let router = app(
+            api::router(api::AppState::load(pool).await.unwrap()),
+            dist.path(),
+        );
         Site {
             router,
             _data: data,

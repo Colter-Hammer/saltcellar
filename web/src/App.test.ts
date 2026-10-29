@@ -5,10 +5,69 @@ import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
 import { createAppRouter } from './router'
 
+/** What the fake server knows; each test starts from a finished setup. */
+interface FakeServer {
+  setupDone: boolean
+  /** The setup code it printed when it started. */
+  code: string
+  /** What `POST /api/v1/setup` was sent. */
+  finishedWith?: unknown
+}
+
+let server: FakeServer
+
+const SETUP_CODE = 'ABCD-EFGH'
+
+function error(status: number, code: string, message: string) {
+  return Response.json({ error: { code, message } }, { status })
+}
+
+async function answer(request: Request): Promise<Response> {
+  const path = new URL(request.url).pathname
+  if (path === '/api/v1/health') return Response.json({ status: 'ok' })
+  if (path === '/api/v1/setup' && request.method === 'POST') {
+    const body = (await request.json()) as Record<string, string>
+    if (body.code !== server.code) {
+      return error(
+        403,
+        'setup_code_wrong',
+        "That isn't the setup code. Copy it from the app's log.",
+      )
+    }
+    const fields: Record<string, string> = {}
+    if ((body.password ?? '').length < 12) fields.password = 'Use at least 12 characters.'
+    else if (body.password !== body.password_again)
+      fields.password_again = "The passwords don't match."
+    if (body.currency === 'XAU') fields.currency = 'Choose a currency from the list.'
+    if (Object.keys(fields).length > 0) {
+      return Response.json(
+        {
+          error: { code: 'validation_failed', message: 'Some details need another look.', fields },
+        },
+        { status: 422 },
+      )
+    }
+    server.finishedWith = body
+    server.setupDone = true
+    return new Response(null, { status: 204 })
+  }
+  if (path === '/api/v1/setup') return Response.json({ done: server.setupDone })
+  if (path === '/api/v1/setup/currencies') return Response.json(['EUR', 'JPY', 'USD'])
+  if (path === '/api/v1/setup/code') {
+    const { code } = (await request.json()) as { code: string }
+    if (code === server.code) return new Response(null, { status: 204 })
+    return error(403, 'setup_code_wrong', "That isn't the setup code. Copy it from the app's log.")
+  }
+  return Response.json(
+    { error: { code: 'not_found', message: "There's nothing at this address." } },
+    { status: 404 },
+  )
+}
+
 function serverUp() {
   vi.stubGlobal(
     'fetch',
-    vi.fn(() => Promise.resolve(Response.json({ status: 'ok' }))),
+    vi.fn((request: Request) => answer(request)),
   )
 }
 
@@ -19,9 +78,13 @@ function serverDown() {
   )
 }
 
-beforeEach(serverUp)
+beforeEach(() => {
+  server = { setupDone: true, code: SETUP_CODE }
+  serverUp()
+})
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   vi.useRealTimers()
 })
@@ -93,9 +156,205 @@ describe('the app shell', () => {
     expect(wrapper.get('h1').text()).toBe('Accounts')
   })
 
+  it('offers the first steps while Transactions is empty', async () => {
+    const { router, wrapper } = await open('/transactions')
+    const links = wrapper.get('main').findAll('a')
+    expect(links.map((a) => [a.text(), a.attributes('href')])).toEqual([
+      ['Import from Actual', '/import'],
+      ['Set up categories', '/categories'],
+    ])
+    await links[1]?.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/categories')
+  })
+
+  it("doesn't show the wizard once setup is done", async () => {
+    const { router, wrapper } = await open('/setup')
+    expect(router.currentRoute.value.path).toBe('/transactions')
+    expect(wrapper.get('h1').text()).toBe('Transactions')
+  })
+
   it('says so for an address that is no screen', async () => {
     const { wrapper } = await open('/transactions/whatever')
     expect(wrapper.get('h1').text()).toBe('Not found')
+  })
+})
+
+describe('before setup', () => {
+  it('shows only the wizard, whatever the address', async () => {
+    server.setupDone = false
+    const { router, wrapper } = await open('/accounts')
+    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(wrapper.get('h1').text()).toBe('Set up Saltcellar')
+    expect(wrapper.find('nav').exists()).toBe(false)
+  })
+})
+
+type Wrapper = Awaited<ReturnType<typeof open>>['wrapper']
+
+async function submit(wrapper: Wrapper, values: Record<string, string>) {
+  for (const [name, value] of Object.entries(values)) {
+    await wrapper.get(`[name="${name}"]`).setValue(value)
+  }
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+}
+
+describe('the setup wizard', () => {
+  beforeEach(() => {
+    server.setupDone = false
+  })
+
+  it('refuses a wrong code and says where to find the right one', async () => {
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: 'WXYZ-WXYZ' })
+    expect(wrapper.get('form').text()).toContain("That isn't the setup code.")
+    expect(wrapper.find('[name="code"]').exists()).toBe(true)
+  })
+
+  it('asks for the currency and timezone once the code is right', async () => {
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    expect(wrapper.find('[name="code"]').exists()).toBe(false)
+    expect(wrapper.find('[name="currency"]').exists()).toBe(true)
+    expect(wrapper.find('[name="timezone"]').exists()).toBe(true)
+  })
+
+  it("suggests the browser locale's currency and the browser's timezone", async () => {
+    vi.stubEnv('TZ', 'Asia/Tokyo')
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    expect(wrapper.get<HTMLInputElement>('[name="currency"]').element.value).toBe('USD')
+    expect(wrapper.get<HTMLInputElement>('[name="timezone"]').element.value).toBe('Asia/Tokyo')
+  })
+
+  it('offers the currencies the server lists, searchable by name', async () => {
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    const options = wrapper.findAll('#currencies option')
+    expect(options.map((o) => [o.attributes('value'), o.text()])).toEqual([
+      ['EUR', 'Euro'],
+      ['JPY', 'Japanese Yen'],
+      ['USD', 'US Dollar'],
+    ])
+  })
+
+  it('asks for the first login after the currency and timezone', async () => {
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    await submit(wrapper, { currency: 'EUR', timezone: 'Europe/Berlin' })
+    for (const name of ['display_name', 'username', 'password', 'password_again']) {
+      expect(wrapper.find(`[name="${name}"]`).exists(), name).toBe(true)
+    }
+    expect(wrapper.get<HTMLInputElement>('[name="password"]').element.type).toBe('password')
+    expect(wrapper.get<HTMLInputElement>('[name="password_again"]').element.type).toBe('password')
+  })
+
+  it('finishes setup in one go and lands on Transactions', async () => {
+    const { router, wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    await submit(wrapper, { currency: 'EUR', timezone: 'Europe/Berlin' })
+    await submit(wrapper, {
+      display_name: 'Sam',
+      username: 'sam',
+      password: 'correct horse battery',
+      password_again: 'correct horse battery',
+    })
+    expect(server.finishedWith).toEqual({
+      code: SETUP_CODE,
+      currency: 'EUR',
+      timezone: 'Europe/Berlin',
+      display_name: 'Sam',
+      username: 'sam',
+      password: 'correct horse battery',
+      password_again: 'correct horse battery',
+    })
+    expect(router.currentRoute.value.path).toBe('/transactions')
+    expect(wrapper.get('h1').text()).toBe('Transactions')
+    expect(wrapper.find('nav[aria-label="Tabs"]').exists()).toBe(true)
+  })
+
+  async function toLogin(household = { currency: 'EUR', timezone: 'Europe/Berlin' }) {
+    const opened = await open('/setup')
+    await submit(opened.wrapper, { code: SETUP_CODE })
+    await submit(opened.wrapper, household)
+    return opened
+  }
+
+  const login = { display_name: 'Sam', username: 'sam' }
+
+  it('refuses an 11-character password with an error on the field', async () => {
+    const { router, wrapper } = await toLogin()
+    await submit(wrapper, { ...login, password: 'elevenchars', password_again: 'elevenchars' })
+    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(wrapper.get('#password-error').text()).toBe('Use at least 12 characters.')
+    expect(wrapper.get('[name="password"]').attributes('aria-describedby')).toContain(
+      'password-error',
+    )
+    expect(wrapper.get('[name="password"]').attributes('aria-invalid')).toBe('true')
+  })
+
+  it('refuses mismatched passwords with an error on the second', async () => {
+    const { wrapper } = await toLogin()
+    await submit(wrapper, {
+      ...login,
+      password: 'correct horse battery',
+      password_again: 'correct horse batter',
+    })
+    expect(wrapper.get('#password_again-error').text()).toBe("The passwords don't match.")
+    expect(wrapper.find('#password-error').exists()).toBe(false)
+  })
+
+  it('goes back to the currency when the server refuses it', async () => {
+    const { wrapper } = await toLogin({ currency: 'XAU', timezone: 'Europe/Berlin' })
+    await submit(wrapper, {
+      ...login,
+      password: 'correct horse battery',
+      password_again: 'correct horse battery',
+    })
+    expect(wrapper.get('#currency-error').text()).toBe('Choose a currency from the list.')
+  })
+
+  it('asks for the code again if the app restarted with a new one', async () => {
+    const { wrapper } = await toLogin()
+    server.code = 'JKLM-NPQR'
+    await submit(wrapper, {
+      ...login,
+      password: 'correct horse battery',
+      password_again: 'correct horse battery',
+    })
+    expect(wrapper.get('#code-error').text()).toContain("That isn't the setup code.")
+  })
+
+  it("says so if the server can't be reached at the end", async () => {
+    const { router, wrapper } = await toLogin()
+    serverDown()
+    await submit(wrapper, {
+      ...login,
+      password: 'correct horse battery',
+      password_again: 'correct horse battery',
+    })
+    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(wrapper.get('form [role="alert"]').text()).toBe("Can't reach the server.")
+  })
+
+  it('offers IANA timezones', async () => {
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    const zones = wrapper.findAll('#timezones option').map((o) => o.attributes('value'))
+    expect(zones).toContain('Europe/Berlin')
+    expect(zones).toContain('America/Chicago')
+  })
+})
+
+describe('before setup, with the server briefly unreachable', () => {
+  it('still sends every address to the wizard once the server answers', async () => {
+    server.setupDone = false
+    serverDown()
+    const { router } = await open('/accounts')
+    serverUp()
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/setup')
   })
 })
 

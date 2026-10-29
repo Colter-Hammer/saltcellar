@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO login_failures (username, failed_at) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7ae7cc9d17f821048b0e2f5ea5f7ef673fcc2568825594a24727a08bcfe4d3f4"
+}

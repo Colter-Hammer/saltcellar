@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
 use axum::Json;
+use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use utoipa::ToSchema;
 
 /// Every error the API returns:
@@ -71,6 +73,24 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// Something on the server failed: logged in full, answered with a 500 that says no more.
+impl ApiError {
+    pub fn internal(error: &dyn std::fmt::Display) -> Self {
+        tracing::error!(%error, "request failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Something went wrong on the server.",
+        )
+    }
+}
+
+impl From<db::Error> for ApiError {
+    fn from(error: db::Error) -> Self {
+        ApiError::internal(&error)
+    }
+}
+
 pub async fn not_found() -> ApiError {
     ApiError::new(
         StatusCode::NOT_FOUND,
@@ -87,6 +107,24 @@ pub async fn method_not_allowed() -> ApiError {
     )
 }
 
+/// A JSON request body; one that doesn't parse gets the error envelope, not axum's plain text.
+pub struct Body<T>(pub T);
+
+impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for Body<T> {
+    type Rejection = ApiError;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
+        match Json::<T>::from_request(request, state).await {
+            Ok(Json(value)) => Ok(Body(value)),
+            Err(_) => Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "invalid_body",
+                "The request body isn't the JSON this address expects.",
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::to_bytes;
@@ -99,6 +137,23 @@ mod tests {
         let status = response.status();
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn internal_errors_say_no_more_than_that() {
+        let error = db::Error::Unreadable {
+            what: "a currency",
+            value: "XXX".to_owned(),
+        };
+        let (status, body) = render(error.into()).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            body,
+            json!({ "error": {
+                "code": "internal_error",
+                "message": "Something went wrong on the server.",
+            } })
+        );
     }
 
     #[tokio::test]

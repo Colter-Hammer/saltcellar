@@ -57,6 +57,8 @@ enum StartError {
     DataDir(String, std::io::Error),
     #[error(transparent)]
     Db(#[from] db::Error),
+    #[error(transparent)]
+    State(#[from] api::LoadError),
     #[error("can't listen on {0}: {1}")]
     Listen(std::net::SocketAddr, std::io::Error),
     #[error("server error: {0}")]
@@ -68,6 +70,7 @@ async fn run(config: Config) -> Result<(), StartError> {
         .map_err(|error| StartError::DataDir(config.data_dir.display().to_string(), error))?;
     let pool = db::connect(&config.data_dir.join(db::FILE_NAME)).await?;
     db::migrate(&pool).await?;
+    let state = api::AppState::load(pool.clone()).await?;
 
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
@@ -81,7 +84,13 @@ async fn run(config: Config) -> Result<(), StartError> {
             "no built frontend; only the API is served (build it with `npm --prefix web run build`)"
         );
     }
-    let app = web::app(api::router(api::AppState { pool: pool.clone() }), dist);
+    if let Some(code) = state.setup_code() {
+        // The one secret logged on purpose (docs/spec/foundations.md#logging).
+        tracing::info!(
+            "Setup code: {code}. Open the app and enter it to set it up; a new code is printed each time the app starts until then."
+        );
+    }
+    let app = web::app(api::router(state), dist);
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
         .await

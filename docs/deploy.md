@@ -11,11 +11,13 @@ docker compose ps        # STATUS shows (healthy) once the database answers
 
 The app is then at <http://localhost:8080>, on this machine only. Other devices reach it through your reverse proxy (below).
 
+**Claim it.** A fresh install shows only the setup wizard, which asks first for the setup code. Find it in the log (`docker compose logs budget | grep "Setup code"`); a new one is printed each time the app starts, until setup is finished, when it stops working. The wizard then asks for the household currency and timezone and the first login.
+
 - **Image.** `compose.yaml` builds from source. To run an image you built or pulled instead, set `BUDGET_IMAGE` (for example `BUDGET_IMAGE=saltcellar:1.0 docker compose up -d`).
 - **Port.** `BUDGET_PORT` changes the localhost port (default 8080). Inside the container the app always listens on 8080.
 - **Data.** The SQLite database lives in the `data` volume, mounted at `/data`. To use a folder on the host instead, swap the volume for a bind mount (`./data:/data`). The folder must be writable by uid 65532, the image's non-root user: `sudo chown 65532:65532 ./data`.
 - **Health.** The image's `HEALTHCHECK` runs `budget healthcheck`, which asks `GET /api/v1/health` and passes only on a 200. That endpoint answers 200 when the database answers.
-- **Logs.** `docker compose logs budget`: one line per request, never amounts, payees or secrets.
+- **Logs.** `docker compose logs budget`: one line per request, never amounts, payees or secrets. The setup code is the one secret printed, on purpose.
 
 ## Environment
 

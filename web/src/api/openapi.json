@@ -40,10 +40,222 @@
           }
         }
       }
+    },
+    "/api/v1/household": {
+      "get": {
+        "tags": [
+          "household"
+        ],
+        "summary": "`GET /api/v1/household`: the household's currency and timezone.",
+        "operationId": "getHousehold",
+        "responses": {
+          "200": {
+            "description": "The household.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Household"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/setup": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "`GET /api/v1/setup`: whether setup is finished.",
+        "operationId": "getSetup",
+        "responses": {
+          "200": {
+            "description": "Whether setup is finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "`POST /api/v1/setup`: finishes setup. Writes the household and the first login in one go, and\nlogs that login in.",
+        "operationId": "finishSetup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishSetup"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Setup is finished and the new login is logged in.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The session cookie."
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_code_wrong`: the code isn't the setup code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`setup_done`: setup is already finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`, naming each field that's wrong.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`too_many_attempts`: too many wrong codes; wait.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/setup/code": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "`POST /api/v1/setup/code`: whether this is the setup code, for the wizard's first step.",
+        "operationId": "checkSetupCode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckSetupCode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "It's the setup code."
+          },
+          "403": {
+            "description": "`setup_code_wrong`: it isn't.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`setup_done`: setup is already finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`too_many_attempts`: too many wrong codes; wait.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/setup/currencies": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "`GET /api/v1/setup/currencies`: the currencies the household can choose.",
+        "operationId": "getCurrencies",
+        "responses": {
+          "200": {
+            "description": "Every ISO 4217 code in circulation, sorted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CheckSetupCode": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "As typed: case, spaces and dashes don't matter."
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "required": [
@@ -83,6 +295,46 @@
           }
         }
       },
+      "FinishSetup": {
+        "type": "object",
+        "required": [
+          "code",
+          "currency",
+          "timezone",
+          "display_name",
+          "username",
+          "password",
+          "password_again"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The setup code again, as typed."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217, one of `GET /api/v1/setup/currencies`."
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "At least 12 characters."
+          },
+          "password_again": {
+            "type": "string",
+            "description": "The password typed again."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "An IANA timezone name."
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "Health": {
         "type": "object",
         "required": [
@@ -93,6 +345,37 @@
             "type": "string",
             "description": "Always `ok`: any other state is an error response.",
             "example": "ok"
+          }
+        }
+      },
+      "Household": {
+        "type": "object",
+        "required": [
+          "currency",
+          "timezone"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217: every amount is in minor units of it.",
+            "example": "USD"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA: it decides what \"today\" is.",
+            "example": "America/Chicago"
+          }
+        }
+      },
+      "SetupStatus": {
+        "type": "object",
+        "required": [
+          "done"
+        ],
+        "properties": {
+          "done": {
+            "type": "boolean",
+            "description": "Whether setup is finished. Until it is, the app shows only the setup wizard."
           }
         }
       }

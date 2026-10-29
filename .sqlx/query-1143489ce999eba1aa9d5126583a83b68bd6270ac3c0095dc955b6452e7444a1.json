@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT currency_code, timezone FROM household WHERE id = 1 AND setup_done_at IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "currency_code",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "household",
+            "name": "currency_code"
+          }
+        }
+      },
+      {
+        "name": "timezone",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "household",
+            "name": "timezone"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1143489ce999eba1aa9d5126583a83b68bd6270ac3c0095dc955b6452e7444a1"
+}

@@ -1,5 +1,48 @@
-import { describe, expect, it } from 'vitest'
-import { formatDate, formatMoney } from './format'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
+import { formatDate, formatMoney, useFormatting } from './format'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+/** What a screen shows for `minor` through useFormatting, with the server answering `household`. */
+async function shown(minor: number, household: Response) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve(household)),
+  )
+  const Amount = defineComponent(() => {
+    const formatting = useFormatting()
+    return () => h('span', formatMoney(minor, formatting.value))
+  })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = mount(Amount, { global: { plugins: [[VueQueryPlugin, { queryClient }]] } })
+  const before = wrapper.text()
+  await flushPromises()
+  return { before, after: wrapper.text() }
+}
+
+describe('useFormatting', () => {
+  it('formats in the household currency, in the browser locale', async () => {
+    const { after } = await shown(
+      123456,
+      Response.json({ currency: 'EUR', timezone: 'Europe/Berlin' }),
+    )
+    expect(after).toBe('€1,234.56')
+  })
+
+  it("formats in USD until the household is known, or if it can't be", async () => {
+    const { before, after } = await shown(
+      150,
+      Response.json({ error: { code: 'setup_required', message: 'x' } }, { status: 403 }),
+    )
+    expect(before).toBe('$1.50')
+    expect(after).toBe('$1.50')
+  })
+})
 
 describe('formatMoney', () => {
   it('turns minor units into the currency with its own decimal places', () => {

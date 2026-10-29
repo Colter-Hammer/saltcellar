@@ -2,6 +2,7 @@ dist/
 coverage/
 test-results/
 playwright-report/
+playwright/.auth/
 package-lock.json
 # Written by scripts/gen-api.sh; the drift check compares them byte for byte.
 src/api/openapi.json
