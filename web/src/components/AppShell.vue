@@ -2,6 +2,7 @@
 // Phone: header + bottom tab bar. From `lg`: sidebar (docs/spec/foundations.md#frontend).
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import LogOutButton from '@/components/LogOutButton.vue'
 import ServerBanner from '@/components/ServerBanner.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,8 @@ const title = computed(() => route.meta.title)
           {{ item.label }}
         </a>
       </RouterLink>
+      <!-- The sidebar has no More, so Log out sits at its foot *(agent)*. -->
+      <LogOutButton class="mt-auto rounded-md px-2 py-1.5 text-sm hover:bg-accent" />
     </nav>
 
     <div class="flex min-w-0 flex-1 flex-col">

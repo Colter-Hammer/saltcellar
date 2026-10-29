@@ -1,9 +1,10 @@
 //! Passwords, session tokens and the session cookie (docs/spec/foundations.md#auth).
 
 use std::fmt::Write;
+use std::sync::LazyLock;
 
 use argon2::Argon2;
-use argon2::password_hash::PasswordHasher;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use axum::http::{HeaderMap, HeaderValue, header};
 use domain::login::{Password, SESSION_LIFETIME};
 use sha2::{Digest, Sha256};
@@ -19,6 +20,27 @@ pub const COOKIE: &str = "session";
 pub fn hash_password(password: &Password) -> Result<String, argon2::password_hash::Error> {
     let hash = Argon2::default().hash_password(password.expose().as_bytes())?;
     Ok(hash.to_string())
+}
+
+/// Whether `typed` is the password `hash` was made from. With no hash (no such login), it checks
+/// against a decoy instead, so an unknown username takes as long to refuse as a wrong password.
+/// Slow on purpose: call it off the async threads.
+pub fn verify_password(hash: Option<&str>, typed: &str) -> bool {
+    static DECOY: LazyLock<Option<String>> = LazyLock::new(|| {
+        Argon2::default()
+            .hash_password(b"a decoy for logins that don't exist")
+            .ok()
+            .map(|hash| hash.to_string())
+    });
+    let Some(hash) = hash else {
+        if let Some(decoy) = DECOY.as_deref() {
+            let _ = Argon2::default().verify_password(typed.as_bytes(), decoy);
+        }
+        return false;
+    };
+    Argon2::default()
+        .verify_password(typed.as_bytes(), hash)
+        .is_ok()
 }
 
 /// A new session's token, which only the cookie holds, and its hash, which only the database holds.
@@ -44,15 +66,39 @@ impl NewSession {
     /// `Secure` unless the request came to this machine itself (`localhost`, or a loopback address
     /// *(agent)*), so local dev works over plain HTTP.
     pub fn cookie(&self, request: &HeaderMap) -> HeaderValue {
-        let max_age = SESSION_LIFETIME.as_secs();
-        let secure = if is_local(request) { "" } else { "; Secure" };
-        let cookie = format!(
-            "{COOKIE}={}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}",
-            self.token
-        );
-        // Hex digits and fixed ASCII: always a valid header value.
-        HeaderValue::from_str(&cookie).unwrap_or_else(|_| HeaderValue::from_static(""))
+        cookie(&self.token, request)
     }
+}
+
+/// The `Set-Cookie` value that hands `token` to the browser for [`SESSION_LIFETIME`]: see
+/// [`NewSession::cookie`]. Sent again on each use, so the cookie slides with the session.
+pub fn cookie(token: &str, request: &HeaderMap) -> HeaderValue {
+    set_cookie(token, SESSION_LIFETIME.as_secs(), request)
+}
+
+/// The `Set-Cookie` value that has the browser drop the session cookie.
+pub fn cleared_cookie(request: &HeaderMap) -> HeaderValue {
+    set_cookie("", 0, request)
+}
+
+fn set_cookie(token: &str, max_age: i64, request: &HeaderMap) -> HeaderValue {
+    let secure = if is_local(request) { "" } else { "; Secure" };
+    let cookie =
+        format!("{COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}");
+    // The token comes from a valid Cookie header or is hex: always a valid header value.
+    HeaderValue::from_str(&cookie).unwrap_or_else(|_| HeaderValue::from_static(""))
+}
+
+/// The session token from the request's `Cookie` headers, if it sent one.
+pub fn token(request: &HeaderMap) -> Option<&str> {
+    request
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(name, value)| *name == COOKIE && !value.is_empty())
+        .map(|(_, value)| value)
 }
 
 /// What the database stores for a token: its SHA-256, in hex.
@@ -108,6 +154,56 @@ mod tests {
         assert!(first.starts_with("$argon2id$v=19$"), "{first}");
         assert!(!first.contains("correct horse"));
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn verifies_the_password_the_hash_was_made_from() {
+        let password = Password::new("correct horse battery", "correct horse battery").unwrap();
+        let hash = hash_password(&password).unwrap();
+        assert!(verify_password(Some(&hash), "correct horse battery"));
+        assert!(!verify_password(Some(&hash), "correct horse batter"));
+        assert!(!verify_password(Some(&hash), ""));
+        assert!(!verify_password(
+            Some("not a hash"),
+            "correct horse battery"
+        ));
+        assert!(!verify_password(None, "correct horse battery"));
+    }
+
+    #[test]
+    fn reads_the_session_token_from_among_the_cookies() {
+        let cookies = |values: &[&str]| {
+            values
+                .iter()
+                .map(|v| (header::COOKIE, HeaderValue::from_str(v).unwrap()))
+                .collect::<HeaderMap>()
+        };
+        assert_eq!(token(&cookies(&["session=ab12"])), Some("ab12"));
+        assert_eq!(
+            token(&cookies(&["theme=dark; session=ab12; lang=en"])),
+            Some("ab12")
+        );
+        assert_eq!(
+            token(&cookies(&["theme=dark", "session=ab12"])),
+            Some("ab12")
+        );
+        assert_eq!(token(&cookies(&["mysession=ab12"])), None);
+        assert_eq!(token(&cookies(&["session="])), None);
+        assert_eq!(token(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn the_cleared_cookie_expires_at_once() {
+        assert_eq!(
+            cleared_cookie(&host("localhost")),
+            "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        );
+        assert!(
+            cleared_cookie(&host("budget.example.test"))
+                .to_str()
+                .unwrap()
+                .ends_with("; Secure")
+        );
     }
 
     #[test]

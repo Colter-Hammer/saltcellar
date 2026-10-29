@@ -1,9 +1,12 @@
-import { createRouter, type Router, type RouterHistory } from 'vue-router'
+import { createRouter, type RouteLocationRaw, type Router, type RouterHistory } from 'vue-router'
+import { onLoginRequired } from '@/api/client'
+import { getSession } from '@/api/session'
 import { isSetupDone } from '@/api/setup'
 import type { Tab } from '@/lib/nav'
 import AccountsView from '@/views/AccountsView.vue'
 import CategoriesView from '@/views/CategoriesView.vue'
 import ImportView from '@/views/ImportView.vue'
+import LoginView from '@/views/LoginView.vue'
 import MoreView from '@/views/MoreView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 import SettingsView from '@/views/SettingsView.vue'
@@ -45,12 +48,16 @@ export function createAppRouter(history: RouterHistory): Router {
       },
       { path: '/settings', component: SettingsView, meta: { title: 'Settings', tab: 'more' } },
       { path: '/setup', component: SetupView, meta: { title: 'Set up Saltcellar', bare: true } },
+      { path: '/login', component: LoginView, meta: { title: 'Log in', bare: true } },
       { path: '/:unknown(.*)*', component: NotFoundView, meta: { title: 'Not found' } },
     ],
   })
   // Until setup is finished, the wizard is the only screen. Once it is, it stays so: the server
-  // isn't asked again. If it can't be asked, the screen shows anyway, under the server banner.
+  // isn't asked again. Then every screen but the log-in page needs a login, asked for once and
+  // asked again after a trip to that page. If the server can't be asked, the screen shows anyway,
+  // under the server banner.
   let setupDone = false
+  let loggedIn = false
   router.beforeEach(async (to) => {
     const toWizard = to.path === '/setup'
     try {
@@ -58,8 +65,28 @@ export function createAppRouter(history: RouterHistory): Router {
     } catch {
       return true
     }
-    if (setupDone) return toWizard ? '/transactions' : true
-    return toWizard || '/setup'
+    if (!setupDone) return toWizard || '/setup'
+    if (toWizard) return '/transactions'
+    if (to.path === '/login') {
+      loggedIn = false
+      return true
+    }
+    try {
+      loggedIn ||= (await getSession()) !== null
+    } catch {
+      return true
+    }
+    return loggedIn || logInFirst(to.fullPath)
+  })
+  // A call that finds the session gone mid-screen: log in, then back to that screen.
+  onLoginRequired(() => {
+    const { path, fullPath } = router.currentRoute.value
+    if (path !== '/login') void router.push(logInFirst(fullPath))
   })
   return router
+}
+
+/** The log-in page, coming back to `next` afterwards. */
+function logInFirst(next: string): RouteLocationRaw {
+  return { path: '/login', query: { next } }
 }

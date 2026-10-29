@@ -28,7 +28,7 @@ Only what's needed before anyone can log in, or what touches the host. Everythin
 | `BUDGET_DATA_DIR` | `/data` | Holds the SQLite file and, by default, backups. |
 | `BUDGET_LISTEN` | `0.0.0.0:8080` | Listen address inside the container. |
 | `BUDGET_BASE_URL` | none (required from milestone 6) | The public URL of the app, like `https://budget.example.com`, used in invite, reset and notification links. |
-| `BUDGET_AUTH_MODE` | `builtin` | `builtin` (passwords and sessions) or `header` (trust a header from your proxy). |
+| `BUDGET_AUTH_MODE` | `builtin` | `builtin` (passwords and sessions) or `header` (trust a header from your proxy). This version refuses to start in `header` mode: it arrives in a later version. |
 | `BUDGET_TRUSTED_PROXY` | none | Header mode: the proxy address (IP or CIDR) whose header is trusted. Required in header mode. |
 | `BUDGET_AUTH_HEADER` | `Remote-User` | Header mode: the header carrying the username. |
 | `BUDGET_BACKUP_DIR` | `$BUDGET_DATA_DIR/backups` | Where nightly backups are written. |

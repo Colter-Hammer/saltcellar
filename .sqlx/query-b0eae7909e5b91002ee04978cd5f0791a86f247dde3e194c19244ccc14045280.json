@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE sessions SET last_seen_at = ?1, expires_at = ?2\n           WHERE token_hash = ?3 AND expires_at > ?1\n             AND user_id IN (SELECT id FROM users WHERE removed_at IS NULL)\n           RETURNING user_id AS \"user_id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sessions",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b0eae7909e5b91002ee04978cd5f0791a86f247dde3e194c19244ccc14045280"
+}

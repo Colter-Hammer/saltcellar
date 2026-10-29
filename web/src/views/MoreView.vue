@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Phones only reach these through More; the desktop sidebar lists them directly.
+import LogOutButton from '@/components/LogOutButton.vue'
 import { moreItems } from '@/lib/nav'
 </script>
 
@@ -11,5 +12,6 @@ import { moreItems } from '@/lib/nav'
         {{ item.label }}
       </RouterLink>
     </li>
+    <li><LogOutButton class="gap-3 p-3" /></li>
   </ul>
 </template>

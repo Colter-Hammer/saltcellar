@@ -6,7 +6,7 @@ mod web;
 
 use std::process::ExitCode;
 
-use config::Config;
+use config::{Auth, Config};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -53,6 +53,10 @@ async fn main() -> ExitCode {
 
 #[derive(Debug, thiserror::Error)]
 enum StartError {
+    /// Trusted-header mode is milestone 6's; config reads it already so the set of variables is
+    /// fixed *(agent)*.
+    #[error("BUDGET_AUTH_MODE is header, but header mode arrives in a later version")]
+    HeaderMode,
     #[error("can't create the data dir {0}: {1}")]
     DataDir(String, std::io::Error),
     #[error(transparent)]
@@ -65,7 +69,16 @@ enum StartError {
     Serve(std::io::Error),
 }
 
+/// What this version can't do yet, refused before anything starts.
+fn check_supported(config: &Config) -> Result<(), StartError> {
+    match config.auth {
+        Auth::Builtin => Ok(()),
+        Auth::Header { .. } => Err(StartError::HeaderMode),
+    }
+}
+
 async fn run(config: Config) -> Result<(), StartError> {
+    check_supported(&config)?;
     std::fs::create_dir_all(&config.data_dir)
         .map_err(|error| StartError::DataDir(config.data_dir.display().to_string(), error))?;
     let pool = db::connect(&config.data_dir.join(db::FILE_NAME)).await?;
@@ -122,5 +135,28 @@ async fn shutdown() {
     #[cfg(not(unix))]
     {
         let _ = interrupt.await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn header_mode_is_refused_until_it_arrives() {
+        let builtin = Config::from_env(|_| None).unwrap();
+        assert!(check_supported(&builtin).is_ok());
+
+        let header = Config::from_env(|name| match name {
+            "BUDGET_AUTH_MODE" => Some("header".to_owned()),
+            "BUDGET_TRUSTED_PROXY" => Some("10.0.0.5".to_owned()),
+            _ => None,
+        })
+        .unwrap();
+        let error = check_supported(&header).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "BUDGET_AUTH_MODE is header, but header mode arrives in a later version"
+        );
     }
 }
