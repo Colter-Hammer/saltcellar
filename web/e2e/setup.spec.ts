@@ -3,9 +3,7 @@
 // leaves its login's cookie in STORAGE_STATE for them.
 import { execSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
-import { STORAGE_STATE } from './login-state.js'
-
-const PASSWORD = 'correct horse battery staple'
+import { PASSWORD, STORAGE_STATE, USERNAME } from './login-state.js'
 
 /** The app's log so far, through the command in E2E_APP_LOGS (`just e2e` and CI set it). */
 function appLog(): string {
@@ -59,7 +57,7 @@ test('a fresh install is claimed with the setup code from the log', async ({ pag
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await page.getByLabel('Your name').fill('Sam Example')
-  await page.getByLabel('Username').fill('sam')
+  await page.getByLabel('Username').fill(USERNAME)
   await page.getByLabel('Password', { exact: true }).fill('elevenchars')
   await page.getByLabel('Password again').fill('elevenchars')
   await page.getByRole('button', { name: 'Finish setup' }).click()
@@ -87,7 +85,7 @@ test('a fresh install is claimed with the setup code from the log', async ({ pag
 
   // The household is written, the wizard and the code are done with, and the log has no secrets
   // but the code.
-  const household = await request.get('/api/v1/household')
+  const household = await page.request.get('/api/v1/household')
   expect(await household.json()).toEqual({ currency: 'EUR', timezone: 'Europe/Berlin' })
   const again = await request.post('/api/v1/setup/code', { data: { code } })
   expect(again.status()).toBe(409)

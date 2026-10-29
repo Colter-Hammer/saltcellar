@@ -5,6 +5,7 @@ mod error;
 mod health;
 mod household;
 mod middleware;
+mod session;
 mod setup;
 #[cfg(test)]
 mod tests;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use domain::SetupCode;
+use jiff::Timestamp;
 use utoipa::OpenApi;
 
 pub use error::ApiError;
@@ -27,6 +29,9 @@ pub use error::ApiError;
         setup::currencies,
         setup::check_code,
         setup::finish,
+        session::get,
+        session::log_in,
+        session::log_out,
         household::get
     ),
     components(schemas(error::ErrorEnvelope))
@@ -45,6 +50,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 pub struct AppState {
     pub pool: db::SqlitePool,
     setup: Arc<setup::Setup>,
+    clock: Arc<dyn Fn() -> Timestamp + Send + Sync>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -72,7 +78,22 @@ impl AppState {
         Ok(AppState {
             pool,
             setup: Arc::new(setup),
+            clock: Arc::new(Timestamp::now),
         })
+    }
+
+    /// The same state, telling the time by `clock`, so tests can move it on.
+    #[cfg(test)]
+    pub(crate) fn with_clock(self, clock: impl Fn() -> Timestamp + Send + Sync + 'static) -> Self {
+        AppState {
+            clock: Arc::new(clock),
+            ..self
+        }
+    }
+
+    /// The time now, by the state's clock.
+    fn now(&self) -> Timestamp {
+        (self.clock)()
     }
 
     /// The code that claims the install, until setup is finished. The caller prints it to the log,
@@ -85,7 +106,8 @@ impl AppState {
 
 /// The whole API, with the shared rules applied to every route:
 /// one log line per request, and mutating requests must be JSON.
-/// Until setup is finished, everything but health and the setup routes answers `setup_required`.
+/// Until setup is finished, everything but health and the setup routes answers `setup_required`;
+/// after, everything but those and logging in answers `login_required` without a live session.
 /// Every path under `/api` is the API's, so an unknown one gets the JSON 404, never the frontend.
 pub fn router(state: AppState) -> Router {
     let open = Router::new()
@@ -93,8 +115,16 @@ pub fn router(state: AppState) -> Router {
         .route("/setup", get(setup::status).post(setup::finish))
         .route("/setup/currencies", get(setup::currencies))
         .route("/setup/code", post(setup::check_code));
-    let gated = Router::new()
+    let logged_in = Router::new()
+        .route("/session", get(session::get).delete(session::log_out))
         .route("/household", get(household::get))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session::require_login,
+        ));
+    let gated = Router::new()
+        .route("/session", post(session::log_in))
+        .merge(logged_in)
         .method_not_allowed_fallback(error::method_not_allowed)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

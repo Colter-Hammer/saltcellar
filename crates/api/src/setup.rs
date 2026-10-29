@@ -11,8 +11,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use domain::login::{DisplayName, Password, PasswordError, Username};
-use domain::{CURRENCIES, Currency, SetupCode, TimeZone, throttle};
-use jiff::Timestamp;
+use domain::{CURRENCIES, Currency, SetupCode, TimeZone};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -230,7 +229,7 @@ pub async fn finish(
         password_hash: &password_hash,
         session_token_hash: &session.token_hash,
     };
-    match db::finish_setup(&state.pool, &setup, Timestamp::now()).await {
+    match db::finish_setup(&state.pool, &setup, state.now()).await {
         Ok(()) => {}
         Err(db::FinishSetupError::AlreadyDone) => {
             state.setup.finish();
@@ -252,15 +251,8 @@ async fn verify_code(state: &AppState, typed: &str) -> Result<(), ApiError> {
     let Some(code) = state.setup.code() else {
         return Err(setup_done());
     };
-    let now = Timestamp::now();
-    let failures = db::recent_failures(&state.pool, THROTTLE_KEY).await?;
-    if let Err(paused) = throttle::check(&failures, now) {
-        return Err(ApiError::new(
-            StatusCode::TOO_MANY_REQUESTS,
-            "too_many_attempts",
-            paused.to_string(),
-        ));
-    }
+    let now = state.now();
+    crate::session::check_throttle(state, THROTTLE_KEY, now).await?;
     if code.matches(typed) {
         return Ok(());
     }

@@ -3,11 +3,16 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
+import { call, client } from './api/client'
 import { createAppRouter } from './router'
 
-/** What the fake server knows; each test starts from a finished setup. */
+/** What the fake server knows; each test starts from a finished setup, logged in. */
 interface FakeServer {
   setupDone: boolean
+  /** Whether the browser's session cookie is live. */
+  loggedIn: boolean
+  /** Failed log-ins in a row: the fifth pauses the next. */
+  failures: number
   /** The setup code it printed when it started. */
   code: string
   /** What `POST /api/v1/setup` was sent. */
@@ -19,6 +24,7 @@ interface FakeServer {
 let server: FakeServer
 
 const SETUP_CODE = 'ABCD-EFGH'
+const PASSWORD = 'correct horse battery'
 
 function error(status: number, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status })
@@ -27,6 +33,7 @@ function error(status: number, code: string, message: string) {
 async function answer(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/api/v1/health') return Response.json({ status: 'ok' })
+  if (path === '/api/v1/session') return session(request)
   if (path === '/api/v1/setup' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, string>
     if (body.code !== server.code) {
@@ -51,9 +58,14 @@ async function answer(request: Request): Promise<Response> {
     }
     server.finishedWith = body
     server.setupDone = true
+    server.loggedIn = true
     return new Response(null, { status: 204 })
   }
   if (path === '/api/v1/setup') return Response.json({ done: server.setupDone })
+  if (path === '/api/v1/household') {
+    if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+    return Response.json({ currency: 'EUR', timezone: 'Europe/Berlin' })
+  }
   if (path === '/api/v1/setup/currencies') return Response.json(['EUR', 'JPY', 'USD'])
   if (path === '/api/v1/setup/code') {
     const { code } = (await request.json()) as { code: string }
@@ -64,6 +76,28 @@ async function answer(request: Request): Promise<Response> {
     { error: { code: 'not_found', message: "There's nothing at this address." } },
     { status: 404 },
   )
+}
+
+async function session(request: Request): Promise<Response> {
+  if (request.method === 'GET') {
+    if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+    return Response.json({ username: 'sam', display_name: 'Sam' })
+  }
+  if (request.method === 'DELETE') {
+    server.loggedIn = false
+    return new Response(null, { status: 204 })
+  }
+  if (server.failures >= 5) {
+    return error(429, 'too_many_attempts', 'Too many attempts. Try again in 15 minutes.')
+  }
+  const { username, password } = (await request.json()) as Record<string, string>
+  if (username?.trim().toLowerCase() !== 'sam' || password !== PASSWORD) {
+    server.failures += 1
+    return error(401, 'login_failed', 'Wrong username or password.')
+  }
+  server.failures = 0
+  server.loggedIn = true
+  return new Response(null, { status: 204 })
 }
 
 function serverUp() {
@@ -84,7 +118,7 @@ function serverDown() {
 Element.prototype.scrollIntoView = () => undefined
 
 beforeEach(() => {
-  server = { setupDone: true, code: SETUP_CODE }
+  server = { setupDone: true, loggedIn: true, failures: 0, code: SETUP_CODE }
   serverUp()
 })
 
@@ -428,5 +462,120 @@ describe('the server banner', () => {
     await vi.advanceTimersByTimeAsync(5_000)
     await flushPromises()
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+})
+
+describe('logging in', () => {
+  beforeEach(() => {
+    server.loggedIn = false
+  })
+
+  it('sends a logged-out visit to the log-in page, and back there afterwards', async () => {
+    const { router, wrapper } = await open('/accounts')
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query).toEqual({ next: '/accounts' })
+    expect(wrapper.get('h1').text()).toBe('Log in')
+    expect(wrapper.find('nav').exists()).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('[name="password"]').element.type).toBe('password')
+
+    await submit(wrapper, { username: 'Sam', password: PASSWORD })
+    expect(server.loggedIn).toBe(true)
+    expect(router.currentRoute.value.path).toBe('/accounts')
+    expect(wrapper.get('h1').text()).toBe('Accounts')
+  })
+
+  it('says the details are wrong, but not which', async () => {
+    const { router, wrapper } = await open('/accounts')
+    await submit(wrapper, { username: 'sam', password: 'correct horse batter' })
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(wrapper.get('form [role="alert"]').text()).toBe('Wrong username or password.')
+    expect(wrapper.get<HTMLInputElement>('[name="password"]').element.value).toBe('')
+  })
+
+  it('says how long to wait once the throttle pauses the username', async () => {
+    server.failures = 5
+    const { router, wrapper } = await open('/login')
+    await submit(wrapper, { username: 'sam', password: PASSWORD })
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(wrapper.get('form [role="alert"]').text()).toBe(
+      'Too many attempts. Try again in 15 minutes.',
+    )
+  })
+
+  it('lands on Transactions when there was nowhere before, or somewhere outside the app', async () => {
+    for (const path of [
+      '/login',
+      '/login?next=//elsewhere.example.test/x',
+      '/login?next=https://elsewhere.example.test',
+    ]) {
+      server.loggedIn = false
+      const { router, wrapper } = await open(path)
+      await submit(wrapper, { username: 'sam', password: PASSWORD })
+      expect(router.currentRoute.value.path, path).toBe('/transactions')
+    }
+  })
+
+  it('sends the app to log in when a call finds the session gone, and back afterwards', async () => {
+    server.loggedIn = true
+    const { router, wrapper } = await open('/categories')
+    server.loggedIn = false
+    await call(client.GET('/api/v1/household')).catch(() => undefined)
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query).toEqual({ next: '/categories' })
+
+    await submit(wrapper, { username: 'sam', password: PASSWORD })
+    expect(router.currentRoute.value.path).toBe('/categories')
+  })
+
+  it("shows the screen anyway, under the banner, if the server can't be asked", async () => {
+    serverDown()
+    const { router, wrapper } = await open('/accounts')
+    expect(router.currentRoute.value.path).toBe('/accounts')
+    expect(wrapper.get('[role="alert"]').text()).toContain("Can't reach the server")
+  })
+  it('shows the screen anyway if the server goes away between the two questions', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((request: Request) =>
+        new URL(request.url).pathname === '/api/v1/session'
+          ? Promise.reject(new TypeError('Failed to fetch'))
+          : answer(request),
+      ),
+    )
+    const { router } = await open('/accounts')
+    expect(router.currentRoute.value.path).toBe('/accounts')
+  })
+})
+
+describe('logging out', () => {
+  it('is under More, and ends on the log-in page', async () => {
+    const { router, wrapper } = await open('/more')
+    const button = wrapper
+      .get('main')
+      .findAll('button')
+      .find((b) => b.text() === 'Log out')
+    await button?.trigger('click')
+    await flushPromises()
+    expect(server.loggedIn).toBe(false)
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query).toEqual({})
+  })
+
+  it('is at the foot of the desktop sidebar too', async () => {
+    const { router, wrapper } = await open('/transactions')
+    await wrapper.get('nav[aria-label="Sidebar"] button').trigger('click')
+    await flushPromises()
+    expect(server.loggedIn).toBe(false)
+    expect(router.currentRoute.value.path).toBe('/login')
+  })
+
+  it('asks for a login again on the next visit', async () => {
+    const { router, wrapper } = await open('/more')
+    await wrapper.get('main button').trigger('click')
+    await flushPromises()
+    await router.push('/accounts')
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query).toEqual({ next: '/accounts' })
   })
 })

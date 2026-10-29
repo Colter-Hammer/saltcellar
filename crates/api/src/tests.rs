@@ -1,9 +1,12 @@
 //! The API through its router, the way a client sees it.
 
+use std::sync::{Arc, Mutex};
+
 use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderMap, Request, StatusCode, header};
 use http_body_util::BodyExt;
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -12,7 +15,18 @@ struct App {
     pool: db::SqlitePool,
     /// The setup code, until setup is finished.
     code: Option<String>,
+    /// The time the app sees: tests move it on with [`App::wait`].
+    now: Arc<Mutex<Timestamp>>,
+    /// The first login's session cookie (`session=…`), once setup is finished.
+    cookie: String,
     _dir: tempfile::TempDir,
+}
+
+impl App {
+    fn wait(&self, duration: SignedDuration) {
+        let mut now = self.now.lock().unwrap();
+        *now += duration;
+    }
 }
 
 /// A fresh install, waiting for setup.
@@ -20,22 +34,48 @@ async fn app() -> App {
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect(&dir.path().join(db::FILE_NAME)).await.unwrap();
     db::migrate(&pool).await.unwrap();
-    let state = crate::AppState::load(pool.clone()).await.unwrap();
+    let now = Arc::new(Mutex::new("2026-10-28T09:00:00Z".parse().unwrap()));
+    let clock = Arc::clone(&now);
+    let state = crate::AppState::load(pool.clone())
+        .await
+        .unwrap()
+        .with_clock(move || *clock.lock().unwrap());
     let code = state.setup_code().map(ToString::to_string);
     App {
         router: crate::router(state),
         pool,
         code,
+        now,
+        cookie: String::new(),
         _dir: dir,
     }
 }
 
-/// An install whose setup is finished.
+/// An install whose setup is finished, by `sam` with the password `correct horse battery`.
 async fn set_up() -> App {
-    let app = app().await;
-    let (status, _) = send(app.router.clone(), finish(&app, &json!({}))).await;
+    let mut app = app().await;
+    let (status, headers, _) = send_full(app.router.clone(), finish(&app, &json!({}))).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    app.cookie = session_cookie(&headers).unwrap();
     app
+}
+
+/// The `session=…` pair from a response's `Set-Cookie`.
+fn session_cookie(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok()?.split(';').next())
+        .find(|pair| pair.starts_with("session="))
+        .map(str::to_owned)
+}
+
+/// `request`, sent with `cookie`.
+fn with(cookie: &str, mut request: Request<Body>) -> Request<Body> {
+    request
+        .headers_mut()
+        .insert(header::COOKIE, cookie.parse().unwrap());
+    request
 }
 
 async fn send(router: Router, request: Request<Body>) -> (StatusCode, Value) {
@@ -306,7 +346,8 @@ async fn finishing_setup_logs_the_first_login_in() {
     assert_eq!((username.as_str(), display_name.as_str()), ("sam", "Sam"));
     assert!(hash.starts_with("$argon2id$"), "{hash}");
 
-    let (status, body) = send(app.router.clone(), get("/api/v1/household")).await;
+    let cookie = format!("session={token}");
+    let (status, body) = send(app.router.clone(), with(&cookie, get("/api/v1/household"))).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
@@ -354,7 +395,11 @@ async fn after_setup_the_code_and_the_wizard_stop_working() {
 
     let restarted = crate::AppState::load(app.pool.clone()).await.unwrap();
     assert!(restarted.setup_code().is_none());
-    let (status, _) = send(crate::router(restarted), get("/api/v1/household")).await;
+    let (status, _) = send(
+        crate::router(restarted),
+        with(&app.cookie, get("/api/v1/household")),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -458,6 +503,236 @@ async fn the_password_never_reaches_the_response_or_the_database_in_clear() {
     .await
     .unwrap();
     assert!(!dump.concat().contains("correct horse"));
+}
+
+// ───────────────────────── Login ─────────────────────────
+
+fn log_in(username: &str, password: &str) -> Request<Body> {
+    post(
+        "/api/v1/session",
+        &json!({ "username": username, "password": password }),
+    )
+}
+
+fn log_out() -> Request<Body> {
+    Request::delete("/api/v1/session")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::HOST, "localhost:8080")
+        .body(Body::empty())
+        .unwrap()
+}
+
+const PASSWORD: &str = "correct horse battery";
+
+#[tokio::test]
+async fn logged_out_requests_are_sent_to_log_in() {
+    let app = set_up().await;
+    for request in [
+        get("/api/v1/household"),
+        get("/api/v1/session"),
+        with("session=nope", get("/api/v1/household")),
+        with("theme=dark", get("/api/v1/household")),
+    ] {
+        let (status, body) = send(app.router.clone(), request).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            body,
+            json!({ "error": { "code": "login_required", "message": "Log in to continue." } })
+        );
+    }
+    // Health, setup and logging in itself need no login.
+    for request in [get("/api/v1/health"), get("/api/v1/setup")] {
+        let (status, _) = send(app.router.clone(), request).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+}
+
+#[tokio::test]
+async fn logging_in_hands_over_a_session_that_opens_the_api() {
+    let app = set_up().await;
+    let (status, headers, body) = send_full(app.router.clone(), log_in(" Sam ", PASSWORD)).await;
+    assert_eq!((status, body), (StatusCode::NO_CONTENT, Value::Null));
+    let cookie = session_cookie(&headers).unwrap();
+    assert_ne!(cookie, app.cookie);
+    let set_cookie = headers[header::SET_COOKIE].to_str().unwrap();
+    assert!(
+        set_cookie.ends_with("; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax"),
+        "{set_cookie}"
+    );
+
+    let (status, body) = send(app.router.clone(), with(&cookie, get("/api/v1/session"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({ "username": "sam", "display_name": "Sam" }));
+    let (status, _) = send(app.router.clone(), with(&cookie, get("/api/v1/household"))).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_cookie_among_others_still_counts() {
+    let app = set_up().await;
+    let cookies = format!("theme=dark; {}; lang=en", app.cookie);
+    let (status, _) = send(app.router.clone(), with(&cookies, get("/api/v1/session"))).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_wrong_password_and_an_unknown_username_get_the_same_answer() {
+    let app = set_up().await;
+    let mut answers = Vec::new();
+    for (username, password) in [
+        ("sam", "correct horse batter"),
+        ("alex", PASSWORD),
+        ("not a username", PASSWORD),
+        ("sam", ""),
+    ] {
+        let (status, headers, body) =
+            send_full(app.router.clone(), log_in(username, password)).await;
+        assert_eq!(session_cookie(&headers), None);
+        answers.push((status, body));
+    }
+    for answer in &answers {
+        assert_eq!(
+            answer,
+            &(
+                StatusCode::UNAUTHORIZED,
+                json!({ "error": {
+                    "code": "login_failed",
+                    "message": "Wrong username or password.",
+                } })
+            )
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_sixth_bad_password_is_paused_and_so_is_the_right_one() {
+    let app = set_up().await;
+    for _ in 0..5 {
+        let (status, _) = send(app.router.clone(), log_in("sam", "wrong wrong wrong")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        app.wait(SignedDuration::from_secs(30));
+    }
+    let paused = json!({ "error": {
+        "code": "too_many_attempts",
+        "message": "Too many attempts. Try again in 15 minutes.",
+    } });
+    let (status, body) = send(app.router.clone(), log_in("sam", "wrong wrong wrong")).await;
+    assert_eq!(
+        (status, body),
+        (StatusCode::TOO_MANY_REQUESTS, paused.clone())
+    );
+    let (status, body) = send(app.router.clone(), log_in("SAM", PASSWORD)).await;
+    assert_eq!((status, body), (StatusCode::TOO_MANY_REQUESTS, paused));
+
+    // Another login isn't paused, and the pause ends 15 minutes after the fifth failure.
+    let (status, _) = send(app.router.clone(), log_in("alex", PASSWORD)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    app.wait(SignedDuration::from_mins(14));
+    let (status, body) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        body["error"]["message"],
+        "Too many attempts. Try again in 1 minute."
+    );
+    app.wait(SignedDuration::from_secs(30));
+    let (status, _) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn logging_in_forgets_earlier_slips() {
+    let app = set_up().await;
+    for _ in 0..4 {
+        send(app.router.clone(), log_in("sam", "wrong wrong wrong")).await;
+    }
+    let (status, _) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(app.router.clone(), log_in("sam", "wrong wrong wrong")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn logging_out_deletes_the_session_and_the_old_cookie_stops_working() {
+    let app = set_up().await;
+    let (status, headers, _) = send_full(app.router.clone(), with(&app.cookie, log_out())).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let cleared = headers[header::SET_COOKIE].to_str().unwrap();
+    assert_eq!(
+        cleared,
+        "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+    );
+
+    let sessions: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(sessions, 0);
+    let (status, body) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/household")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"]["code"], "login_required");
+    let (status, _) = send(app.router.clone(), log_out()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn logging_out_leaves_other_sessions_alone() {
+    let app = set_up().await;
+    let (_, headers, _) = send_full(app.router.clone(), log_in("sam", PASSWORD)).await;
+    let phone = session_cookie(&headers).unwrap();
+    send(app.router.clone(), with(&app.cookie, log_out())).await;
+    let (status, _) = send(app.router.clone(), with(&phone, get("/api/v1/session"))).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_session_slides_on_use_and_lapses_after_thirty_idle_days() {
+    let app = set_up().await;
+    let used = |app: &App| {
+        send(
+            app.router.clone(),
+            with(&app.cookie, get("/api/v1/session")),
+        )
+    };
+
+    // Used every 29 days, it outlives the 30 days it started with.
+    for _ in 0..3 {
+        app.wait(SignedDuration::from_hours(29 * 24));
+        let (status, headers, _) = send_full(
+            app.router.clone(),
+            with(&app.cookie, get("/api/v1/session")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        // The cookie's 30 days slide with it.
+        assert_eq!(
+            session_cookie(&headers).as_deref(),
+            Some(app.cookie.as_str())
+        );
+        assert!(
+            headers[header::SET_COOKIE]
+                .to_str()
+                .unwrap()
+                .contains("Max-Age=2592000")
+        );
+    }
+    app.wait(SignedDuration::from_hours(30 * 24));
+    let (status, body) = used(&app).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"]["code"], "login_required");
+}
+
+#[tokio::test]
+async fn before_setup_logging_in_is_setup_required() {
+    let app = app().await;
+    let (status, body) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"]["code"], "setup_required");
 }
 
 #[test]

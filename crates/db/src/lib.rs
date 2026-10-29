@@ -8,7 +8,10 @@ use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
-pub use auth::{FinishSetupError, NewSetup, finish_setup, recent_failures, record_failure};
+pub use auth::{
+    FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
+    password_login, recent_failures, record_failure, use_session,
+};
 pub use household::{Household, household};
 pub use sqlx::SqlitePool;
 

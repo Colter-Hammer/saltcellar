@@ -27,12 +27,28 @@ export const client = createClient<paths>({
   fetch: (request) => globalThis.fetch(request),
 })
 
+let loginRequired: () => void = () => undefined
+
+/**
+ * What to do when a call finds there's no live session (`login_required`): the router sends the app
+ * to the log-in page. The call still throws.
+ */
+export function onLoginRequired(handler: () => void): void {
+  loginRequired = handler
+}
+
 type Answer<T> =
   | { data: T; error?: never; response: Response }
   | { data?: never; error: unknown; response: Response }
 
-/** The data of a successful call; anything else throws an ApiError. */
-export async function call<T>(request: Promise<Answer<T>>): Promise<T> {
+/**
+ * The data of a successful call; anything else throws an ApiError. A `login_required` answer also
+ * runs the onLoginRequired handler, unless `quiet` says the caller deals with it.
+ */
+export async function call<T>(
+  request: Promise<Answer<T>>,
+  { quiet = false }: { quiet?: boolean } = {},
+): Promise<T> {
   let answer: Answer<T>
   try {
     answer = await request
@@ -49,6 +65,7 @@ export async function call<T>(request: Promise<Answer<T>>): Promise<T> {
     )
   }
   const { code, message, fields } = answer.error.error
+  if (code === 'login_required' && !quiet) loginRequired()
   throw new ApiError(status, code, message, fields)
 }
 
