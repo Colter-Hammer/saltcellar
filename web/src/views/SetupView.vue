@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { checkSetupCode, finishSetup, getCurrencies } from '@/api/setup'
 import FormField from '@/components/FormField.vue'
+import SearchSelect, { type Option } from '@/components/SearchSelect.vue'
 import { defaultCurrency } from '@/lib/currency'
 
 type Step = 'code' | 'household' | 'login'
@@ -19,10 +20,12 @@ const code = ref('')
 
 const locale = globalThis.navigator.language
 const currencyNames = new Intl.DisplayNames([locale], { type: 'currency' })
-const currencies = ref<{ code: string; name: string }[]>([])
+const currencies = ref<Option[]>([])
 const currency = ref('')
 const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-const timezones = [...new Set([browserZone, ...Intl.supportedValuesOf('timeZone')])].sort()
+const timezones: Option[] = [...new Set([browserZone, ...Intl.supportedValuesOf('timeZone')])]
+  .sort()
+  .map((zone) => ({ value: zone, label: zone }))
 const timezone = ref(browserZone)
 
 const displayName = ref('')
@@ -43,7 +46,7 @@ async function submitCode() {
   try {
     await checkSetupCode(code.value)
     const codes = await getCurrencies()
-    currencies.value = codes.map((c) => ({ code: c, name: currencyNames.of(c) ?? c }))
+    currencies.value = codes.map((c) => ({ value: c, label: `${currencyNames.of(c) ?? c} (${c})` }))
     currency.value = defaultCurrency(locale, codes)
     step.value = 'household'
   } catch (error) {
@@ -52,7 +55,10 @@ async function submitCode() {
 }
 
 function submitHousehold() {
-  errors.value = {}
+  // The login step's errors stay, for when the server sent the person back here from it.
+  errors.value = Object.fromEntries(
+    Object.entries(errors.value).filter(([field]) => field !== 'currency' && field !== 'timezone'),
+  )
   step.value = 'login'
 }
 
@@ -107,32 +113,22 @@ async function submitLogin() {
       class="flex flex-col gap-4"
       @submit.prevent="submitHousehold"
     >
-      <FormField
+      <SearchSelect
         v-model="currency"
         name="currency"
         label="Currency"
-        hint="Every amount is in this currency. Type a code or a name to search."
+        hint="Every amount is in this currency. Type a name or code to search."
+        :options="currencies"
         :error="errors.currency"
-        list="currencies"
-        autocomplete="off"
-        required
       />
-      <datalist id="currencies">
-        <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.name }}</option>
-      </datalist>
-      <FormField
+      <SearchSelect
         v-model="timezone"
         name="timezone"
         label="Timezone"
         hint="It decides when a day starts."
+        :options="timezones"
         :error="errors.timezone"
-        list="timezones"
-        autocomplete="off"
-        required
       />
-      <datalist id="timezones">
-        <option v-for="zone in timezones" :key="zone" :value="zone" />
-      </datalist>
       <button type="submit" class="rounded-md bg-primary px-3 py-2 text-primary-foreground">
         Continue
       </button>

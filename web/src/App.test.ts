@@ -12,6 +12,8 @@ interface FakeServer {
   code: string
   /** What `POST /api/v1/setup` was sent. */
   finishedWith?: unknown
+  /** Field errors it answers `POST /api/v1/setup` with, beside the password checks. */
+  refuse?: Record<string, string>
 }
 
 let server: FakeServer
@@ -38,7 +40,7 @@ async function answer(request: Request): Promise<Response> {
     if ((body.password ?? '').length < 12) fields.password = 'Use at least 12 characters.'
     else if (body.password !== body.password_again)
       fields.password_again = "The passwords don't match."
-    if (body.currency === 'XAU') fields.currency = 'Choose a currency from the list.'
+    Object.assign(fields, server.refuse)
     if (Object.keys(fields).length > 0) {
       return Response.json(
         {
@@ -77,6 +79,9 @@ function serverDown() {
     vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
   )
 }
+
+// jsdom has no layout, so no scrolling; the picker scrolls its highlighted option into view.
+Element.prototype.scrollIntoView = () => undefined
 
 beforeEach(() => {
   server = { setupDone: true, code: SETUP_CODE }
@@ -200,6 +205,34 @@ async function submit(wrapper: Wrapper, values: Record<string, string>) {
   await flushPromises()
 }
 
+/** Opens the searchable list on `field`, types `query` and taps the option reading `option`. */
+async function choose(wrapper: Wrapper, field: string, query: string, option: string) {
+  const input = wrapper.get(`#${field}`)
+  await input.trigger('click')
+  await input.setValue(query)
+  await flushPromises()
+  const match = wrapper.findAll('[role="option"]').find((o) => o.text() === option)
+  if (match === undefined) throw new Error(`no option ${option} for ${query} in ${field}`)
+  await match.trigger('click')
+  await flushPromises()
+}
+
+/** The options the list on `field` shows once tapped, after typing `query`. */
+async function optionsFor(wrapper: Wrapper, field: string, query?: string) {
+  const input = wrapper.get(`#${field}`)
+  await input.trigger('click')
+  if (query !== undefined) await input.setValue(query)
+  await flushPromises()
+  return wrapper.findAll('[role="option"]').map((o) => o.text())
+}
+
+async function chooseHousehold(wrapper: Wrapper) {
+  await choose(wrapper, 'currency', 'euro', 'Euro (EUR)')
+  await choose(wrapper, 'timezone', 'berlin', 'Europe/Berlin')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+}
+
 describe('the setup wizard', () => {
   beforeEach(() => {
     server.setupDone = false
@@ -224,25 +257,31 @@ describe('the setup wizard', () => {
     vi.stubEnv('TZ', 'Asia/Tokyo')
     const { wrapper } = await open('/setup')
     await submit(wrapper, { code: SETUP_CODE })
-    expect(wrapper.get<HTMLInputElement>('[name="currency"]').element.value).toBe('USD')
-    expect(wrapper.get<HTMLInputElement>('[name="timezone"]').element.value).toBe('Asia/Tokyo')
+    expect(wrapper.get<HTMLInputElement>('#currency').element.value).toBe('US Dollar (USD)')
+    expect(wrapper.get<HTMLInputElement>('#timezone').element.value).toBe('Asia/Tokyo')
   })
 
-  it('offers the currencies the server lists, searchable by name', async () => {
+  it('lists every currency the server offers when the field is tapped, even with one chosen', async () => {
     const { wrapper } = await open('/setup')
     await submit(wrapper, { code: SETUP_CODE })
-    const options = wrapper.findAll('#currencies option')
-    expect(options.map((o) => [o.attributes('value'), o.text()])).toEqual([
-      ['EUR', 'Euro'],
-      ['JPY', 'Japanese Yen'],
-      ['USD', 'US Dollar'],
+    expect(await optionsFor(wrapper, 'currency')).toEqual([
+      'Euro (EUR)',
+      'Japanese Yen (JPY)',
+      'US Dollar (USD)',
     ])
+  })
+
+  it('finds currencies by name or code', async () => {
+    const { wrapper } = await open('/setup')
+    await submit(wrapper, { code: SETUP_CODE })
+    expect(await optionsFor(wrapper, 'currency', 'yen')).toEqual(['Japanese Yen (JPY)'])
+    expect(await optionsFor(wrapper, 'currency', 'eur')).toEqual(['Euro (EUR)'])
   })
 
   it('asks for the first login after the currency and timezone', async () => {
     const { wrapper } = await open('/setup')
     await submit(wrapper, { code: SETUP_CODE })
-    await submit(wrapper, { currency: 'EUR', timezone: 'Europe/Berlin' })
+    await chooseHousehold(wrapper)
     for (const name of ['display_name', 'username', 'password', 'password_again']) {
       expect(wrapper.find(`[name="${name}"]`).exists(), name).toBe(true)
     }
@@ -253,7 +292,7 @@ describe('the setup wizard', () => {
   it('finishes setup in one go and lands on Transactions', async () => {
     const { router, wrapper } = await open('/setup')
     await submit(wrapper, { code: SETUP_CODE })
-    await submit(wrapper, { currency: 'EUR', timezone: 'Europe/Berlin' })
+    await chooseHousehold(wrapper)
     await submit(wrapper, {
       display_name: 'Sam',
       username: 'sam',
@@ -274,10 +313,10 @@ describe('the setup wizard', () => {
     expect(wrapper.find('nav[aria-label="Tabs"]').exists()).toBe(true)
   })
 
-  async function toLogin(household = { currency: 'EUR', timezone: 'Europe/Berlin' }) {
+  async function toLogin() {
     const opened = await open('/setup')
     await submit(opened.wrapper, { code: SETUP_CODE })
-    await submit(opened.wrapper, household)
+    await chooseHousehold(opened.wrapper)
     return opened
   }
 
@@ -306,13 +345,25 @@ describe('the setup wizard', () => {
   })
 
   it('goes back to the currency when the server refuses it', async () => {
-    const { wrapper } = await toLogin({ currency: 'XAU', timezone: 'Europe/Berlin' })
+    server.refuse = { currency: 'Choose a currency from the list.' }
+    const { wrapper } = await toLogin()
     await submit(wrapper, {
       ...login,
       password: 'correct horse battery',
       password_again: 'correct horse battery',
     })
     expect(wrapper.get('#currency-error').text()).toBe('Choose a currency from the list.')
+  })
+
+  it("keeps the login's errors after a trip back to the currency", async () => {
+    server.refuse = { currency: 'Choose a currency from the list.' }
+    const { wrapper } = await toLogin()
+    await submit(wrapper, { ...login, password: 'elevenchars', password_again: 'elevenchars' })
+    expect(wrapper.find('#currency-error').exists()).toBe(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('#currency-error').exists()).toBe(false)
+    expect(wrapper.get('#password-error').text()).toBe('Use at least 12 characters.')
   })
 
   it('asks for the code again if the app restarted with a new one', async () => {
@@ -338,12 +389,10 @@ describe('the setup wizard', () => {
     expect(wrapper.get('form [role="alert"]').text()).toBe("Can't reach the server.")
   })
 
-  it('offers IANA timezones', async () => {
+  it('finds IANA timezones by any part of their name', async () => {
     const { wrapper } = await open('/setup')
     await submit(wrapper, { code: SETUP_CODE })
-    const zones = wrapper.findAll('#timezones option').map((o) => o.attributes('value'))
-    expect(zones).toContain('Europe/Berlin')
-    expect(zones).toContain('America/Chicago')
+    expect(await optionsFor(wrapper, 'timezone', 'chicago')).toEqual(['America/Chicago'])
   })
 })
 
