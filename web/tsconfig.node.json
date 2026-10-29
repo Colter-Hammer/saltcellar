@@ -16,5 +16,5 @@
     "erasableSyntaxOnly": true,
     "noEmit": true
   },
-  "include": ["*.config.ts", "checks/**/*.ts"]
+  "include": ["*.config.ts", "checks/**/*.ts", "e2e/**/*.ts"]
 }

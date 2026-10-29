@@ -219,6 +219,48 @@ jobs:
       - uses: ./.github/actions/web
       - run: npm --prefix web run build
 
+  # Playwright against the app image, started on a fresh data dir. The image's layers are cached in
+  # the Actions cache, so a change rebuilds only the stages it touches.
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: saltcellar:e2e
+          cache-from: type=gha,scope=e2e
+          cache-to: type=gha,scope=e2e,mode=max
+      - name: Start the app
+        run: |
+          [ "$(docker image inspect -f '{{.Config.User}}' saltcellar:e2e)" = nonroot ] || { echo "::error::the image must run as nonroot"; exit 1; }
+          docker run -d --name app -p 127.0.0.1:8080:8080 saltcellar:e2e
+          for _ in $(seq 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' app)" = healthy ] && exit 0
+            sleep 1
+          done
+          docker logs app
+          echo "::error::the app didn't report healthy within 60s"
+          exit 1
+      - uses: ./.github/actions/web
+      - run: npm --prefix web exec -- playwright install --with-deps --only-shell chromium
+      - run: npm --prefix web run e2e
+        env:
+          E2E_BASE_URL: http://localhost:8080
+      - name: The app's log
+        if: failure()
+        run: docker logs app
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
+
   # `just check` runs exactly what CI runs; this job proves the recipe and the jobs above agree.
   just-check:
     runs-on: ubuntu-24.04
@@ -243,6 +285,7 @@ jobs:
         with:
           tools: deny nextest llvm-cov sqlx
       - uses: ./.github/actions/web
+      - run: npm --prefix web exec -- playwright install --with-deps --only-shell chromium
       - name: Write the denylist
         env:
           LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}

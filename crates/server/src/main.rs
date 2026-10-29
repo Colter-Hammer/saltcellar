@@ -1,6 +1,7 @@
-//! `budget`: the whole app in one binary.
+//! `budget`: the whole app in one binary. `budget healthcheck` asks a running one for its health.
 
 mod config;
+mod healthcheck;
 mod web;
 
 use std::process::ExitCode;
@@ -17,6 +18,23 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    match std::env::args().nth(1).as_deref() {
+        None => {}
+        Some("healthcheck") => {
+            return match healthcheck::check(config.listen) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("budget: unhealthy: {error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Some(other) => {
+            eprintln!("budget: unknown command {other:?}; expected none or healthcheck");
+            return ExitCode::from(2);
+        }
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(
