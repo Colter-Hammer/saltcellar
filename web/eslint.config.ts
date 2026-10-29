@@ -21,23 +21,33 @@ const fetchOnlyInTheApiClient: Linter.RulesRecord = {
   ],
 }
 
+type ImportPattern = Record<'group' | 'message', string | string[]>
+
 /** Import boundaries: views → components → API client. Nothing imports upwards. */
-function noImportsFrom(...layers: string[]): Linter.RulesRecord {
-  return {
-    'no-restricted-imports': [
-      'error',
-      {
-        patterns: layers.map((layer) => ({
-          group: [`@/${layer}/**`, `**/${layer}/**`],
-          message: `Imports go views → components → API client; this file can't import from src/${layer}/.`,
-        })),
-      },
-    ],
-  }
+function upwards(...layers: string[]): ImportPattern[] {
+  return layers.map((layer) => ({
+    group: [`@/${layer}/**`, `**/${layer}/**`],
+    message: `Imports go views → components → API client; this file can't import from src/${layer}/.`,
+  }))
+}
+
+/** The generated types and the typed client stay inside src/api/, which exports what the UI needs. */
+const apiInternals: ImportPattern[] = [
+  {
+    group: ['openapi-fetch', '@/api/generated/**', '**/api/generated/**'],
+    message:
+      'Only src/api/ uses the generated API types and client; import from its modules instead.',
+  },
+]
+
+// One rule entry per file group: a later `no-restricted-imports` replaces an earlier one, never merges.
+function restrictImports(...patterns: ImportPattern[][]): Linter.RulesRecord {
+  return { 'no-restricted-imports': ['error', { patterns: patterns.flat() }] }
 }
 
 export default defineConfig(
-  { ignores: ['dist/', 'coverage/'] },
+  // src/api/generated/ is written by scripts/gen-api.sh.
+  { ignores: ['dist/', 'coverage/', 'src/api/generated/'] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
@@ -60,7 +70,9 @@ export default defineConfig(
     files: ['src/api/**'],
     rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
-  { files: ['src/components/**'], rules: noImportsFrom('views') },
-  { files: ['src/api/**', 'src/lib/**'], rules: noImportsFrom('views', 'components') },
+  { files: ['src/**/*.{ts,vue}'], rules: restrictImports(apiInternals) },
+  { files: ['src/components/**'], rules: restrictImports(apiInternals, upwards('views')) },
+  { files: ['src/lib/**'], rules: restrictImports(apiInternals, upwards('views', 'components')) },
+  { files: ['src/api/**'], rules: restrictImports(upwards('views', 'components')) },
   prettier,
 )

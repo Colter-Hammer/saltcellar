@@ -24,7 +24,7 @@ dev-api:
     BUDGET_DATA_DIR="${BUDGET_DATA_DIR:-data}" BUDGET_LISTEN="${BUDGET_LISTEN:-127.0.0.1:8080}" cargo run --locked --bin budget
 
 # Every check CI runs.
-check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations web-typecheck web-lint web-format web-knip web-test web-coverage web-build
+check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations api-contract web-typecheck web-lint web-format web-knip web-test web-coverage web-build
 
 # Denylisted personal terms anywhere in the history.
 leak-guard:
@@ -73,6 +73,14 @@ sqlx-prepare:
 # Migrations that exist on main are unchanged; new ones are numbered after them.
 migrations:
     python3 scripts/migrations.py
+
+# The committed OpenAPI document and the frontend's generated types match the Rust API.
+api-contract:
+    scripts/gen-api.sh check
+
+# Regenerate web/src/api/openapi.json and web/src/api/generated/ after changing a route or an API type.
+gen-api:
+    scripts/gen-api.sh write
 
 # Frontend types, with vue-tsc.
 web-typecheck:

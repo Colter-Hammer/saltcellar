@@ -2,6 +2,7 @@
 // Phone: header + bottom tab bar. From `lg`: sidebar (docs/spec/foundations.md#frontend).
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import ServerBanner from '@/components/ServerBanner.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 
@@ -46,6 +47,8 @@ const title = computed(() => route.meta.title)
       >
         <h1 class="font-semibold lg:text-xl">{{ title }}</h1>
       </header>
+
+      <ServerBanner />
 
       <main class="flex-1 pb-20 lg:pb-10">
         <slot />

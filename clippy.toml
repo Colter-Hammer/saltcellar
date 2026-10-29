@@ -4,3 +4,6 @@ allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-dbg-in-tests = true
 allow-print-in-tests = true
+
+# Names that read as words in doc comments, not as code; ".." keeps clippy's own list.
+doc-valid-idents = ["OpenAPI", ".."]

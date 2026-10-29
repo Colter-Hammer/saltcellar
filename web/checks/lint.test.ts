@@ -2,7 +2,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { ESLint } from 'eslint'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 const eslint = new ESLint()
 
@@ -24,6 +24,12 @@ async function ruleIds(filePath: string, code: string): Promise<string[]> {
 
 const sfc = (script: string, template = '<div />') =>
   `<script setup lang="ts">\n${script}\n</script>\n\n<template>${template}</template>\n`
+
+// The first lint loads the TypeScript program for type-aware rules, which takes several seconds
+// on a cold CI runner; pay it once here so each test below keeps the default timeout.
+beforeAll(async () => {
+  await ruleIds('src/views/WarmUp.vue', sfc(''))
+}, 60_000)
 
 describe('import boundaries', () => {
   it('stops a view calling fetch', async () => {
@@ -77,6 +83,42 @@ describe('import boundaries', () => {
     const ids = await ruleIds(
       'src/views/SomeView.vue',
       sfc("import EmptyScreen from '@/components/EmptyScreen.vue'", '<EmptyScreen />'),
+    )
+    expect(ids).toEqual([])
+  })
+})
+
+describe('the API contract', () => {
+  it('stops a component importing the generated types', async () => {
+    const ids = await ruleIds(
+      'src/components/Some.vue',
+      sfc(
+        "import type { components } from '@/api/generated/schema'\ntype H = components['schemas']['Health']\ndefineProps<{ health: H }>()",
+      ),
+    )
+    expect(ids).toContain('no-restricted-imports')
+  })
+
+  it('stops a view importing the generated types by a relative path', async () => {
+    const ids = await ruleIds(
+      'src/views/SomeView.vue',
+      sfc("import type { paths } from '../api/generated/schema'\ndefineProps<{ p: paths }>()"),
+    )
+    expect(ids).toContain('no-restricted-imports')
+  })
+
+  it('stops a view making its own typed client', async () => {
+    const ids = await ruleIds(
+      'src/views/SomeView.vue',
+      sfc("import createClient from 'openapi-fetch'\nvoid createClient"),
+    )
+    expect(ids).toContain('no-restricted-imports')
+  })
+
+  it('lets the API client use the generated types', async () => {
+    const ids = await ruleIds(
+      'src/api/some.ts',
+      "import type { components } from './generated/schema'\nexport type Health = components['schemas']['Health']\n",
     )
     expect(ids).toEqual([])
   })

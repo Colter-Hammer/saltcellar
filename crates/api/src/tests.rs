@@ -127,3 +127,29 @@ async fn json_mutating_requests_get_through() {
         assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{content_type}");
     }
 }
+
+#[tokio::test]
+async fn the_openapi_document_is_served() {
+    let app = app().await;
+    let (status, body) = send(app.router, get("/api/openapi.json")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, serde_json::to_value(crate::openapi()).unwrap());
+}
+
+#[test]
+fn the_openapi_document_describes_health_and_the_error_envelope() {
+    let doc = serde_json::to_value(crate::openapi()).unwrap();
+    let health = &doc["paths"]["/api/v1/health"]["get"]["responses"];
+    assert_eq!(
+        health["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Health"
+    );
+    assert_eq!(
+        health["503"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/ErrorEnvelope"
+    );
+    let schemas = &doc["components"]["schemas"];
+    assert_eq!(schemas["Health"]["required"], json!(["status"]));
+    assert_eq!(schemas["ErrorEnvelope"]["required"], json!(["error"]));
+    assert_eq!(schemas["ErrorBody"]["required"], json!(["code", "message"]));
+}

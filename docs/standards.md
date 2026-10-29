@@ -20,7 +20,7 @@ Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`)
 
 | Rule | Check | Where |
 | --- | --- | --- |
-| Personal data files are never committed: `.env*`, `data/`, backups, `*.sqlite*`, `*.zip`, `*.age`, and `*.csv` / `*.ofx` / `*.qfx` / `*.qbo` / `*.json` outside `fixtures/` (tool JSON configs listed one by one, `web/components.json` among them). `.scratch/` stays local. | `.gitignore` default-deny | `git add` |
+| Personal data files are never committed: `.env*`, `data/`, backups, `*.sqlite*`, `*.zip`, `*.age`, and `*.csv` / `*.ofx` / `*.qfx` / `*.qbo` / `*.json` outside `fixtures/` (tool JSON configs and the generated `web/src/api/openapi.json` listed one by one, `web/components.json` among them). `.scratch/` stays local. | `.gitignore` default-deny | `git add` |
 | The same file types can't be committed even if forced past `.gitignore`; no file over 1 MiB. | File rule: `scripts/guard.py files` | hook: pre-commit (staged), pre-push (the commits being pushed); check, CI `file-rule`: full history |
 | No personal terms (names, account suffixes, banks, places, domains, IPs, payees) in any file, file name or commit message. No excluded paths. The denylist lives outside the repo. | Leak guard: `scripts/guard.py leak` | hook: pre-commit (staged), commit-msg, pre-push (the commits being pushed); check, CI `leak-guard`: full history (denylist from the `LEAK_DENYLIST` Actions secret) |
 | The leak guard never passes without a denylist. | `scripts/guard.py` exits with an error naming the expected path | everywhere the leak guard runs |
@@ -48,6 +48,8 @@ The frontend is `web/`. Its checks run with `npm --prefix web run <script>`; `ju
 | TypeScript is `strict`, with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, in `.ts` and `.vue` files alike. | `vue-tsc -b` with `web/tsconfig.app.json` and `web/tsconfig.node.json` | check, CI `web-typecheck` |
 | ESLint `typescript-eslint` strict-type-checked and stylistic-type-checked, plus `eslint-plugin-vue` recommended; zero warnings. That includes no `any` and no non-null `!`. | `eslint --max-warnings 0` with `web/eslint.config.ts` | check, CI `web-lint` |
 | Import boundaries: views → components → API client. Only `src/api/` calls `fetch` (bare, or on `window`, `globalThis` or `self`); components never import views; `src/api/` and `src/lib/` import neither. | `no-restricted-globals`, `no-restricted-properties` and `no-restricted-imports` in `web/eslint.config.ts`; `web/checks/lint.test.ts` proves each rule fires | check, CI `web-lint`, `web-test` |
+| API types are generated, never hand-written ([ADR-0007](adr/0007-generated-api-contract.md)): the committed `web/src/api/openapi.json` and `web/src/api/generated/` match what the Rust API generates. Regenerate them with `just gen-api`. | `scripts/gen-api.sh check` (the `api` crate's `openapi` example, then `openapi-typescript`, diffed with what's committed) | check, CI `api-contract` |
+| Only `src/api/` uses the generated types and the typed client (`openapi-fetch`); the rest of the app imports `src/api/`'s functions and hooks. Hand-written request and response types are caught in review. | `no-restricted-imports` in `web/eslint.config.ts`; `web/checks/lint.test.ts` proves it fires | check, CI `web-lint`, `web-test` |
 | Code is Prettier-formatted. | `prettier --check` (config in `web/package.json`) | check, CI `web-format` |
 | No unused files, exports or dependencies. | `knip` | check, CI `web-knip` |
 | The frontend builds. | `vite build` into `web/dist` | check, CI `web-build` |
