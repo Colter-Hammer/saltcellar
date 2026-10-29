@@ -15,8 +15,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    // The fresh install is claimed first, through the setup wizard.
-    { name: 'setup', testMatch: 'setup.spec.ts', use: { ...devices['Desktop Chrome'] } },
+    // The fresh install is claimed first, through the setup wizard, on a phone.
+    { name: 'setup', testMatch: 'setup.spec.ts', use: { ...devices['Pixel 7'] } },
     // Then the two layouts: a phone (tab bar) and a desktop (sidebar), both in Chromium.
     {
       name: 'phone',

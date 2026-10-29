@@ -2,7 +2,7 @@
 // setup code read from the app's log. It runs once, before the phone and desktop projects, and
 // leaves its login's cookie in STORAGE_STATE for them.
 import { execSync } from 'node:child_process'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { STORAGE_STATE } from './login-state.js'
 
 const PASSWORD = 'correct horse battery staple'
@@ -23,6 +23,15 @@ function setupCode(): string {
 
 test.use({ locale: 'en-US', timezoneId: 'Asia/Tokyo' })
 
+/** Taps the list on `label`, types `query` and taps the option named `option`. */
+async function choose(page: Page, label: string, query: string, option: string) {
+  const field = page.getByLabel(label)
+  await field.click()
+  await field.fill(query)
+  await page.getByRole('option', { name: option }).click()
+  await expect(field).toHaveValue(option)
+}
+
 test('a fresh install is claimed with the setup code from the log', async ({ page, request }) => {
   const gated = await request.get('/api/v1/household')
   expect(gated.status()).toBe(403)
@@ -41,10 +50,12 @@ test('a fresh install is claimed with the setup code from the log', async ({ pag
   await page.getByLabel('Setup code').fill(code)
   await page.getByRole('button', { name: 'Continue' }).click()
 
-  await expect(page.getByLabel('Currency')).toHaveValue('USD')
+  await expect(page.getByLabel('Currency')).toHaveValue('US Dollar (USD)')
   await expect(page.getByLabel('Timezone')).toHaveValue('Asia/Tokyo')
-  await page.getByLabel('Currency').fill('EUR')
-  await page.getByLabel('Timezone').fill('Europe/Berlin')
+  await page.getByLabel('Currency').click()
+  await expect(page.getByRole('option', { name: 'Euro (EUR)' })).toBeVisible()
+  await choose(page, 'Currency', 'euro', 'Euro (EUR)')
+  await choose(page, 'Timezone', 'berlin', 'Europe/Berlin')
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await page.getByLabel('Your name').fill('Sam Example')
