@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "knip": "knip",
     "test": "vitest run",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@lucide/vue": "1.63.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "24.19.2",
     "@vitejs/plugin-vue": "6.0.10",

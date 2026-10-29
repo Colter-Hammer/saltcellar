@@ -1,0 +1,18 @@
+# An example deployment (docs/deploy.md). `docker compose up --build` builds from source;
+# set BUDGET_IMAGE to run another image instead. Put your HTTPS reverse proxy in front of it.
+
+services:
+  budget:
+    image: ${BUDGET_IMAGE:-saltcellar:local}
+    build: .
+    restart: unless-stopped
+    environment:
+      BUDGET_BASE_URL: ${BUDGET_BASE_URL:-}
+    # Localhost only: the reverse proxy is what other machines reach.
+    ports:
+      - "127.0.0.1:${BUDGET_PORT:-8080}:8080"
+    volumes:
+      - data:/data
+
+volumes:
+  data:

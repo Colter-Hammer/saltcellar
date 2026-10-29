@@ -30,6 +30,7 @@ The code is written with [Claude Code](https://claude.com/claude-code), Anthropi
 - [Spec](docs/spec/README.md): what is being built, milestone by milestone.
 - [Glossary](GLOSSARY.md): the words the app uses, like budget, fund and tracking account.
 - [Decisions](docs/adr/): the hard-to-reverse choices and why they were made.
+- [Deploying](docs/deploy.md): Docker Compose, the environment variables and the reverse proxy.
 - [Contributing](CONTRIBUTING.md): tools, checks and how changes get merged.
 
 ## License

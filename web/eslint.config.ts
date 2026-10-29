@@ -47,7 +47,7 @@ function restrictImports(...patterns: ImportPattern[][]): Linter.RulesRecord {
 
 export default defineConfig(
   // src/api/generated/ is written by scripts/gen-api.sh.
-  { ignores: ['dist/', 'coverage/', 'src/api/generated/'] },
+  { ignores: ['dist/', 'coverage/', 'test-results/', 'playwright-report/', 'src/api/generated/'] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,

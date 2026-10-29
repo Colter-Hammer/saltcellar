@@ -18,18 +18,20 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 | `gitleaks` | 8.30.1 | release binary from [gitleaks/gitleaks](https://github.com/gitleaks/gitleaks/releases) into `~/.local/bin` |
 | `gh` | 2.103.3 | release binary from [cli/cli](https://github.com/cli/cli/releases) into `~/.local/bin` |
 | Node | see `.nvmrc` | `nvm install` in the repo root |
+| Docker | Engine 29, with the Compose plugin | [Docker Engine](https://docs.docker.com/engine/install/); `just e2e` and `just check` build and run the app image |
 | Python | 3.10 or newer | the system `python3` (the guards use the standard library only) |
 
 ## First time
 
 1. Put the leak-guard denylist at `~/.config/budget-leak-denylist.txt`, or set `BUDGET_LEAK_DENYLIST` to its path. It is personal, so it is never in the repo; ask the owner for it. The hooks and `just check` fail until it exists.
-2. `nvm install` in the repo root, then `just setup`: it installs the git hooks and the frontend's dependencies (`npm --prefix web ci`).
+2. `nvm install` in the repo root, then `just setup`: it installs the git hooks, the frontend's dependencies (`npm --prefix web ci`) and Playwright's Chromium.
 
 ## Every change
 
 - `just check` runs exactly what CI runs. Run it before opening a PR. `just --list` shows each check as its own recipe (`just clippy`, `just test`, …).
 - `just dev` runs the API and the frontend together: open <http://localhost:5173>. Vite reloads on every change and proxies `/api` to the API on port 8080; `BUDGET_LISTEN=127.0.0.1:8090 just dev` moves both.
 - `just dev-api` runs only the server, on <http://localhost:8080>, with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port. The server also serves the frontend from `web/dist` once it's built (`npm --prefix web run build`).
+- `just e2e` builds the app image, starts it with compose on a fresh volume at <http://localhost:8180> (`E2E_PORT` moves it) and runs the Playwright tests in `web/e2e/` against it. Tests use fake data only.
 - After adding or changing frontend dependencies, commit `web/package-lock.json` with `web/package.json`; CI installs with `npm ci`.
 - After adding or changing a sqlx query, run `just sqlx-prepare` and commit the new `.sqlx/` files.
 - After changing a route or a type the API sends or takes, run `just gen-api` and commit `web/src/api/openapi.json` and `web/src/api/generated/` with the Rust change. The frontend imports those types only through `web/src/api/`.

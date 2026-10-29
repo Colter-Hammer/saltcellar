@@ -6,10 +6,11 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# Install the git hooks (pre-commit, commit-msg, pre-push) and the frontend's dependencies.
+# Install the git hooks (pre-commit, commit-msg, pre-push), the frontend's dependencies and Playwright's browser.
 setup:
     lefthook install
     npm --prefix web ci
+    npm --prefix web exec -- playwright install --only-shell chromium
 
 # The API and the frontend together: open http://localhost:5173 (Vite, proxying /api to the API at BUDGET_LISTEN).
 dev:
@@ -24,7 +25,7 @@ dev-api:
     BUDGET_DATA_DIR="${BUDGET_DATA_DIR:-data}" BUDGET_LISTEN="${BUDGET_LISTEN:-127.0.0.1:8080}" cargo run --locked --bin budget
 
 # Every check CI runs.
-check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations api-contract web-typecheck web-lint web-format web-knip web-test web-coverage web-build
+check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations api-contract web-typecheck web-lint web-format web-knip web-test web-coverage web-build e2e
 
 # Denylisted personal terms anywhere in the history.
 leak-guard:
@@ -109,3 +110,15 @@ web-coverage:
 # The frontend builds to web/dist.
 web-build:
     npm --prefix web run build
+
+# Playwright against the app image: compose builds it from source and starts it on a fresh volume, at http://localhost:E2E_PORT (8180).
+e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export BUDGET_IMAGE=saltcellar:e2e BUDGET_PORT="${E2E_PORT:-8180}"
+    compose=(docker compose -p saltcellar-e2e)
+    trap '"${compose[@]}" down -v >/dev/null 2>&1' EXIT
+    "${compose[@]}" down -v >/dev/null 2>&1
+    "${compose[@]}" up -d --build --wait
+    [ "$(docker image inspect -f '{{{{.Config.User}}' "$BUDGET_IMAGE")" = nonroot ] || { echo "e2e: the image must run as nonroot" >&2; exit 1; }
+    E2E_BASE_URL="http://localhost:$BUDGET_PORT" npm --prefix web run e2e

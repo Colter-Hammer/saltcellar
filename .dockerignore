@@ -1,0 +1,16 @@
+# Default-deny build context: only what the image builds from. data/ and .scratch/ never enter it.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!.cargo/
+!.sqlx/
+!crates/
+!migrations/
+!web/
+web/node_modules/
+web/dist/
+web/coverage/
+web/e2e/
+web/test-results/
+web/playwright-report/
