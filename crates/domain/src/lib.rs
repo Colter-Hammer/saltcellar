@@ -7,6 +7,7 @@ mod currency;
 mod date;
 pub mod login;
 mod money;
+pub mod profile;
 mod setup_code;
 pub mod throttle;
 mod timezone;

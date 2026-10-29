@@ -259,7 +259,7 @@ pub async fn finish_setup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::migrated;
+    use crate::tests::{migrated, set_up};
 
     fn at(s: &str) -> Timestamp {
         s.parse().unwrap()
@@ -372,16 +372,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((users, sessions), (1, 1));
-    }
-
-    /// A finished setup: `sam`'s login and the session `abc123`, from 09:00.
-    async fn set_up() -> (tempfile::TempDir, SqlitePool) {
-        let (dir, pool) = migrated().await;
-        let f = fixture();
-        finish_setup(&pool, &setup(&f), at("2026-10-28T09:00:00Z"))
-            .await
-            .unwrap();
-        (dir, pool)
     }
 
     async fn sessions(pool: &SqlitePool) -> Vec<(String, String)> {

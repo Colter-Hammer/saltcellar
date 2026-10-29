@@ -19,6 +19,13 @@ interface FakeServer {
   finishedWith?: unknown
   /** Field errors it answers `POST /api/v1/setup` with, beside the password checks. */
   refuse?: Record<string, string>
+  /** The login's password: the one setup chose, until it's changed or reset. */
+  password: string
+  /** The login's saved locale and week start. */
+  locale: string | null
+  weekStart: number | null
+  /** The reset link's token that still works, if any. */
+  resetToken?: string | undefined
 }
 
 let server: FakeServer
@@ -34,6 +41,12 @@ async function answer(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/api/v1/health') return Response.json({ status: 'ok' })
   if (path === '/api/v1/session') return session(request)
+  if (path === '/api/v1/sessions' && request.method === 'DELETE') {
+    server.loggedIn = false
+    return new Response(null, { status: 204 })
+  }
+  if (path.startsWith('/api/v1/profile')) return profile(request, path)
+  if (path.startsWith('/api/v1/password-reset')) return reset(request, path)
   if (path === '/api/v1/setup' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, string>
     if (body.code !== server.code) {
@@ -91,11 +104,74 @@ async function session(request: Request): Promise<Response> {
     return error(429, 'too_many_attempts', 'Too many attempts. Try again in 15 minutes.')
   }
   const { username, password } = (await request.json()) as Record<string, string>
-  if (username?.trim().toLowerCase() !== 'sam' || password !== PASSWORD) {
+  if (username?.trim().toLowerCase() !== 'sam' || password !== server.password) {
     server.failures += 1
     return error(401, 'login_failed', 'Wrong username or password.')
   }
   server.failures = 0
+  server.loggedIn = true
+  return new Response(null, { status: 204 })
+}
+
+function invalid(fields: Record<string, string>) {
+  return Response.json(
+    { error: { code: 'validation_failed', message: 'Some details need another look.', fields } },
+    { status: 422 },
+  )
+}
+
+function passwordProblems(password = '', again = ''): Record<string, string> {
+  if (password.length < 12) return { password: 'Use at least 12 characters.' }
+  if (password !== again) return { password_again: "The passwords don't match." }
+  return {}
+}
+
+async function profile(request: Request, path: string): Promise<Response> {
+  if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+  if (path === '/api/v1/profile/password') {
+    const body = (await request.json()) as Record<string, string>
+    if (body.current_password !== server.password) {
+      return invalid({ current_password: "That isn't your current password." })
+    }
+    const problems = passwordProblems(body.password, body.password_again)
+    if (Object.keys(problems).length > 0) return invalid(problems)
+    server.password = body.password ?? ''
+    return new Response(null, { status: 204 })
+  }
+  if (request.method === 'PUT') {
+    const body = (await request.json()) as {
+      display_locale: string | null
+      week_start: number | null
+    }
+    if (body.display_locale === 'de-AT') {
+      return invalid({ display_locale: 'Choose a locale from the list.' })
+    }
+    server.locale = body.display_locale
+    server.weekStart = body.week_start
+  }
+  return Response.json({
+    username: 'sam',
+    display_name: 'Sam',
+    display_locale: server.locale,
+    week_start: server.weekStart,
+  })
+}
+
+const dead = () =>
+  error(
+    410,
+    'reset_link_dead',
+    'This reset link has expired or was already used. Ask for a new one.',
+  )
+
+async function reset(request: Request, path: string): Promise<Response> {
+  const body = (await request.json()) as Record<string, string>
+  if (server.resetToken === undefined || body.token !== server.resetToken) return dead()
+  if (path === '/api/v1/password-reset/check') return new Response(null, { status: 204 })
+  const problems = passwordProblems(body.password, body.password_again)
+  if (Object.keys(problems).length > 0) return invalid(problems)
+  server.password = body.password ?? ''
+  server.resetToken = undefined
   server.loggedIn = true
   return new Response(null, { status: 204 })
 }
@@ -118,7 +194,15 @@ function serverDown() {
 Element.prototype.scrollIntoView = () => undefined
 
 beforeEach(() => {
-  server = { setupDone: true, loggedIn: true, failures: 0, code: SETUP_CODE }
+  server = {
+    setupDone: true,
+    loggedIn: true,
+    failures: 0,
+    code: SETUP_CODE,
+    password: PASSWORD,
+    locale: null,
+    weekStart: null,
+  }
   serverUp()
 })
 
@@ -577,5 +661,217 @@ describe('logging out', () => {
     await router.push('/accounts')
     expect(router.currentRoute.value.path).toBe('/login')
     expect(router.currentRoute.value.query).toEqual({ next: '/accounts' })
+  })
+})
+
+describe('Settings', () => {
+  it('lists Profile, which opens it', async () => {
+    const { router, wrapper } = await open('/settings')
+    const links = wrapper.get('main').findAll('a')
+    expect(links.map((a) => [a.text(), a.attributes('href')])).toEqual([
+      ['Profile', '/settings/profile'],
+    ])
+    await links[0]?.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/settings/profile')
+    expect(wrapper.get('h1').text()).toBe('Profile')
+  })
+})
+
+describe('Settings › Profile', () => {
+  const example = (wrapper: Wrapper) => wrapper.get('[data-testid="format-example"]').text()
+
+  it('shows the saved name, and follows the browser until told otherwise', async () => {
+    const { wrapper } = await open('/settings/profile')
+    expect(wrapper.get<HTMLInputElement>('[name="display_name"]').element.value).toBe('Sam')
+    expect(wrapper.get<HTMLInputElement>('#display_locale').element.value).toBe(
+      'Browser default (English (United States) · en-US)',
+    )
+    expect(wrapper.get<HTMLSelectElement>('#week_start').element.value).toBe('')
+    expect(wrapper.get('#week_start option').text()).toBe('Sunday, from the locale')
+    expect(example(wrapper)).toBe(
+      'Amounts look like -€1,234.56 and dates like Mar 1, 2026; weeks start on Sunday.',
+    )
+  })
+
+  it('changes number and date formats at once when the locale changes to de-DE', async () => {
+    const { wrapper } = await open('/settings/profile')
+    await choose(wrapper, 'display_locale', 'german germany', 'German (Germany) · de-DE')
+    expect(wrapper.get('#week_start option').text()).toBe('Monday, from the locale')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(server.locale).toBe('de-DE')
+    expect(wrapper.get('[role="status"]').text()).toBe('Saved.')
+    expect(example(wrapper)).toBe(
+      'Amounts look like -1.234,56\u00a0€ and dates like 01.03.2026; weeks start on Monday.',
+    )
+  })
+
+  it("starts weeks on the chosen day, and goes back to the browser's ways", async () => {
+    server.locale = 'de-DE'
+    const { wrapper } = await open('/settings/profile')
+    await wrapper.get('#week_start').setValue('6')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(server.weekStart).toBe(6)
+    expect(example(wrapper)).toContain('weeks start on Saturday')
+
+    await choose(
+      wrapper,
+      'display_locale',
+      'browser',
+      'Browser default (English (United States) · en-US)',
+    )
+    await wrapper.get('#week_start').setValue('')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect([server.locale, server.weekStart]).toEqual([null, null])
+    expect(example(wrapper)).toContain('-€1,234.56')
+  })
+
+  it('shows what the server refuses on its field', async () => {
+    const { wrapper } = await open('/settings/profile')
+    await choose(wrapper, 'display_locale', 'austria', 'German (Austria) · de-AT')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('#display_locale-error').text()).toBe('Choose a locale from the list.')
+  })
+
+  it("says so if the server can't be reached", async () => {
+    const { wrapper } = await open('/settings/profile')
+    serverDown()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('form [role="alert"]').text()).toBe("Can't reach the server.")
+  })
+
+  async function changePassword(wrapper: Wrapper, values: Record<string, string>) {
+    const form = wrapper.findAll('form')[1]
+    if (form === undefined) throw new Error('no password form')
+    for (const [name, value] of Object.entries(values)) {
+      await form.get(`[name="${name}"]`).setValue(value)
+    }
+    await form.trigger('submit')
+    await flushPromises()
+    return form
+  }
+
+  it('changes the password, given the current one', async () => {
+    const { wrapper } = await open('/settings/profile')
+    const fresh = 'a whole new passphrase'
+    let form = await changePassword(wrapper, {
+      current_password: 'not my password',
+      password: fresh,
+      password_again: fresh,
+    })
+    expect(form.get('#current_password-error').text()).toBe("That isn't your current password.")
+    form = await changePassword(wrapper, {
+      current_password: PASSWORD,
+      password: fresh,
+      password_again: `${fresh}!`,
+    })
+    expect(form.get('#password_again-error').text()).toBe("The passwords don't match.")
+
+    form = await changePassword(wrapper, {
+      current_password: PASSWORD,
+      password: fresh,
+      password_again: fresh,
+    })
+    expect(server.password).toBe(fresh)
+    expect(form.get('[role="status"]').text()).toBe('Password changed.')
+    expect(form.get<HTMLInputElement>('[name="current_password"]').element.value).toBe('')
+  })
+
+  it("says so if the server can't be reached to change the password", async () => {
+    const { wrapper } = await open('/settings/profile')
+    serverDown()
+    const form = await changePassword(wrapper, {
+      current_password: PASSWORD,
+      password: 'a whole new passphrase',
+      password_again: 'a whole new passphrase',
+    })
+    expect(form.get('[role="alert"]').text()).toBe("Can't reach the server.")
+  })
+
+  function everywhere(wrapper: Wrapper) {
+    const button = wrapper.findAll('button').find((b) => b.text() === 'Log out everywhere')
+    if (button === undefined) throw new Error('no Log out everywhere')
+    return button
+  }
+
+  it('logs out everywhere and ends on the log-in page', async () => {
+    const { router, wrapper } = await open('/settings/profile')
+    await everywhere(wrapper).trigger('click')
+    await flushPromises()
+    expect(server.loggedIn).toBe(false)
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query).toEqual({})
+  })
+
+  it("stays put and says so if the server can't be reached to log out everywhere", async () => {
+    const { router, wrapper } = await open('/settings/profile')
+    serverDown()
+    await everywhere(wrapper).trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/settings/profile')
+    expect(wrapper.text()).toContain("Can't reach the server.")
+  })
+})
+
+describe('the reset link', () => {
+  const TOKEN = 'ab'.repeat(32)
+
+  beforeEach(() => {
+    server.loggedIn = false
+    server.resetToken = TOKEN
+  })
+
+  it('opens the set-new-password page, takes the token out of the address, and logs in', async () => {
+    const { router, wrapper } = await open(`/reset-password#${TOKEN}`)
+    expect(wrapper.get('h1').text()).toBe('Set a new password')
+    expect(wrapper.find('nav').exists()).toBe(false)
+    expect(router.currentRoute.value.fullPath).toBe('/reset-password')
+
+    await submit(wrapper, { password: 'elevenchars', password_again: 'elevenchars' })
+    expect(wrapper.get('#password-error').text()).toBe('Use at least 12 characters.')
+
+    const fresh = 'a whole new passphrase'
+    await submit(wrapper, { password: fresh, password_again: fresh })
+    expect(server.password).toBe(fresh)
+    expect(router.currentRoute.value.path).toBe('/transactions')
+    expect(wrapper.get('h1').text()).toBe('Transactions')
+  })
+
+  it('says a used or expired link is dead, and offers to log in', async () => {
+    server.resetToken = undefined
+    const { wrapper } = await open(`/reset-password#${TOKEN}`)
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      'This reset link has expired or was already used. Ask for a new one.',
+    )
+    expect(wrapper.get('main a').attributes('href')).toBe('/login')
+  })
+
+  it('says so when the link dies while the page is open', async () => {
+    const { wrapper } = await open(`/reset-password#${TOKEN}`)
+    server.resetToken = undefined
+    const fresh = 'a whole new passphrase'
+    await submit(wrapper, { password: fresh, password_again: fresh })
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.get('[role="alert"]').text()).toContain('This reset link has expired')
+  })
+
+  it('says so when the address has no token', async () => {
+    const { wrapper } = await open('/reset-password')
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      'This address has no reset link in it. Copy the whole link again.',
+    )
+  })
+
+  it("still offers the form if the server can't be asked about the link", async () => {
+    serverDown()
+    const { wrapper } = await open(`/reset-password#${TOKEN}`)
+    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.get('form [role="alert"]').text()).toBe("Can't reach the server.")
   })
 })

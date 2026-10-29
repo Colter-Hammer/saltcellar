@@ -735,6 +735,403 @@ async fn before_setup_logging_in_is_setup_required() {
     assert_eq!(body["error"]["code"], "setup_required");
 }
 
+// ───────────────────────── Password reset ─────────────────────────
+
+/// A reset link's token for `username`, issued now by the app's clock, as the CLI does.
+async fn issue_reset(app: &App, username: &str) -> String {
+    let now = *app.now.lock().unwrap();
+    let link = crate::issue_password_reset(&app.pool, username, now)
+        .await
+        .unwrap();
+    let path = link.path();
+    path.strip_prefix("/reset-password#").unwrap().to_owned()
+}
+
+fn check_reset(token: &str) -> Request<Body> {
+    post("/api/v1/password-reset/check", &json!({ "token": token }))
+}
+
+fn use_reset(token: &str, password: &str, again: &str) -> Request<Body> {
+    post(
+        "/api/v1/password-reset",
+        &json!({ "token": token, "password": password, "password_again": again }),
+    )
+}
+
+const NEW_PASSWORD: &str = "a whole new passphrase";
+
+#[tokio::test]
+async fn a_reset_link_sets_a_new_password_and_logs_in_once() {
+    let app = set_up().await;
+    let token = issue_reset(&app, " Sam ").await;
+    assert_eq!(token.len(), 64);
+    let (status, _) = send(app.router.clone(), check_reset(&token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, headers, _) = send_full(
+        app.router.clone(),
+        use_reset(&token, NEW_PASSWORD, NEW_PASSWORD),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let cookie = session_cookie(&headers).unwrap();
+    let (status, body) = send(app.router.clone(), with(&cookie, get("/api/v1/session"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["username"], "sam");
+
+    // The new password works, the old one doesn't, and the setup session has ended.
+    let (status, _) = send(app.router.clone(), log_in("sam", NEW_PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/session")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Once only.
+    let dead = json!({ "error": {
+        "code": "reset_link_dead",
+        "message": "This reset link has expired or was already used. Ask for a new one.",
+    } });
+    let (status, body) = send(app.router.clone(), check_reset(&token)).await;
+    assert_eq!((status, body), (StatusCode::GONE, dead.clone()));
+    let (status, body) = send(
+        app.router.clone(),
+        use_reset(&token, "yet another passphrase", "yet another passphrase"),
+    )
+    .await;
+    assert_eq!((status, body), (StatusCode::GONE, dead));
+}
+
+#[tokio::test]
+async fn a_reset_link_is_refused_after_twenty_four_hours() {
+    let app = set_up().await;
+    let token = issue_reset(&app, "sam").await;
+    app.wait(SignedDuration::from_hours(24) - SignedDuration::from_secs(1));
+    let (status, _) = send(app.router.clone(), check_reset(&token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    app.wait(SignedDuration::from_secs(1));
+    let (status, body) = send(app.router.clone(), check_reset(&token)).await;
+    assert_eq!(status, StatusCode::GONE);
+    assert_eq!(body["error"]["code"], "reset_link_dead");
+    let (status, _) = send(
+        app.router.clone(),
+        use_reset(&token, NEW_PASSWORD, NEW_PASSWORD),
+    )
+    .await;
+    assert_eq!(status, StatusCode::GONE);
+    let (status, _) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn a_new_reset_link_kills_the_older_one() {
+    let app = set_up().await;
+    let older = issue_reset(&app, "sam").await;
+    let newer = issue_reset(&app, "sam").await;
+    let (status, _) = send(app.router.clone(), check_reset(&older)).await;
+    assert_eq!(status, StatusCode::GONE);
+    let (status, _) = send(app.router.clone(), check_reset(&newer)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn an_unknown_login_gets_no_reset_link() {
+    let app = set_up().await;
+    let now = *app.now.lock().unwrap();
+    for name in ["alex", "not a username", ""] {
+        let error = crate::issue_password_reset(&app.pool, name, now)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, crate::IssueResetError::UnknownLogin(n) if n == name),
+            "{error}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_reset_link_never_shows_in_debug_output() {
+    let app = set_up().await;
+    let now = *app.now.lock().unwrap();
+    let link = crate::issue_password_reset(&app.pool, "sam", now)
+        .await
+        .unwrap();
+    assert_eq!(format!("{link:?}"), "ResetLink(..)");
+}
+
+#[tokio::test]
+async fn a_reset_checks_the_new_password_and_keeps_the_link_alive() {
+    let app = set_up().await;
+    let token = issue_reset(&app, "sam").await;
+    let (status, body) = send(
+        app.router.clone(),
+        use_reset(&token, "elevenchars", "elevenchars"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body["error"]["fields"],
+        json!({ "password": "Use at least 12 characters." })
+    );
+    let (status, body) = send(
+        app.router.clone(),
+        use_reset(&token, NEW_PASSWORD, "a whole new passphrasE"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body["error"]["fields"],
+        json!({ "password_again": "The passwords don't match." })
+    );
+    let (status, _) = send(app.router.clone(), check_reset(&token)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn a_made_up_token_is_dead_and_the_reset_routes_need_setup() {
+    let done = set_up().await;
+    let (status, _) = send(done.router.clone(), check_reset("nope")).await;
+    assert_eq!(status, StatusCode::GONE);
+
+    let fresh = app().await;
+    let (status, body) = send(fresh.router, check_reset("nope")).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"]["code"], "setup_required");
+}
+
+#[tokio::test]
+async fn a_reset_ends_a_throttle_pause() {
+    let app = set_up().await;
+    for _ in 0..5 {
+        send(app.router.clone(), log_in("sam", "wrong wrong wrong")).await;
+    }
+    let token = issue_reset(&app, "sam").await;
+    send(
+        app.router.clone(),
+        use_reset(&token, NEW_PASSWORD, NEW_PASSWORD),
+    )
+    .await;
+    let (status, _) = send(app.router.clone(), log_in("sam", NEW_PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+// ───────────────────────── Profile ─────────────────────────
+
+fn put(uri: &str, body: &Value) -> Request<Body> {
+    let mut request = post(uri, body);
+    *request.method_mut() = axum::http::Method::PUT;
+    request
+}
+
+fn change_profile(locale: &Value, week_start: &Value) -> Request<Body> {
+    put(
+        "/api/v1/profile",
+        &json!({ "display_name": " Sam Lee ", "display_locale": locale, "week_start": week_start }),
+    )
+}
+
+fn change_password(current: &str, password: &str, again: &str) -> Request<Body> {
+    post(
+        "/api/v1/profile/password",
+        &json!({ "current_password": current, "password": password, "password_again": again }),
+    )
+}
+
+fn log_out_everywhere() -> Request<Body> {
+    Request::delete("/api/v1/sessions")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::HOST, "localhost:8080")
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_profile_starts_out_following_the_browser() {
+    let app = set_up().await;
+    let (status, body) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/profile")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({ "username": "sam", "display_name": "Sam", "display_locale": null, "week_start": null })
+    );
+}
+
+#[tokio::test]
+async fn the_profile_saves_and_clears_the_locale_and_week_start() {
+    let app = set_up().await;
+    let (status, body) = send(
+        app.router.clone(),
+        with(&app.cookie, change_profile(&json!("de-DE"), &json!(1))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({ "username": "sam", "display_name": "Sam Lee", "display_locale": "de-DE", "week_start": 1 })
+    );
+    let (_, body) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/session")),
+    )
+    .await;
+    assert_eq!(body["display_name"], "Sam Lee");
+
+    let (_, body) = send(
+        app.router.clone(),
+        with(&app.cookie, change_profile(&Value::Null, &Value::Null)),
+    )
+    .await;
+    assert_eq!(
+        (&body["display_locale"], &body["week_start"]),
+        (&Value::Null, &Value::Null)
+    );
+}
+
+#[tokio::test]
+async fn the_profile_names_each_field_that_is_wrong() {
+    let app = set_up().await;
+    let request = put(
+        "/api/v1/profile",
+        &json!({ "display_name": " ", "display_locale": "en_US", "week_start": 7 }),
+    );
+    let (status, body) = send(app.router.clone(), with(&app.cookie, request)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body["error"]["fields"],
+        json!({
+            "display_name": "Enter a name.",
+            "display_locale": "Choose a locale from the list.",
+            "week_start": "Choose a day of the week.",
+        })
+    );
+    let (_, body) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/profile")),
+    )
+    .await;
+    assert_eq!(body["display_name"], "Sam");
+}
+
+#[tokio::test]
+async fn the_profile_needs_a_login() {
+    let app = set_up().await;
+    for request in [
+        get("/api/v1/profile"),
+        change_profile(&json!("de-DE"), &json!(1)),
+        change_password(PASSWORD, NEW_PASSWORD, NEW_PASSWORD),
+        log_out_everywhere(),
+    ] {
+        let (status, body) = send(app.router.clone(), request).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(body["error"]["code"], "login_required");
+    }
+}
+
+#[tokio::test]
+async fn changing_the_password_needs_the_current_one() {
+    let app = set_up().await;
+    let (status, body) = send(
+        app.router.clone(),
+        with(
+            &app.cookie,
+            change_password("not my password", NEW_PASSWORD, NEW_PASSWORD),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body["error"]["fields"],
+        json!({ "current_password": "That isn't your current password." })
+    );
+    let (status, body) = send(
+        app.router.clone(),
+        with(
+            &app.cookie,
+            change_password(PASSWORD, NEW_PASSWORD, "something else entirely"),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body["error"]["fields"],
+        json!({ "password_again": "The passwords don't match." })
+    );
+
+    let (status, _) = send(
+        app.router.clone(),
+        with(
+            &app.cookie,
+            change_password(PASSWORD, NEW_PASSWORD, NEW_PASSWORD),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(app.router.clone(), log_in("sam", PASSWORD)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(app.router.clone(), log_in("sam", NEW_PASSWORD)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // This session stays logged in.
+    let (status, _) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/session")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn wrong_current_passwords_are_throttled() {
+    let app = set_up().await;
+    for _ in 0..5 {
+        let (status, _) = send(
+            app.router.clone(),
+            with(
+                &app.cookie,
+                change_password("not my password", NEW_PASSWORD, NEW_PASSWORD),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let (status, body) = send(
+        app.router.clone(),
+        with(
+            &app.cookie,
+            change_password(PASSWORD, NEW_PASSWORD, NEW_PASSWORD),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(body["error"]["code"], "too_many_attempts");
+}
+
+#[tokio::test]
+async fn logging_out_everywhere_ends_every_session_of_the_login() {
+    let app = set_up().await;
+    let (_, headers, _) = send_full(app.router.clone(), log_in("sam", PASSWORD)).await;
+    let phone = session_cookie(&headers).unwrap();
+
+    let (status, headers, _) =
+        send_full(app.router.clone(), with(&app.cookie, log_out_everywhere())).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        headers[header::SET_COOKIE],
+        "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+    );
+    for cookie in [&app.cookie, &phone] {
+        let (status, _) = send(app.router.clone(), with(cookie, get("/api/v1/session"))).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+}
+
 #[test]
 fn the_openapi_document_describes_health_and_the_error_envelope() {
     let doc = serde_json::to_value(crate::openapi()).unwrap();

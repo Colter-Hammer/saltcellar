@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users SET display_name = ?, display_locale = ?, week_start = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "38f1ecb96be3296d9d706536d5d2b23848680ca0e16c90e036d855b167cc246a"
+}

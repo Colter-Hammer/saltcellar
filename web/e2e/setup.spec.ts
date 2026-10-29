@@ -1,16 +1,9 @@
 // Claims the fresh install the other tests run against: the setup wizard, end to end, with the
 // setup code read from the app's log. It runs once, before the phone and desktop projects, and
 // leaves its login's cookie in STORAGE_STATE for them.
-import { execSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
+import { appLog } from './app.js'
 import { PASSWORD, STORAGE_STATE, USERNAME } from './login-state.js'
-
-/** The app's log so far, through the command in E2E_APP_LOGS (`just e2e` and CI set it). */
-function appLog(): string {
-  const command = process.env.E2E_APP_LOGS
-  if (!command) throw new Error('E2E_APP_LOGS must be a command that prints the app’s log')
-  return execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-}
 
 function setupCode(): string {
   const codes = [...appLog().matchAll(/Setup code: ([A-Z0-9]{4}-[A-Z0-9]{4})/g)]

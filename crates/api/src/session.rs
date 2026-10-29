@@ -19,8 +19,8 @@ use crate::{ApiError, AppState};
 /// The session a request came with, for the routes behind [`require_login`].
 #[derive(Clone)]
 pub struct Current {
-    token_hash: String,
-    login: db::SessionLogin,
+    pub token_hash: String,
+    pub login: db::SessionLogin,
 }
 
 /// Every route behind this needs a live session: without one it answers `login_required`. Each

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO password_resets (token_hash, user_id, created_by, expires_at)\n         VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "d5a0926ad7ad758af9699f61af9d6c0c3a76a0cda69448601cd787ee56eecff4"
+}

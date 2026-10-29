@@ -35,8 +35,10 @@ COPY --from=rust /src/target/release/budget ./budget
 # An empty /data owned by the app's user, so a new named volume starts out writable.
 COPY --from=rust --chown=nonroot:nonroot /data /data
 USER nonroot
+# /app on PATH, so `docker compose exec budget budget reset-password <login>` finds the binary.
 ENV BUDGET_DATA_DIR=/data \
-    BUDGET_LISTEN=0.0.0.0:8080
+    BUDGET_LISTEN=0.0.0.0:8080 \
+    PATH=/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 VOLUME ["/data"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

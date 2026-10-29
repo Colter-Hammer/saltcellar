@@ -55,9 +55,7 @@ impl NewSession {
     /// # Errors
     /// If the OS has no random bytes.
     pub fn generate() -> Result<NewSession, getrandom::Error> {
-        let mut bytes = [0u8; 32];
-        getrandom::fill(&mut bytes)?;
-        let token = hex(&bytes);
+        let token = random_token()?;
         let token_hash = token_hash(&token);
         Ok(NewSession { token, token_hash })
     }
@@ -99,6 +97,16 @@ pub fn token(request: &HeaderMap) -> Option<&str> {
         .filter_map(|pair| pair.trim().split_once('='))
         .find(|(name, value)| *name == COOKIE && !value.is_empty())
         .map(|(_, value)| value)
+}
+
+/// 32 random bytes, in hex: a session's or a reset link's token.
+///
+/// # Errors
+/// If the OS has no random bytes.
+pub fn random_token() -> Result<String, getrandom::Error> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes)?;
+    Ok(hex(&bytes))
 }
 
 /// What the database stores for a token: its SHA-256, in hex.

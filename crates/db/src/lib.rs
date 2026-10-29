@@ -2,6 +2,8 @@
 
 mod auth;
 mod household;
+mod profile;
+mod reset;
 
 use std::path::Path;
 use std::time::Duration;
@@ -13,6 +15,10 @@ pub use auth::{
     password_login, recent_failures, record_failure, use_session,
 };
 pub use household::{Household, household};
+pub use profile::{
+    Profile, ProfileChange, end_all_sessions, password_hash, profile, set_password, update_profile,
+};
+pub use reset::{UseReset, issue_password_reset, password_reset, use_password_reset};
 pub use sqlx::SqlitePool;
 
 /// The database file's name inside `BUDGET_DATA_DIR`.
@@ -98,6 +104,26 @@ mod tests {
         (dir, pool)
     }
 
+    /// A finished setup: `sam`'s login and the session `abc123`, from 2026-10-28 09:00.
+    pub(crate) async fn set_up() -> (tempfile::TempDir, SqlitePool) {
+        let (dir, pool) = migrated().await;
+        let timezone = "America/Chicago".parse().unwrap();
+        let display_name = domain::login::DisplayName::new("Sam").unwrap();
+        let username = domain::login::Username::new("sam").unwrap();
+        let setup = NewSetup {
+            currency: "CAD".parse().unwrap(),
+            timezone: &timezone,
+            display_name: &display_name,
+            username: &username,
+            password_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA",
+            session_token_hash: "abc123",
+        };
+        finish_setup(&pool, &setup, "2026-10-28T09:00:00Z".parse().unwrap())
+            .await
+            .unwrap();
+        (dir, pool)
+    }
+
     #[tokio::test]
     async fn creates_the_file_in_wal_mode() {
         let (dir, pool) = fresh().await;
@@ -130,6 +156,7 @@ mod tests {
             [
                 "household",
                 "login_failures",
+                "password_resets",
                 "sessions",
                 "settings",
                 "users"

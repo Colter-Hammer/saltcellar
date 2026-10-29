@@ -252,6 +252,7 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:8080
           E2E_APP_LOGS: docker logs app
+          E2E_APP_EXEC: docker exec app budget
       - name: The app's log
         if: failure()
         run: docker logs app
