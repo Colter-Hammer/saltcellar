@@ -273,8 +273,8 @@ pub async fn change_category(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `DELETE /api/v1/categories/{id}`: deletes a category. Until transactions exist nothing uses
-/// one, so every category can be; after, one in use answers `category_in_use` and can be hidden.
+/// `DELETE /api/v1/categories/{id}`: deletes a category. One that transactions or split lines use
+/// answers `category_in_use` and can be hidden instead.
 #[utoipa::path(
     delete,
     path = "/api/v1/categories/{id}",
@@ -284,6 +284,7 @@ pub async fn change_category(
         (status = 204, description = "The category is deleted."),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
         (status = 404, description = "`not_found`: there's no such category.", body = ErrorEnvelope),
+        (status = 409, description = "`category_in_use`: transactions or split lines use it.", body = ErrorEnvelope),
     ),
 )]
 pub async fn delete_category(
@@ -396,6 +397,11 @@ impl From<Refused> for ApiError {
                 StatusCode::CONFLICT,
                 "categories_exist",
                 "There are categories already: the starter set is for an empty list.",
+            ),
+            db::CategoryError::InUse => ApiError::new(
+                StatusCode::CONFLICT,
+                "category_in_use",
+                "Transactions use this category, so it can't be deleted. Hide it instead.",
             ),
             db::CategoryError::Order(_) => ApiError::new(
                 StatusCode::CONFLICT,

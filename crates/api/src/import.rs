@@ -1,21 +1,23 @@
-//! Import from Actual, step 1: the export is uploaded, read and summed up
-//! (docs/spec/m1-ledger-import.md#step-1-file). Nothing is written to the database: the unpacked
-//! export waits in the data dir for the later steps.
+//! Import from Actual (docs/spec/m1-ledger-import.md#import-from-actual). Step 1 uploads the
+//! export, reads it and sums it up, writing nothing to the database: the unpacked export waits in
+//! the data dir. Steps 2 and 3 read its accounts and categories, choosing in the browser. Step 4
+//! commits the choices as one import batch.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::State;
+use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use http_body_util::BodyExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use utoipa::ToSchema;
 
 use crate::auth;
-use crate::error::ErrorEnvelope;
+use crate::error::{Body as JsonBody, ErrorEnvelope};
+use crate::session::Current;
 use crate::{ApiError, AppState};
 
 /// The most an upload may be: 100 MB *(agent)*, in MiB so a "100 MB" file always fits.
@@ -187,7 +189,7 @@ pub async fn upload(
 }
 
 /// What kind of account it is.
-#[derive(Clone, Copy, Serialize, ToSchema)]
+#[derive(Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountType {
     Checking,
@@ -215,11 +217,35 @@ impl From<domain::accounts::AccountType> for AccountType {
 }
 
 /// Whether an account's activity counts toward budgets, or only its balance over time is shown.
-#[derive(Clone, Copy, Serialize, ToSchema)]
+#[derive(Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AccountRole {
     Budgeted,
     Tracking,
+}
+
+impl From<AccountType> for domain::accounts::AccountType {
+    fn from(kind: AccountType) -> Self {
+        use domain::accounts::AccountType as Type;
+        match kind {
+            AccountType::Checking => Type::Checking,
+            AccountType::Savings => Type::Savings,
+            AccountType::CreditCard => Type::CreditCard,
+            AccountType::Investment => Type::Investment,
+            AccountType::Loan => Type::Loan,
+            AccountType::Cash => Type::Cash,
+            AccountType::Other => Type::Other,
+        }
+    }
+}
+
+impl From<AccountRole> for domain::accounts::Role {
+    fn from(role: AccountRole) -> Self {
+        match role {
+            AccountRole::Budgeted => domain::accounts::Role::Budgeted,
+            AccountRole::Tracking => domain::accounts::Role::Tracking,
+        }
+    }
 }
 
 impl From<domain::accounts::Role> for AccountRole {
@@ -316,26 +342,7 @@ pub async fn get(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<ActualImport>, ApiError> {
-    let gone = || {
-        ApiError::new(
-            StatusCode::NOT_FOUND,
-            "upload_not_found",
-            "This upload is gone: uploads wait a day. Upload the export again.",
-        )
-    };
-    // Only an id this server made names a folder: 64 hex digits, nothing that could leave it.
-    if id.len() != 64 || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
-        return Err(gone());
-    }
-    let dir = state.uploads.dir.join(&id);
-    if !dir.join(actual::DB_FILE).is_file() {
-        return Err(gone());
-    }
-    let mut export = actual::Export::open(&dir).await.map_err(refusal)?;
-    let read = export.read().await;
-    let budget_name = export.budget_name().to_owned();
-    export.close().await;
-    let read = read.map_err(refusal)?;
+    let (budget_name, read) = read_upload(&state, &id).await?;
 
     let app_accounts = db::accounts(&state.pool).await?;
     let accounts = read
@@ -392,6 +399,289 @@ pub async fn get(
     }))
 }
 
+/// The upload `id`'s folder, if it's still there.
+fn upload_dir(state: &AppState, id: &str) -> Result<PathBuf, ApiError> {
+    let gone = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "upload_not_found",
+            "This upload is gone: uploads wait a day. Upload the export again.",
+        )
+    };
+    // Only an id this server made names a folder: 64 hex digits, nothing that could leave it.
+    if id.len() != 64 || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err(gone());
+    }
+    let dir = state.uploads.dir.join(id);
+    if !dir.join(actual::DB_FILE).is_file() {
+        return Err(gone());
+    }
+    Ok(dir)
+}
+
+/// The upload `id`'s budget name and live rows.
+async fn read_upload(
+    state: &AppState,
+    id: &str,
+) -> Result<(String, domain::actual::Export), ApiError> {
+    let dir = upload_dir(state, id)?;
+    let mut export = actual::Export::open(&dir).await.map_err(refusal)?;
+    let read = export.read().await;
+    let budget_name = export.budget_name().to_owned();
+    export.close().await;
+    Ok((budget_name, read.map_err(refusal)?))
+}
+
+/// The importer's choices, to commit.
+#[derive(Deserialize, ToSchema)]
+pub struct ActualCommitRequest {
+    /// The uploaded file's name, as Settings › Imports will list it.
+    #[schema(example = "Example-Household-2026-10-30.zip")]
+    file_name: String,
+    /// What happens to each live Actual account: every one needs a choice.
+    accounts: Vec<ActualAccountChoice>,
+    /// Where each Actual category's rows go; one left out goes to Decide later.
+    categories: Vec<ActualCategoryChoice>,
+}
+
+/// Create a new account, use one the app has (Same as), or leave the account out.
+#[derive(Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum AccountAction {
+    Create,
+    Same,
+    Skip,
+}
+
+/// What happens to one Actual account. Create new reads `name`, `type`, `role` and
+/// `balances_only`; Same as reads `same_as`.
+#[derive(Deserialize, ToSchema)]
+pub struct ActualAccountChoice {
+    /// Actual's id for the account.
+    actual_id: String,
+    action: AccountAction,
+    name: String,
+    #[serde(rename = "type")]
+    kind: AccountType,
+    role: AccountRole,
+    /// Brings the balance and none of the rows.
+    balances_only: bool,
+    /// The app account it's the same as.
+    #[schema(required = true)]
+    same_as: Option<i64>,
+}
+
+/// Where an Actual category's rows go.
+#[derive(Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum GoesTo {
+    /// The app category in `category_id`.
+    Category,
+    /// Transfer (not a category).
+    Transfer,
+    /// Decide later.
+    Later,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ActualCategoryChoice {
+    /// Actual's id for the category.
+    actual_id: String,
+    goes_to: GoesTo,
+    /// The app category, when it goes to one.
+    #[schema(required = true)]
+    category_id: Option<i64>,
+}
+
+/// The committed import, as the Done step sums it up.
+#[derive(Serialize, ToSchema)]
+pub struct ActualImportDone {
+    /// The import batch, which Settings › Imports can undo.
+    batch_id: i64,
+    /// How many accounts the import created.
+    accounts_created: u64,
+    /// Each account the import created or added rows to, with its rows, in the export's order.
+    accounts: Vec<ImportedAccount>,
+    /// Rows that took the category theirs goes to.
+    mapped: u64,
+    /// Rows on Decide later, splits among them: they wait in From Actual, undecided.
+    undecided: u64,
+    /// Rows marked transfer: those whose category goes to Transfer, and transfer legs.
+    transfer: u64,
+    /// Rows with no category in Actual.
+    uncategorized: u64,
+    /// Transfers linked between two imported accounts (none yet: each leg comes in marked
+    /// transfer).
+    linked_transfers: u64,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ImportedAccount {
+    id: i64,
+    name: String,
+    /// Whether the import created it, rather than adding to one there already.
+    created: bool,
+    rows: u64,
+}
+
+/// `POST /api/v1/imports/actual/{id}/commit`: imports the upload with the importer's choices.
+#[utoipa::path(
+    post,
+    path = "/api/v1/imports/actual/{id}/commit",
+    operation_id = "commitActualImport",
+    params(("id" = String, Path, description = "The upload, as its upload answered.")),
+    request_body = ActualCommitRequest,
+    responses(
+        (status = 201, description = "Imported, as one import batch.", body = ActualImportDone),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 404, description = "`upload_not_found`: no such upload, or it's over a day old and deleted.", body = ErrorEnvelope),
+        (status = 409, description = "`earlier_import`: an earlier import from Actual hasn't been undone.", body = ErrorEnvelope),
+        (status = 422, description = "`invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn commit(
+    State(state): State<AppState>,
+    Extension(current): Extension<Current>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    JsonBody(body): JsonBody<ActualCommitRequest>,
+) -> Result<(StatusCode, Json<ActualImportDone>), ApiError> {
+    let (_, export) = read_upload(&state, &id).await?;
+    // Checked again as the import commits; this says so before the choices are.
+    if db::actual_import_in_place(&state.pool).await? {
+        return Err(earlier_import());
+    }
+    let choices = choices(&body).map_err(invalid)?;
+    let app_accounts: Vec<(i64, String)> = db::accounts(&state.pool)
+        .await?
+        .into_iter()
+        .map(|account| (account.id, account.name))
+        .collect();
+    let app_categories = db::category_groups(&state.pool)
+        .await?
+        .into_iter()
+        .flat_map(|group| group.categories)
+        .map(|category| category.id)
+        .collect();
+    let plan = domain::import::Plan::new(
+        &export,
+        &choices,
+        domain::import::Existing {
+            accounts: &app_accounts,
+            categories: &app_categories,
+        },
+    )
+    .map_err(|error| invalid(error.to_string()))?;
+
+    let committed = db::commit_actual_import(
+        &state.pool,
+        db::ActualCommit {
+            plan: &plan,
+            file_name: body.file_name.trim(),
+            imported_by: current.login.user_id,
+            today: today(&state).await?,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        db::ImportError::EarlierImport => earlier_import(),
+        db::ImportError::Balance(account) => ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "export_unreadable",
+            format!("This Actual export has data the app can't read: the balance of {account}."),
+        ),
+        db::ImportError::Db(error) => error.into(),
+    })?;
+
+    if let Err(error) = tokio::fs::remove_dir_all(state.uploads.dir.join(&id)).await {
+        tracing::warn!(%error, upload = %id, "can't delete a committed upload");
+    }
+    let counts = plan.counts();
+    tracing::info!(batch = committed.batch_id, upload = %id, "imported from Actual");
+    Ok((
+        StatusCode::CREATED,
+        Json(ActualImportDone {
+            batch_id: committed.batch_id,
+            accounts_created: committed.accounts.iter().filter(|a| a.created).count() as u64,
+            accounts: committed
+                .accounts
+                .into_iter()
+                .map(|account| ImportedAccount {
+                    id: account.id,
+                    name: account.name,
+                    created: account.created,
+                    rows: account.rows,
+                })
+                .collect(),
+            mapped: counts.mapped,
+            undecided: counts.undecided,
+            transfer: counts.transfer,
+            uncategorized: counts.uncategorized,
+            linked_transfers: 0,
+        }),
+    ))
+}
+
+/// Today in the household's timezone.
+async fn today(state: &AppState) -> Result<domain::Date, ApiError> {
+    // Behind the setup gate, so the household exists unless the database lost it.
+    let household = db::household(&state.pool)
+        .await?
+        .ok_or_else(|| ApiError::internal(&"setup is done but there's no household"))?;
+    let today = state
+        .now()
+        .in_tz(household.timezone.name())
+        .map_err(|error| ApiError::internal(&error))?
+        .date();
+    domain::Date::from_ymd(today.year(), today.month(), today.day())
+        .map_err(|error| ApiError::internal(&error))
+}
+
+/// The request's choices, by Actual id.
+fn choices(body: &ActualCommitRequest) -> Result<domain::import::Choices, String> {
+    use domain::import::{AccountChoice, GoesTo as Goes};
+    let mut choices = domain::import::Choices::default();
+    for choice in &body.accounts {
+        let account =
+            match choice.action {
+                AccountAction::Create => AccountChoice::Create {
+                    name: choice.name.clone(),
+                    kind: choice.kind.into(),
+                    role: choice.role.into(),
+                    balances_only: choice.balances_only,
+                },
+                AccountAction::Same => AccountChoice::SameAs(choice.same_as.ok_or_else(|| {
+                    format!("Choose the account {} is the same as.", choice.name)
+                })?),
+                AccountAction::Skip => AccountChoice::Skip,
+            };
+        choices.accounts.insert(choice.actual_id.clone(), account);
+    }
+    for choice in &body.categories {
+        let goes_to = match (choice.goes_to, choice.category_id) {
+            (GoesTo::Category, Some(id)) => Goes::Category(id),
+            (GoesTo::Category, None) => {
+                return Err("Choose the category each Actual category goes to.".to_owned());
+            }
+            (GoesTo::Transfer, _) => Goes::Transfer,
+            (GoesTo::Later, _) => Goes::Later,
+        };
+        choices.categories.insert(choice.actual_id.clone(), goes_to);
+    }
+    Ok(choices)
+}
+
+fn invalid(message: String) -> ApiError {
+    ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_choices", message)
+}
+
+fn earlier_import() -> ApiError {
+    ApiError::new(
+        StatusCode::CONFLICT,
+        "earlier_import",
+        "Undo the earlier import from Actual first.",
+    )
+}
+
 fn is_zip(headers: &HeaderMap) -> bool {
     headers
         .get(header::CONTENT_TYPE)
@@ -419,11 +709,7 @@ async fn check_household(state: &AppState) -> Result<(), ApiError> {
         ));
     }
     if db::actual_import_in_place(&state.pool).await? {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "earlier_import",
-            "Undo the earlier import from Actual first.",
-        ));
+        return Err(earlier_import());
     }
     Ok(())
 }

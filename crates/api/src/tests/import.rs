@@ -1,5 +1,5 @@
-//! Import from Actual through the API: uploading the fake exports in `fixtures/` (step 1), and
-//! reading their accounts and categories back (steps 2 and 3).
+//! Import from Actual through the API: uploading the fake exports in `fixtures/` (step 1),
+//! reading their accounts and categories back (steps 2 and 3), and committing them (step 4).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -8,7 +8,7 @@ use axum::body::{Body, Bytes};
 use axum::http::{Request, StatusCode, header};
 use serde_json::{Value, json};
 
-use super::{App, app, finish, get, send, send_full, session_cookie, set_up, with};
+use super::{App, app, finish, get, post, send, send_full, session_cookie, set_up, with};
 
 const UPLOAD: &str = "/api/v1/imports/actual";
 
@@ -201,13 +201,13 @@ async fn a_currency_without_cents_is_refused() {
 #[tokio::test]
 async fn an_earlier_import_not_undone_is_refused() {
     let app = set_up().await;
-    // The commit step's table, as far as this check reads it.
-    for sql in [
-        "CREATE TABLE import_batches (id INTEGER PRIMARY KEY, format TEXT NOT NULL, undone_at TEXT)",
-        "INSERT INTO import_batches (format) VALUES ('actual')",
-    ] {
-        sqlx::query(sql).execute(&app.pool).await.unwrap();
-    }
+    sqlx::query(
+        "INSERT INTO import_batches (format, file_name, added, matched, skipped)
+         VALUES ('actual', 'export.zip', 0, 0, 0)",
+    )
+    .execute(&app.pool)
+    .await
+    .unwrap();
     let (status, body) = upload(&app, fixture("actual-export.zip")).await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["error"]["code"], "earlier_import");
@@ -447,4 +447,230 @@ async fn reading_an_upload_needs_a_login() {
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body["error"]["code"], "login_required");
+}
+
+// ── Step 4: the commit ──
+
+/// The upload `id`'s live rows, as the reader has them.
+async fn read_back(app: &App, id: &str) -> domain::actual::Export {
+    let dir = app.dir.path().join("imports").join(id);
+    let mut export = actual::Export::open(&dir).await.unwrap();
+    let read = export.read().await.unwrap();
+    export.close().await;
+    read
+}
+
+/// Every account on Create new as step 2 starts it.
+fn create_all(plan: &Value) -> Vec<Value> {
+    plan["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|account| {
+            json!({
+                "actual_id": account["id"],
+                "action": "create",
+                "name": account["name"],
+                "type": account["type"],
+                "role": account["role"],
+                "balances_only": false,
+                "same_as": null,
+            })
+        })
+        .collect()
+}
+
+async fn commit(app: &App, id: &str, body: &Value) -> (StatusCode, Value) {
+    send(
+        app.router.clone(),
+        with(&app.cookie, post(&format!("{UPLOAD}/{id}/commit"), body)),
+    )
+    .await
+}
+
+/// A category, Groceries, in a group Food.
+async fn groceries(app: &App) -> i64 {
+    sqlx::query("INSERT INTO category_groups (id, name) VALUES (1, 'Food')")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    sqlx::query_scalar(
+        "INSERT INTO categories (group_id, name) VALUES (1, 'Groceries') RETURNING id",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_fake_export_comes_in_with_every_balance_matching_actual() {
+    let app = set_up().await;
+    let category = groceries(&app).await;
+    let plan = fake_plan(&app).await;
+    let id = plan["id"].as_str().unwrap().to_owned();
+    let export = read_back(&app, &id).await;
+    let (status, done) = commit(
+        &app,
+        &id,
+        &json!({
+            "file_name": "actual-export.zip",
+            "accounts": create_all(&plan),
+            "categories": [
+                { "actual_id": fake_id(3, 1), "goes_to": "category", "category_id": category },
+                { "actual_id": fake_id(3, 2), "goes_to": "transfer", "category_id": null },
+                { "actual_id": fake_id(3, 3), "goes_to": "later", "category_id": null },
+            ],
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{done}");
+
+    // Each account's rows are the reader's but for starting balances.
+    let starting: Vec<&str> = export
+        .transactions
+        .iter()
+        .filter(|t| t.starting_balance)
+        .map(|t| t.id.as_str())
+        .collect();
+    assert_eq!(starting.len(), 5);
+    let expected_rows: Vec<(String, u64)> = export
+        .accounts
+        .iter()
+        .map(|account| {
+            let starting = export
+                .transactions
+                .iter()
+                .filter(|t| t.account == account.id && t.starting_balance)
+                .count() as u64;
+            (account.name.clone(), account.rows - starting)
+        })
+        .collect();
+    let rows: Vec<(String, u64)> = done["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| {
+            (
+                a["name"].as_str().unwrap().to_owned(),
+                a["rows"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(rows, expected_rows);
+    assert_eq!(done["accounts_created"], 5);
+    assert_eq!(done["linked_transfers"], 0);
+    let total: u64 = expected_rows.iter().map(|(_, rows)| rows).sum();
+    let counts: Vec<u64> = ["mapped", "undecided", "transfer", "uncategorized"]
+        .iter()
+        .map(|count| done[count].as_u64().unwrap())
+        .collect();
+    assert_eq!(counts.iter().sum::<u64>(), total);
+    // Groceries's plain rows; Fuel, Rent, Utilities, Paycheck and the splits; Dining out and the
+    // transfer legs; rows with no category.
+    assert_eq!(counts, [14, 50, 7, 4]);
+
+    // Every account's app balance (opening + rows) is its Actual balance, and so is its snapshot.
+    let balances = db::account_balances(&app.pool).await.unwrap();
+    assert_eq!(balances.len(), 5);
+    for (balance, actual) in balances.iter().zip(&export.accounts) {
+        assert_eq!(balance.name, actual.name);
+        assert_eq!(balance.app_balance, Some(actual.balance), "{}", actual.name);
+        assert_eq!(balance.snapshot, Some(actual.balance), "{}", actual.name);
+    }
+
+    // Starting balances never become transactions, so never income either.
+    let refs: Vec<String> = sqlx::query_scalar("SELECT import_ref FROM import_batch_rows")
+        .fetch_all(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(refs.len() as u64, total);
+    assert!(refs.iter().all(|r| !starting.contains(&r.as_str())));
+    let transactions: i64 = sqlx::query_scalar("SELECT count(*) FROM transactions")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(u64::try_from(transactions).unwrap(), total);
+
+    // The upload is gone, and a new one waits for this import to be undone.
+    assert_eq!(uploads(&app), Vec::<PathBuf>::new());
+    let (status, body) = upload(&app, fixture("actual-export.zip")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "earlier_import");
+
+    // A category the rows use can only be hidden now.
+    let delete = Request::delete(format!("/api/v1/categories/{category}"))
+        .header(header::HOST, "localhost:8080")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = send(app.router.clone(), with(&app.cookie, delete)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "category_in_use");
+}
+
+#[tokio::test]
+async fn a_second_commit_waits_for_the_first_to_be_undone() {
+    let app = set_up().await;
+    let first = fake_plan(&app).await;
+    let second = fake_plan(&app).await;
+    let body = |plan: &Value| json!({ "file_name": "a.zip", "accounts": create_all(plan), "categories": [] });
+    let (status, _) = commit(&app, first["id"].as_str().unwrap(), &body(&first)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, refused) = commit(&app, second["id"].as_str().unwrap(), &body(&second)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        refused["error"]["message"],
+        "Undo the earlier import from Actual first."
+    );
+    let batches: i64 = sqlx::query_scalar("SELECT count(*) FROM import_batches")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(batches, 1);
+}
+
+#[tokio::test]
+async fn choices_that_cant_go_ahead_are_refused() {
+    let app = set_up().await;
+    let plan = fake_plan(&app).await;
+    let id = plan["id"].as_str().unwrap();
+    let mut accounts = create_all(&plan);
+    let refused = |accounts: Vec<Value>, categories: Value| json!({ "file_name": "a.zip", "accounts": accounts, "categories": categories });
+
+    let (status, body) = commit(&app, id, &refused(accounts[1..].to_vec(), json!([]))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "invalid_choices");
+    assert_eq!(
+        body["error"]["message"],
+        "Choose what happens to Everyday checking."
+    );
+
+    accounts[0]["action"] = json!("same");
+    let (_, body) = commit(&app, id, &refused(accounts.clone(), json!([]))).await;
+    assert_eq!(
+        body["error"]["message"],
+        "Choose the account Everyday checking is the same as."
+    );
+
+    accounts[0]["action"] = json!("create");
+    let gone = json!([{ "actual_id": fake_id(3, 1), "goes_to": "category", "category_id": 999 }]);
+    let (_, body) = commit(&app, id, &refused(accounts.clone(), gone)).await;
+    assert_eq!(
+        body["error"]["message"],
+        "Groceries goes to a category that isn't there any more."
+    );
+    let none = json!([{ "actual_id": fake_id(3, 1), "goes_to": "category", "category_id": null }]);
+    let (_, body) = commit(&app, id, &refused(accounts.clone(), none)).await;
+    assert_eq!(body["error"]["code"], "invalid_choices");
+
+    let unknown = "0".repeat(64);
+    let (status, body) = commit(&app, &unknown, &refused(accounts, json!([]))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "upload_not_found");
+
+    let accounts: i64 = sqlx::query_scalar("SELECT count(*) FROM accounts")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(accounts, 0);
 }
