@@ -27,6 +27,10 @@ dev-api:
 # Every check CI runs.
 check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations api-contract web-typecheck web-lint web-format web-knip web-test web-coverage web-build e2e
 
+# The same checks, one line each; a failing one shows its last lines and the full log path. For agents.
+check-quiet:
+    scripts/check-quiet
+
 # Denylisted personal terms anywhere in the history.
 leak-guard:
     python3 scripts/guard.py leak history
