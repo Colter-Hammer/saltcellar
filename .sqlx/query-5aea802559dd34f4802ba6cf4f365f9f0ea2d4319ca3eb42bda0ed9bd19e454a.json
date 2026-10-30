@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO import_batch_rows\n               (batch_id, transaction_id, outcome, import_ref, source_category, source_disposition)\n             VALUES (?, ?, 'inserted', ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "5aea802559dd34f4802ba6cf4f365f9f0ea2d4319ca3eb42bda0ed9bd19e454a"
+}

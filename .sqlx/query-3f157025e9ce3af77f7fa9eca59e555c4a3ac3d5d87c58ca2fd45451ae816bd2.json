@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET opening_balance_minor = ?, opening_date = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "3f157025e9ce3af77f7fa9eca59e555c4a3ac3d5d87c58ca2fd45451ae816bd2"
+}

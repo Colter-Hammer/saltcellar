@@ -37,14 +37,32 @@ export default defineConfig({
     // Then the two layouts: a phone (tab bar) and a desktop (sidebar), both in Chromium.
     {
       name: 'phone',
-      testIgnore: ['setup.spec.ts', 'profile.spec.ts', 'categories.spec.ts'],
+      testIgnore: [
+        'setup.spec.ts',
+        'profile.spec.ts',
+        'categories.spec.ts',
+        'import-commit.spec.ts',
+      ],
       dependencies: ['categories'],
       use: { ...devices['Pixel 7'], storageState: STORAGE_STATE },
     },
     {
       name: 'desktop',
-      testIgnore: ['setup.spec.ts', 'profile.spec.ts', 'categories.spec.ts'],
+      testIgnore: [
+        'setup.spec.ts',
+        'profile.spec.ts',
+        'categories.spec.ts',
+        'import-commit.spec.ts',
+      ],
       dependencies: ['categories'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Last, the import itself, once: while it's in place every other upload is refused, and the
+    // install has accounts.
+    {
+      name: 'import-commit',
+      testMatch: 'import-commit.spec.ts',
+      dependencies: ['phone', 'desktop'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from './client'
-import { getActualImport, uploadActualExport } from './imports'
+import { commitActualImport, getActualImport, uploadActualExport } from './imports'
 
 function answer(status: number, body: string) {
   vi.stubGlobal(
@@ -74,5 +74,34 @@ describe('getActualImport', () => {
   it('throws once the upload is gone', async () => {
     answer(404, '{"error":{"code":"upload_not_found","message":"This upload is gone."}}')
     await expect(getActualImport('abc')).rejects.toThrow('This upload is gone.')
+  })
+})
+
+describe('commitActualImport', () => {
+  const request = { file_name: 'export.zip', accounts: [], categories: [] }
+
+  it('sends the choices for the upload and resolves to the summary', async () => {
+    const done = {
+      batch_id: 1,
+      accounts_created: 0,
+      accounts: [],
+      mapped: 0,
+      undecided: 0,
+      transfer: 0,
+      uncategorized: 0,
+      linked_transfers: 0,
+    }
+    answer(201, JSON.stringify(done))
+    expect(await commitActualImport('abc', request)).toEqual(done)
+    expect(sent().method).toBe('POST')
+    expect(new URL(sent().url).pathname).toBe('/api/v1/imports/actual/abc/commit')
+    expect(await sent().json()).toEqual(request)
+  })
+
+  it('throws while an earlier import is in place', async () => {
+    answer(409, '{"error":{"code":"earlier_import","message":"Undo the earlier import first."}}')
+    await expect(commitActualImport('abc', request)).rejects.toThrow(
+      'Undo the earlier import first.',
+    )
   })
 })

@@ -142,15 +142,12 @@ test('steps 2 and 3: what happens to each account and category', async ({
   await expect(form).toBeHidden()
   await expect(shown(page, 'Fuel goes to')).toHaveText(name)
 
-  // On to the last step and back: the choices are still there.
-  await next.click()
-  await expect(page.getByRole('listitem').filter({ hasText: '4. Done' })).toHaveAttribute(
-    'aria-current',
-    'step',
-  )
+  // Back to step 2 and on again: the choices are still there. Import is left for import-commit.
   await page.getByRole('button', { name: 'Back' }).click()
+  await next.click()
   await expect(shown(page, 'Fuel goes to')).toHaveText(name)
   await expect(shown(page, 'Groceries goes to')).toHaveText('Groceries')
+  await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled()
 })
 
 test('the empty Accounts screen leads to the importer', async ({ page }) => {

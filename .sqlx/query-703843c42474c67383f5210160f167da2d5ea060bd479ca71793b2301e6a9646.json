@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (\n             SELECT 1 FROM import_batches WHERE format = 'actual' AND undone_at IS NULL\n           ) AS \"in_place!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "in_place!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "703843c42474c67383f5210160f167da2d5ea060bd479ca71793b2301e6a9646"
+}

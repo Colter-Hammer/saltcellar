@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT (EXISTS (SELECT 1 FROM transactions WHERE category_id = ?1)\n                OR EXISTS (SELECT 1 FROM transaction_splits WHERE category_id = ?1)) AS \"in_use!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "in_use!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7e6ef16908f42ce2bc009b1e252d54d013314807e5b9fd563f3d3e998cd050fd"
+}

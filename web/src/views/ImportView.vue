@@ -2,13 +2,16 @@
 // Import from Actual (docs/spec/m1-ledger-import.md#import-from-actual): file → accounts →
 // categories → done. Step 1 reads the export and says what's in it; steps 2 and 3 choose what
 // happens to each Actual account and category. The choices live here, in the browser, until the
-// import commits *(agent)*, so Back keeps them; nothing is imported until the last step, which
-// arrives in a later issue: until then Next from step 3 leads to a placeholder.
+// import commits *(agent)*, so Back keeps them; nothing is imported until Import on step 3
+// commits them all in one go, and step 4 sums up what came in.
 import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useCategories } from '@/api/categories'
 import {
   type ActualImport,
+  type ActualImportDone,
   type ActualUpload,
+  commitActualImport,
   getActualImport,
   uploadActualExport,
 } from '@/api/imports'
@@ -18,6 +21,8 @@ import { useFormatting } from '@/lib/format'
 import {
   type AccountChoice,
   accountProblems,
+  commitRequest,
+  describeDone,
   describeUpload,
   LATER,
   startAccountChoices,
@@ -114,6 +119,30 @@ async function toCategories() {
   await categories.suspense()
   categoryChoices.value = startCategoryChoices(plan.value, groups.value, categoryChoices.value)
   step.value = 3
+}
+
+// ── Step 4: Done ──
+
+const done = ref<ActualImportDone | null>(null)
+const committing = ref(false)
+const doneLines = computed(() => done.value && describeDone(done.value, formatting.value.locale))
+
+/** Commits every choice as one import, then shows what came in. */
+async function commit() {
+  if (plan.value === null) return
+  error.value = ''
+  committing.value = true
+  try {
+    done.value = await commitActualImport(
+      plan.value.id,
+      commitRequest(plan.value, accountChoices.value, categoryChoices.value, fileName.value),
+    )
+    step.value = 4
+  } catch (failure) {
+    error.value = failure instanceof Error ? failure.message : String(failure)
+  } finally {
+    committing.value = false
+  }
 }
 </script>
 
@@ -265,24 +294,72 @@ async function toCategories() {
           />
         </tbody>
       </table>
+      <p v-if="committing" role="status" class="text-sm text-muted-foreground">Importing…</p>
+      <p v-if="error" role="alert" class="text-sm text-destructive">{{ error }}</p>
       <div class="flex justify-between">
-        <button type="button" class="rounded-md border px-3 py-2" @click="step = 2">Back</button>
         <button
           type="button"
-          class="rounded-md bg-primary px-3 py-2 text-primary-foreground"
-          @click="step = 4"
+          class="rounded-md border px-3 py-2 disabled:opacity-50"
+          :disabled="committing"
+          @click="step = 2"
         >
-          Next
+          Back
+        </button>
+        <button
+          type="button"
+          class="rounded-md bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50"
+          :disabled="committing"
+          @click="commit"
+        >
+          Import
         </button>
       </div>
     </section>
 
-    <section v-else class="flex flex-col gap-4">
-      <p class="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-        Importing the accounts and rows you chose comes next, in a later version.
+    <section
+      v-else-if="step === 4 && done && doneLines"
+      aria-labelledby="done-heading"
+      class="flex flex-col gap-4"
+    >
+      <h2 id="done-heading" class="font-medium">Imported</h2>
+      <ul aria-label="Summary" class="flex flex-col gap-1 rounded-xl border p-4 text-sm">
+        <li v-for="line in doneLines" :key="line">{{ line }}</li>
+      </ul>
+      <table role="table" aria-label="Rows imported per account" class="w-full text-sm">
+        <thead class="text-left text-muted-foreground">
+          <tr class="border-b">
+            <th scope="col" class="py-2 pr-3 font-medium">Account</th>
+            <th scope="col" class="py-2 text-right font-medium">Rows imported</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          <tr v-for="account in done.accounts" :key="account.id">
+            <th scope="row" class="py-2 pr-3 text-left font-normal">{{ account.name }}</th>
+            <td class="py-2 text-right tabular-nums">
+              {{ new Intl.NumberFormat(formatting.locale).format(account.rows) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-sm text-muted-foreground">
+        Actual's rules weren't copied, since payee history covers them.
       </p>
-      <div class="flex justify-start">
-        <button type="button" class="rounded-md border px-3 py-2" @click="step = 3">Back</button>
+      <div class="flex flex-wrap justify-end gap-2">
+        <!-- The undecided list arrives in a later version; until then this leads to Transactions
+             too *(agent)*. -->
+        <RouterLink
+          v-if="done.undecided > 0"
+          to="/transactions"
+          class="rounded-md border px-3 py-2"
+        >
+          Decide on undecided rows
+        </RouterLink>
+        <RouterLink
+          to="/transactions"
+          class="rounded-md bg-primary px-3 py-2 text-primary-foreground"
+        >
+          See transactions
+        </RouterLink>
       </div>
     </section>
   </div>

@@ -1,4 +1,6 @@
-//! Accounts: their type and role (docs/spec/m1-ledger-import.md#accounts).
+//! Accounts: their type and role, and their balances (docs/spec/m1-ledger-import.md#accounts).
+
+use crate::{Date, Money};
 
 /// What kind of account it is, as the household would call it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -108,6 +110,43 @@ impl Role {
     }
 }
 
+/// An account's opening balance: derived, never a transaction, never income.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Opening {
+    pub balance: Money,
+    pub date: Date,
+}
+
+impl Opening {
+    /// The opening balance the Actual import sets (docs/spec/m1-ledger-import.md#turning-actual-rows-into-transactions):
+    /// the account's Actual balance minus its imported rows (`rows`, their total), dated the day
+    /// before the earliest of them (`earliest`). With no rows, the whole balance, dated `today`
+    /// *(agent)*. `None` if the sum doesn't fit or there's no day before.
+    #[must_use]
+    pub fn from_import(
+        actual_balance: Money,
+        rows: Money,
+        earliest: Option<Date>,
+        today: Date,
+    ) -> Option<Opening> {
+        Some(Opening {
+            balance: actual_balance.checked_sub(rows)?,
+            date: match earliest {
+                Some(date) => date.previous_day()?,
+                None => today,
+            },
+        })
+    }
+}
+
+/// The app's own balance for an account: its opening balance plus its transactions. The balance
+/// shown is the latest balance snapshot; where the two differ, that's drift (milestone 2). `None`
+/// if the sum doesn't fit.
+#[must_use]
+pub fn app_balance(opening: Money, transactions: impl IntoIterator<Item = Money>) -> Option<Money> {
+    opening.checked_add(Money::checked_sum(transactions)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +188,72 @@ mod tests {
     fn off_budget_is_tracking() {
         assert_eq!(Role::from_actual(true), Role::Tracking);
         assert_eq!(Role::from_actual(false), Role::Budgeted);
+    }
+
+    fn date(text: &str) -> Date {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn the_imports_opening_balance_is_whats_left_before_the_first_row() {
+        let opening = Opening::from_import(
+            Money::from_minor(10_000),
+            Money::from_minor(-2_500),
+            Some(date("2025-01-01")),
+            date("2026-10-30"),
+        );
+        assert_eq!(
+            opening,
+            Some(Opening {
+                balance: Money::from_minor(12_500),
+                date: date("2024-12-31"),
+            })
+        );
+        // No rows: all of it, today.
+        let opening = Opening::from_import(
+            Money::from_minor(500),
+            Money::ZERO,
+            None,
+            date("2026-10-30"),
+        );
+        assert_eq!(
+            opening,
+            Some(Opening {
+                balance: Money::from_minor(500),
+                date: date("2026-10-30"),
+            })
+        );
+        let today = date("2026-10-30");
+        assert_eq!(
+            Opening::from_import(
+                Money::from_minor(i64::MIN),
+                Money::from_minor(1),
+                None,
+                today
+            ),
+            None
+        );
+        assert_eq!(
+            Opening::from_import(Money::ZERO, Money::ZERO, Some(date("0001-01-01")), today),
+            None
+        );
+    }
+
+    #[test]
+    fn the_app_balance_is_the_opening_plus_the_transactions() {
+        let rows = [-2_500, 1_000, 0].map(Money::from_minor);
+        assert_eq!(
+            app_balance(Money::from_minor(12_500), rows),
+            Some(Money::from_minor(11_000))
+        );
+        assert_eq!(
+            app_balance(Money::from_minor(7), []),
+            Some(Money::from_minor(7))
+        );
+        assert_eq!(
+            app_balance(Money::from_minor(i64::MAX), [Money::from_minor(1)]),
+            None
+        );
     }
 
     #[test]

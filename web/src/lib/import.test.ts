@@ -4,6 +4,8 @@ import type { ActualAccount, ActualCategory, ActualImport } from '@/api/imports'
 import {
   type AccountChoice,
   accountProblems,
+  commitRequest,
+  describeDone,
   describeUpload,
   goesToCategory,
   LATER,
@@ -11,6 +13,7 @@ import {
   startAccountChoices,
   startCategoryChoices,
   startingGroup,
+  TRANSFER,
   usedCategories,
 } from './import'
 
@@ -235,5 +238,83 @@ describe('+ New category', () => {
     expect(startingGroup({ ...fuel, group: 'Income', income: true }, groups)).toBe(4)
     expect(startingGroup({ ...fuel, group: 'Old' }, groups)).toBe(1)
     expect(startingGroup(fuel, [])).toBeNull()
+  })
+})
+
+describe('the commit', () => {
+  it('sends every account choice and where each used category goes', () => {
+    const change = (id: string, choice: AccountChoice): AccountChoice => {
+      if (id === 'checking') return { ...choice, name: '  Checking  ' }
+      if (id === 'brokerage') return { ...choice, action: 'skip', sameAs: 3 }
+      return choice
+    }
+    const accounts = Object.fromEntries(
+      Object.entries(startAccountChoices(plan)).map(([id, choice]) => [id, change(id, choice)]),
+    )
+    const categories = { groceries: goesToCategory(4), fuel: TRANSFER, invest: LATER }
+    expect(commitRequest(plan, accounts, categories, 'export.zip')).toEqual({
+      file_name: 'export.zip',
+      accounts: [
+        {
+          actual_id: 'checking',
+          action: 'create',
+          name: 'Checking',
+          type: 'checking',
+          role: 'budgeted',
+          balances_only: false,
+          same_as: null,
+        },
+        {
+          actual_id: 'card',
+          action: 'same',
+          name: 'Rewards card',
+          type: 'credit_card',
+          role: 'budgeted',
+          balances_only: false,
+          same_as: 7,
+        },
+        {
+          actual_id: 'brokerage',
+          action: 'skip',
+          name: 'Brokerage',
+          type: 'investment',
+          role: 'tracking',
+          balances_only: false,
+          same_as: null,
+        },
+      ],
+      // Investing is only the skipped brokerage's, so it isn't sent.
+      categories: [
+        { actual_id: 'groceries', goes_to: 'category', category_id: 4 },
+        { actual_id: 'fuel', goes_to: 'transfer', category_id: null },
+      ],
+    })
+    // A category with no choice yet goes to Decide later.
+    expect(commitRequest(plan, accounts, {}, 'export.zip').categories[0]).toEqual({
+      actual_id: 'groceries',
+      goes_to: 'later',
+      category_id: null,
+    })
+  })
+
+  it('sums up what came in', () => {
+    const done = {
+      batch_id: 1,
+      accounts_created: 1,
+      accounts: [],
+      mapped: 1234,
+      undecided: 1,
+      transfer: 0,
+      uncategorized: 2,
+      linked_transfers: 0,
+    }
+    expect(describeDone(done, 'en-US')).toEqual([
+      '1 account created',
+      '1,234 rows mapped to a category',
+      '1 row undecided',
+      '0 rows marked transfer',
+      '2 rows uncategorized',
+      '0 linked transfers',
+    ])
   })
 })

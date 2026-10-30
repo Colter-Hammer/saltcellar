@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COALESCE(SUM(amount_minor), 0) AS \"total!: i64\"\n               FROM transactions WHERE account_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "total!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fbd2c3cace7141ef82f05a0cff77daf3537f7f06a6101356550fe1e81397bb47"
+}

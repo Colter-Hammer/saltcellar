@@ -183,7 +183,7 @@
         "tags": [
           "categories"
         ],
-        "summary": "`DELETE /api/v1/categories/{id}`: deletes a category. Until transactions exist nothing uses\none, so every category can be; after, one in use answers `category_in_use` and can be hidden.",
+        "summary": "`DELETE /api/v1/categories/{id}`: deletes a category. One that transactions or split lines use\nanswers `category_in_use` and can be hidden instead.",
         "operationId": "deleteCategory",
         "parameters": [
           {
@@ -213,6 +213,16 @@
           },
           "404": {
             "description": "`not_found`: there's no such category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`category_in_use`: transactions or split lines use it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -664,6 +674,88 @@
           },
           "422": {
             "description": "`export_unreadable`: the export has data the app can't read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/actual/{id}/commit": {
+      "post": {
+        "tags": [
+          "import"
+        ],
+        "summary": "`POST /api/v1/imports/actual/{id}/commit`: imports the upload with the importer's choices.",
+        "operationId": "commitActualImport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The upload, as its upload answered.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActualCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Imported, as one import batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActualImportDone"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`upload_not_found`: no such upload, or it's over a day old and deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`earlier_import`: an earlier import from Actual hasn't been undone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1300,6 +1392,15 @@
   },
   "components": {
     "schemas": {
+      "AccountAction": {
+        "type": "string",
+        "description": "Create a new account, use one the app has (Same as), or leave the account out.",
+        "enum": [
+          "create",
+          "same",
+          "skip"
+        ]
+      },
       "AccountRole": {
         "type": "string",
         "description": "Whether an account's activity counts toward budgets, or only its balance over time is shown.",
@@ -1396,6 +1497,49 @@
           }
         }
       },
+      "ActualAccountChoice": {
+        "type": "object",
+        "description": "What happens to one Actual account. Create new reads `name`, `type`, `role` and\n`balances_only`; Same as reads `same_as`.",
+        "required": [
+          "actual_id",
+          "action",
+          "name",
+          "type",
+          "role",
+          "balances_only",
+          "same_as"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AccountAction"
+          },
+          "actual_id": {
+            "type": "string",
+            "description": "Actual's id for the account."
+          },
+          "balances_only": {
+            "type": "boolean",
+            "description": "Brings the balance and none of the rows."
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole"
+          },
+          "same_as": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The app account it's the same as."
+          },
+          "type": {
+            "$ref": "#/components/schemas/AccountType"
+          }
+        }
+      },
       "ActualCategory": {
         "type": "object",
         "description": "A live Actual category and the rows using it.",
@@ -1428,6 +1572,61 @@
               "$ref": "#/components/schemas/AccountRows"
             },
             "description": "How many rows in each Actual account use it, split lines included; only accounts with\nsome are listed. Skipping an account takes its rows away."
+          }
+        }
+      },
+      "ActualCategoryChoice": {
+        "type": "object",
+        "required": [
+          "actual_id",
+          "goes_to",
+          "category_id"
+        ],
+        "properties": {
+          "actual_id": {
+            "type": "string",
+            "description": "Actual's id for the category."
+          },
+          "category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The app category, when it goes to one."
+          },
+          "goes_to": {
+            "$ref": "#/components/schemas/GoesTo"
+          }
+        }
+      },
+      "ActualCommitRequest": {
+        "type": "object",
+        "description": "The importer's choices, to commit.",
+        "required": [
+          "file_name",
+          "accounts",
+          "categories"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActualAccountChoice"
+            },
+            "description": "What happens to each live Actual account: every one needs a choice."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActualCategoryChoice"
+            },
+            "description": "Where each Actual category's rows go; one left out goes to Decide later."
+          },
+          "file_name": {
+            "type": "string",
+            "description": "The uploaded file's name, as Settings › Imports will list it.",
+            "example": "Example-Household-2026-10-30.zip"
           }
         }
       },
@@ -1469,6 +1668,70 @@
           },
           "id": {
             "type": "string"
+          }
+        }
+      },
+      "ActualImportDone": {
+        "type": "object",
+        "description": "The committed import, as the Done step sums it up.",
+        "required": [
+          "batch_id",
+          "accounts_created",
+          "accounts",
+          "mapped",
+          "undecided",
+          "transfer",
+          "uncategorized",
+          "linked_transfers"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportedAccount"
+            },
+            "description": "Each account the import created or added rows to, with its rows, in the export's order."
+          },
+          "accounts_created": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many accounts the import created.",
+            "minimum": 0
+          },
+          "batch_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The import batch, which Settings › Imports can undo."
+          },
+          "linked_transfers": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Transfers linked between two imported accounts (none yet: each leg comes in marked\ntransfer).",
+            "minimum": 0
+          },
+          "mapped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows that took the category theirs goes to.",
+            "minimum": 0
+          },
+          "transfer": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows marked transfer: those whose category goes to Transfer, and transfer legs.",
+            "minimum": 0
+          },
+          "uncategorized": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows with no category in Actual.",
+            "minimum": 0
+          },
+          "undecided": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows on Decide later, splits among them: they wait in From Actual, undecided.",
+            "minimum": 0
           }
         }
       },
@@ -1837,6 +2100,15 @@
           }
         }
       },
+      "GoesTo": {
+        "type": "string",
+        "description": "Where an Actual category's rows go.",
+        "enum": [
+          "category",
+          "transfer",
+          "later"
+        ]
+      },
       "Health": {
         "type": "object",
         "required": [
@@ -1866,6 +2138,33 @@
             "type": "string",
             "description": "IANA: it decides what \"today\" is.",
             "example": "America/Chicago"
+          }
+        }
+      },
+      "ImportedAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created",
+          "rows"
+        ],
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "description": "Whether the import created it, rather than adding to one there already."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO balance_snapshots\n               (account_id, as_of, balance_minor, source, app_balance_posted_minor, app_balance_pending_minor)\n             VALUES (?, ?, ?, 'import', ?, ?)\n             ON CONFLICT (account_id, as_of) DO UPDATE SET\n               balance_minor = excluded.balance_minor, source = excluded.source,\n               app_balance_posted_minor = excluded.app_balance_posted_minor,\n               app_balance_pending_minor = excluded.app_balance_pending_minor",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "8996ed000b78293c55cf9c53d08cf5eaafd00e99144f8122606e8e03833a76a5"
+}

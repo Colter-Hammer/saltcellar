@@ -67,8 +67,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * `DELETE /api/v1/categories/{id}`: deletes a category. Until transactions exist nothing uses
-         *     one, so every category can be; after, one in use answers `category_in_use` and can be hidden.
+         * `DELETE /api/v1/categories/{id}`: deletes a category. One that transactions or split lines use
+         *     answers `category_in_use` and can be hidden instead.
          */
         delete: operations["deleteCategory"];
         options?: never;
@@ -174,6 +174,23 @@ export interface paths {
         get: operations["getActualImport"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/actual/{id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/actual/{id}/commit`: imports the upload with the importer's choices. */
+        post: operations["commitActualImport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -358,6 +375,11 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * @description Create a new account, use one the app has (Same as), or leave the account out.
+         * @enum {string}
+         */
+        AccountAction: "create" | "same" | "skip";
+        /**
          * @description Whether an account's activity counts toward budgets, or only its balance over time is shown.
          * @enum {string}
          */
@@ -400,6 +422,25 @@ export interface components {
             /** @description The best guess from its name. */
             type: components["schemas"]["AccountType"];
         };
+        /**
+         * @description What happens to one Actual account. Create new reads `name`, `type`, `role` and
+         *     `balances_only`; Same as reads `same_as`.
+         */
+        ActualAccountChoice: {
+            action: components["schemas"]["AccountAction"];
+            /** @description Actual's id for the account. */
+            actual_id: string;
+            /** @description Brings the balance and none of the rows. */
+            balances_only: boolean;
+            name: string;
+            role: components["schemas"]["AccountRole"];
+            /**
+             * Format: int64
+             * @description The app account it's the same as.
+             */
+            same_as: number | null;
+            type: components["schemas"]["AccountType"];
+        };
         /** @description A live Actual category and the rows using it. */
         ActualCategory: {
             /** @description Its Actual group's name. */
@@ -414,6 +455,28 @@ export interface components {
              *     some are listed. Skipping an account takes its rows away.
              */
             rows: components["schemas"]["AccountRows"][];
+        };
+        ActualCategoryChoice: {
+            /** @description Actual's id for the category. */
+            actual_id: string;
+            /**
+             * Format: int64
+             * @description The app category, when it goes to one.
+             */
+            category_id: number | null;
+            goes_to: components["schemas"]["GoesTo"];
+        };
+        /** @description The importer's choices, to commit. */
+        ActualCommitRequest: {
+            /** @description What happens to each live Actual account: every one needs a choice. */
+            accounts: components["schemas"]["ActualAccountChoice"][];
+            /** @description Where each Actual category's rows go; one left out goes to Decide later. */
+            categories: components["schemas"]["ActualCategoryChoice"][];
+            /**
+             * @description The uploaded file's name, as Settings › Imports will list it.
+             * @example Example-Household-2026-10-30.zip
+             */
+            file_name: string;
         };
         /**
          * @description What's in an uploaded export for the importer's Accounts and Categories steps, with the
@@ -435,6 +498,47 @@ export interface components {
              */
             categories: components["schemas"]["ActualCategory"][];
             id: string;
+        };
+        /** @description The committed import, as the Done step sums it up. */
+        ActualImportDone: {
+            /** @description Each account the import created or added rows to, with its rows, in the export's order. */
+            accounts: components["schemas"]["ImportedAccount"][];
+            /**
+             * Format: int64
+             * @description How many accounts the import created.
+             */
+            accounts_created: number;
+            /**
+             * Format: int64
+             * @description The import batch, which Settings › Imports can undo.
+             */
+            batch_id: number;
+            /**
+             * Format: int64
+             * @description Transfers linked between two imported accounts (none yet: each leg comes in marked
+             *     transfer).
+             */
+            linked_transfers: number;
+            /**
+             * Format: int64
+             * @description Rows that took the category theirs goes to.
+             */
+            mapped: number;
+            /**
+             * Format: int64
+             * @description Rows marked transfer: those whose category goes to Transfer, and transfer legs.
+             */
+            transfer: number;
+            /**
+             * Format: int64
+             * @description Rows with no category in Actual.
+             */
+            uncategorized: number;
+            /**
+             * Format: int64
+             * @description Rows on Decide later, splits among them: they wait in From Actual, undecided.
+             */
+            undecided: number;
         };
         /** @description An uploaded Actual export and what's in it. */
         ActualUpload: {
@@ -571,6 +675,11 @@ export interface components {
             timezone: string;
             username: string;
         };
+        /**
+         * @description Where an Actual category's rows go.
+         * @enum {string}
+         */
+        GoesTo: "category" | "transfer" | "later";
         Health: {
             /**
              * @description Always `ok`: any other state is an error response.
@@ -589,6 +698,15 @@ export interface components {
              * @example America/Chicago
              */
             timezone: string;
+        };
+        ImportedAccount: {
+            /** @description Whether the import created it, rather than adding to one there already. */
+            created: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            rows: number;
         };
         LogIn: {
             password: string;
@@ -826,6 +944,15 @@ export interface operations {
             };
             /** @description `not_found`: there's no such category. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `category_in_use`: transactions or split lines use it. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1206,6 +1333,69 @@ export interface operations {
                 };
             };
             /** @description `export_unreadable`: the export has data the app can't read. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    commitActualImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The upload, as its upload answered. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActualCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Imported, as one import batch. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActualImportDone"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `upload_not_found`: no such upload, or it's over a day old and deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `earlier_import`: an earlier import from Actual hasn't been undone. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out. */
             422: {
                 headers: {
                     [name: string]: unknown;

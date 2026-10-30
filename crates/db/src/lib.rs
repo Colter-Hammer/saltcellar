@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
-pub use accounts::{Account, accounts};
+pub use accounts::{Account, AccountBalance, account_balances, accounts};
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
     password_login, recent_failures, record_failure, use_session,
@@ -23,7 +23,10 @@ pub use categories::{
     delete_group, set_order, update_category, update_group, use_starter_categories,
 };
 pub use household::{Household, household};
-pub use imports::actual_import_in_place;
+pub use imports::{
+    ActualCommit, Committed, CommittedAccount, ImportError, actual_import_in_place,
+    commit_actual_import,
+};
 pub use profile::{
     Profile, ProfileChange, end_all_sessions, password_hash, profile, set_password, update_profile,
 };
@@ -164,9 +167,12 @@ mod tests {
             tables,
             [
                 "accounts",
+                "balance_snapshots",
                 "categories",
                 "category_groups",
                 "household",
+                "import_batch_rows",
+                "import_batches",
                 "login_failures",
                 "password_resets",
                 "payee_aliases",
@@ -174,6 +180,10 @@ mod tests {
                 "sessions",
                 "settings",
                 "tags",
+                "transaction_splits",
+                "transaction_tags",
+                "transactions",
+                "transfers",
                 "users"
             ]
         );
