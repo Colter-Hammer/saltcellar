@@ -20,7 +20,7 @@ pub async fn issue_password_reset(
 ) -> Result<bool, Error> {
     let username = username.as_str();
     let expires_at = stamp(now + RESET_LIFETIME);
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let user_id = sqlx::query_scalar!(
         r#"SELECT id AS "id!: i64" FROM users WHERE username = ? AND removed_at IS NULL"#,
         username
@@ -91,7 +91,7 @@ pub async fn use_password_reset(
 ) -> Result<Option<i64>, Error> {
     let at = stamp(now);
     let expires_at = stamp(now + SESSION_LIFETIME);
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let user_id = sqlx::query_scalar!(
         r#"UPDATE password_resets SET used_at = ?1
            WHERE token_hash = ?2 AND used_at IS NULL AND expires_at > ?1

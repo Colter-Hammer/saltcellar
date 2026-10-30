@@ -82,7 +82,7 @@ pub async fn log_in(
 ) -> Result<(), Error> {
     let at = stamp(now);
     let expires_at = stamp(now + SESSION_LIFETIME);
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     sqlx::query!(
         "INSERT INTO sessions (token_hash, user_id, created_at, last_seen_at, expires_at)
          VALUES (?, ?, ?, ?, ?)",
@@ -125,7 +125,7 @@ pub async fn use_session(
 ) -> Result<Option<SessionLogin>, Error> {
     let at = stamp(now);
     let expires_at = stamp(now + SESSION_LIFETIME);
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let user_id = sqlx::query_scalar!(
         r#"UPDATE sessions SET last_seen_at = ?1, expires_at = ?2
            WHERE token_hash = ?3 AND expires_at > ?1
@@ -217,7 +217,7 @@ pub async fn finish_setup(
     let done_at = stamp(now);
     let expires_at = stamp(now + SESSION_LIFETIME);
 
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let household = sqlx::query!(
         "INSERT INTO household (id, currency_code, timezone, setup_done_at) VALUES (1, ?1, ?2, ?3)
          ON CONFLICT (id) DO UPDATE SET currency_code = ?1, timezone = ?2, setup_done_at = ?3

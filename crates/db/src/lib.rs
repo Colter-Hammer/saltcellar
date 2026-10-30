@@ -65,6 +65,10 @@ fn parse_stamp(text: String) -> Result<jiff::Timestamp, Error> {
 
 /// Opens the database at `path`, creating the file if it's missing.
 ///
+/// Transactions that write start with `BEGIN IMMEDIATE`: a plain `BEGIN` that reads first and
+/// then writes gets "database is locked" at once, without waiting out the busy timeout, if
+/// another connection wrote in between.
+///
 /// # Errors
 /// If the file can't be opened or isn't a SQLite database.
 pub async fn connect(path: &Path) -> Result<SqlitePool, Error> {
