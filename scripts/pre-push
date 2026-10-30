@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # pre-push hook body (lefthook.yml): run every push check over exactly the commits git is about to
 # send, read from the hook's stdin, so a commit pushed by its id (not on any local branch) is checked
-# too. Anything a remote already has is skipped.
+# too. Anything a remote already has is skipped. Then, if the checked-out commit is being pushed,
+# `just e2e` runs against the working tree, which must match that commit.
 set -uo pipefail
 
 shas=()
@@ -16,4 +17,16 @@ status=0
 python3 scripts/guard.py leak push || status=1
 python3 scripts/guard.py files push || status=1
 gitleaks git --log-opts="${shas[*]} --not --remotes" --redact --no-banner || status=1
-exit "$status"
+[[ $status -ne 0 ]] && exit "$status"
+
+head=$(git rev-parse HEAD)
+if [[ " ${shas[*]} " != *" $head "* ]]; then
+  echo "pre-push: e2e skipped: the checked-out commit isn't being pushed, and e2e tests the working tree" >&2
+  exit 0
+fi
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "pre-push: e2e tests the working tree, which has uncommitted changes; commit or stash them first" >&2
+  exit 1
+fi
+# One e2e run at a time on this machine: they share a compose project and a port.
+exec flock /tmp/saltcellar-e2e.lock just e2e
