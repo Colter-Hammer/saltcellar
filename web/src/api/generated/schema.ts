@@ -404,6 +404,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/transactions`: a page of transactions, newest first by date then id. */
+        get: operations["getTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transactions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/transactions/{id}`: one transaction in full. */
+        get: operations["getTransaction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -775,6 +809,14 @@ export interface components {
              */
             timezone: string;
         };
+        /** @description The import a transaction came in with. */
+        ImportBatchRef: {
+            file_name: string;
+            /** Format: int64 */
+            id: number;
+            /** @description RFC 3339, UTC. */
+            imported_at: string;
+        };
         ImportedAccount: {
             /** @description Whether the import created it, rather than adding to one there already. */
             created: boolean;
@@ -817,6 +859,74 @@ export interface components {
             /** @description Whether setup is finished. Until it is, the app shows only the setup wizard. */
             done: boolean;
         };
+        /** @description One of a split transaction's lines. */
+        SplitLine: {
+            /**
+             * Format: int64
+             * @description In minor units.
+             */
+            amount_minor: number;
+            category: string;
+            /** Format: int64 */
+            category_id: number;
+            memo: string | null;
+        };
+        /** @description A transaction in full. */
+        Transaction: components["schemas"]["TransactionRow"] & {
+            /** @description How it got its category, in words; null when nothing gave it one. */
+            categorization_reason: string | null;
+            import_batch: components["schemas"]["ImportBatchRef"] | null;
+            memo: string | null;
+            source: components["schemas"]["TransactionSource"];
+            /** @description Empty unless it's split. */
+            splits: components["schemas"]["SplitLine"][];
+        };
+        /** @description A page of transactions, newest first. */
+        TransactionPage: {
+            /** @description Pass it back as `after` for the next page; null on the last. */
+            next_cursor: string | null;
+            transactions: components["schemas"]["TransactionRow"][];
+        };
+        /** @description A transaction as the list shows it. */
+        TransactionRow: {
+            account: string;
+            /** Format: int64 */
+            account_id: number;
+            /**
+             * Format: int64
+             * @description In minor units: negative is money out, positive money in.
+             */
+            amount_minor: number;
+            category: string | null;
+            /**
+             * Format: int64
+             * @description Null when it's split, a transfer leg, or uncategorized.
+             */
+            category_id: number | null;
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** Format: int64 */
+            id: number;
+            /** @description Null when it has none. */
+            payee: string | null;
+            /** @description Exactly what the bank sent; never edited. */
+            raw_description: string;
+            /** @description Split across categories: its lines are in its detail. */
+            split: boolean;
+            status: components["schemas"]["TransactionStatus"];
+            /** @description Its tags' names, in name order. */
+            tags: string[];
+        };
+        /**
+         * @description Where it came from: the bank (through the sync provider), a file, or entered by hand.
+         * @enum {string}
+         */
+        TransactionSource: "provider" | "import" | "manual";
+        /**
+         * @description Whether the bank has settled it.
+         * @enum {string}
+         */
+        TransactionStatus: "pending" | "posted";
         UseReset: {
             /** @description At least 12 characters. */
             password: string;
@@ -2100,6 +2210,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": string[];
+                };
+            };
+        };
+    };
+    getTransactions: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the page before; leave it out for the newest rows. */
+                after?: string;
+                /** @description How many rows, 1 to 200; 50 if left out. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of transactions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionPage"];
+                };
+            };
+            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

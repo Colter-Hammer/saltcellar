@@ -81,6 +81,7 @@ Read-only, except setting categories on undecided rows (below).
 - **Filters** (chips): account, category (including Uncategorized), date range, tag, **From Actual, undecided**, **Imported, uncategorized** (from milestone 3).
 - **Detail:** date, amount, account, payee, raw description, category or split lines, memo, tags, status, source (import / bank / manual), how it got its category (`categorization_reason`), and the import batch it came from.
 - Transfer legs show "Transfer to/from <account>" in place of a category.
+- Details placed in building it *(agent)*: the open transaction is in the address, `/transactions/{id}`, so Back closes it; on desktops its detail sits beside the table, on phones it covers the list as a sheet, closed with **Close** or Escape. A row without a payee shows what the bank sent. Amounts are signed: money in carries a plus. A split row's category reads "Split". The list loads 50 rows at a time, more on reaching the end, with a **Load more** button as the fallback. The API is `GET /api/v1/transactions?after={cursor}&limit={1–200}` (the cursor is the last row's `YYYY-MM-DD.id`, passed back as `next_cursor` gave it) and `GET /api/v1/transactions/{id}`.
 
 ## Import from Actual
 

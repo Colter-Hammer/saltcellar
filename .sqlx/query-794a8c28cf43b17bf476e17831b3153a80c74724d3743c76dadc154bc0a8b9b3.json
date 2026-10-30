@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT b.id AS \"id!: i64\", b.file_name, b.imported_at\n           FROM import_batch_rows r JOIN import_batches b ON b.id = r.batch_id\n           WHERE r.transaction_id = ? ORDER BY b.id LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "file_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "imported_at",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "imported_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "794a8c28cf43b17bf476e17831b3153a80c74724d3743c76dadc154bc0a8b9b3"
+}

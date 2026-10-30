@@ -757,3 +757,144 @@ async fn accounts_show_the_imported_balances() {
     let (status, _) = send(app.router.clone(), get("/api/v1/accounts")).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+// ── Transactions, after the commit ──
+
+/// The fake export committed, with Groceries mapped; Groceries's id and the row count.
+async fn imported(app: &App) -> (i64, usize) {
+    let category = groceries(app).await;
+    let plan = fake_plan(app).await;
+    let id = plan["id"].as_str().unwrap().to_owned();
+    let body = json!({
+        "file_name": "actual-export.zip",
+        "accounts": create_all(&plan),
+        "categories": [
+            { "actual_id": fake_id(3, 1), "goes_to": "category", "category_id": category },
+            { "actual_id": fake_id(3, 2), "goes_to": "transfer", "category_id": null },
+        ],
+    });
+    let (status, done) = commit(app, &id, &body).await;
+    assert_eq!(status, StatusCode::CREATED, "{done}");
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM transactions")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    (category, usize::try_from(total).unwrap())
+}
+
+async fn get_json(app: &App, path: &str) -> (StatusCode, Value) {
+    send(app.router.clone(), with(&app.cookie, get(path))).await
+}
+
+#[tokio::test]
+async fn every_imported_transaction_pages_through_once() {
+    let app = set_up().await;
+    let (status, empty) = get_json(&app, "/api/v1/transactions").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(empty, json!({ "transactions": [], "next_cursor": null }));
+    let (_, total) = imported(&app).await;
+
+    // Two at a time, newest first: every row once, no gaps.
+    let mut rows: Vec<Value> = Vec::new();
+    let mut query = "?limit=2".to_owned();
+    loop {
+        let (status, body) = get_json(&app, &format!("/api/v1/transactions{query}")).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let got = body["transactions"].as_array().unwrap();
+        assert!(got.len() <= 2);
+        rows.extend(got.iter().cloned());
+        match body["next_cursor"].as_str() {
+            Some(cursor) => query = format!("?limit=2&after={cursor}"),
+            None => break,
+        }
+    }
+    assert_eq!(rows.len(), total);
+    let order: Vec<(String, i64)> = rows
+        .iter()
+        .map(|row| {
+            (
+                row["date"].as_str().unwrap().to_owned(),
+                row["id"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    let mut sorted = order.clone();
+    sorted.sort_by(|a, b| b.cmp(a));
+    sorted.dedup();
+    assert_eq!(order, sorted);
+    let (_, all) = get_json(&app, "/api/v1/transactions?limit=200").await;
+    assert_eq!(all["transactions"].as_array().unwrap(), &rows);
+
+    // Money in is positive: the card payment's leg into the card, transfer-like and uncategorized.
+    let into_card = rows
+        .iter()
+        .find(|row| row["date"] == "2025-06-25" && row["amount_minor"] == 50_000)
+        .unwrap();
+    assert_eq!(into_card["category"], Value::Null);
+    assert_eq!(into_card["category_id"], Value::Null);
+    assert_eq!(into_card["split"], false);
+    assert!(
+        rows.iter()
+            .any(|row| row["amount_minor"].as_i64().unwrap() < 0)
+    );
+
+    for bad in [
+        "?limit=0",
+        "?limit=201",
+        "?limit=x",
+        "?after=nope",
+        "?after=2025-01-01.0",
+    ] {
+        let (status, body) = get_json(&app, &format!("/api/v1/transactions{bad}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(body["error"]["code"], "invalid_page", "{bad}");
+    }
+    let (status, _) = send(app.router.clone(), get("/api/v1/transactions")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn an_imported_transaction_reads_in_full() {
+    let app = set_up().await;
+    let (category, _) = imported(&app).await;
+
+    // A split comes in unsplit, with the Actual split in its memo.
+    let split: i64 = sqlx::query_scalar(
+        "SELECT id FROM transactions WHERE memo LIKE '%Split in Actual:%' AND date = '2025-07-12'",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    let (status, detail) = get_json(&app, &format!("/api/v1/transactions/{split}")).await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["amount_minor"], -12_000);
+    assert_eq!(detail["category"], Value::Null);
+    assert_eq!(detail["split"], false);
+    assert_eq!(detail["splits"], json!([]));
+    assert_eq!(detail["source"], "import");
+    let memo = detail["memo"].as_str().unwrap();
+    assert!(memo.contains("\nSplit in Actual: "), "{memo}");
+    assert_eq!(detail["import_batch"]["file_name"], "actual-export.zip");
+    assert!(detail["import_batch"]["imported_at"].is_string());
+
+    // A row Groceries took says so, and its detail starts with its row in the list.
+    let (_, all) = get_json(&app, "/api/v1/transactions?limit=200").await;
+    let mapped = all["transactions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["category_id"] == category)
+        .unwrap();
+    let (_, detail) = get_json(&app, &format!("/api/v1/transactions/{}", mapped["id"])).await;
+    assert_eq!(detail["category"], "Groceries");
+    assert!(detail["categorization_reason"].is_string(), "{detail}");
+    for (key, value) in mapped.as_object().unwrap() {
+        assert_eq!(&detail[key], value, "{key}");
+    }
+
+    for missing in ["/api/v1/transactions/999999", "/api/v1/transactions/nope"] {
+        let (status, body) = get_json(&app, missing).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{missing}");
+        assert_eq!(body["error"]["code"], "not_found");
+    }
+}

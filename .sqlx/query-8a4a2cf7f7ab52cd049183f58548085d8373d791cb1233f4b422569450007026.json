@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT memo, source, categorization_reason\n           FROM transactions WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "memo",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "memo"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "categorization_reason",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorization_reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "8a4a2cf7f7ab52cd049183f58548085d8373d791cb1233f4b422569450007026"
+}

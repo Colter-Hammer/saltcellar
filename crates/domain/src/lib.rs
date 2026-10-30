@@ -15,6 +15,7 @@ pub mod profile;
 mod setup_code;
 pub mod throttle;
 mod timezone;
+pub mod transactions;
 
 pub use currency::{CURRENCIES, Currency, UnknownCurrency};
 pub use date::{Date, DateError};

@@ -7,6 +7,7 @@ mod household;
 mod imports;
 mod profile;
 mod reset;
+mod transactions;
 
 use std::path::Path;
 use std::time::Duration;
@@ -32,6 +33,10 @@ pub use profile::{
 };
 pub use reset::{UseReset, issue_password_reset, password_reset, use_password_reset};
 pub use sqlx::SqlitePool;
+pub use transactions::{
+    BatchRef, SplitLine, TransactionDetail, TransactionPage, TransactionRow, transaction,
+    transactions,
+};
 
 /// The database file's name inside `BUDGET_DATA_DIR`.
 pub const FILE_NAME: &str = "budget.sqlite";
