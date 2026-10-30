@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
+import type { Account } from './api/accounts'
 import { call, client } from './api/client'
 import { createAppRouter } from './router'
 
@@ -28,6 +29,8 @@ interface FakeServer {
   resetToken?: string | undefined
   /** The category groups, as `GET /api/v1/categories` lists them. */
   groups: { id: number; name: string; kind: string; hidden: boolean; categories: unknown[] }[]
+  /** The accounts, as `GET /api/v1/accounts` lists them. */
+  accounts: Account[]
 }
 
 let server: FakeServer
@@ -50,6 +53,14 @@ async function answer(request: Request): Promise<Response> {
   if (path.startsWith('/api/v1/profile')) return profile(request, path)
   if (path.startsWith('/api/v1/password-reset')) return reset(request, path)
   if (path.startsWith('/api/v1/categor')) return categories(request, path)
+  if (path.startsWith('/api/v1/accounts') && !server.loggedIn) {
+    return error(401, 'login_required', 'Log in to continue.')
+  }
+  if (path === '/api/v1/accounts') return Response.json({ accounts: server.accounts })
+  if (path.startsWith('/api/v1/accounts/')) {
+    const found = server.accounts.find((a) => `/api/v1/accounts/${String(a.id)}` === path)
+    return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
+  }
   if (path === '/api/v1/setup' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, string>
     if (body.code !== server.code) {
@@ -231,6 +242,7 @@ beforeEach(() => {
     locale: null,
     weekStart: null,
     groups: [],
+    accounts: [],
   }
   serverUp()
 })
@@ -656,8 +668,9 @@ describe('logging in', () => {
           : answer(request),
       ),
     )
-    const { router } = await open('/accounts')
-    expect(router.currentRoute.value.path).toBe('/accounts')
+    // A screen that asks the server nothing itself: one that does would find the login gone.
+    const { router } = await open('/transactions')
+    expect(router.currentRoute.value.path).toBe('/transactions')
   })
 })
 
@@ -949,5 +962,117 @@ describe('Settings › Categories', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toBe("There's already a group called Income.")
+  })
+})
+
+describe('Accounts', () => {
+  const fake = (id: number, fields: Partial<Account>): Account => ({
+    id,
+    name: `Account ${String(id)}`,
+    institution: null,
+    type: 'checking',
+    role: 'budgeted',
+    closed: false,
+    balances_only: false,
+    balance_minor: 0,
+    app_balance_minor: 0,
+    opening_balance_minor: 0,
+    opening_date: '2025-12-31',
+    rows: 0,
+    last_transaction_date: null,
+    ...fields,
+  })
+
+  beforeEach(() => {
+    server.accounts = [
+      fake(1, {
+        name: 'Everyday checking',
+        institution: 'Fake Bank',
+        balance_minor: 2_145_801,
+        app_balance_minor: 2_145_801,
+        opening_balance_minor: 150_000,
+        rows: 42,
+        last_transaction_date: '2026-10-01',
+      }),
+      fake(2, { name: 'Old checking', closed: true }),
+      fake(3, {
+        name: 'Brokerage',
+        type: 'investment',
+        role: 'tracking',
+        balances_only: true,
+        balance_minor: 1_000_000,
+        app_balance_minor: null,
+        opening_balance_minor: null,
+        opening_date: null,
+      }),
+    ]
+  })
+
+  it('offers the import while there are none', async () => {
+    server.accounts = []
+    const { wrapper } = await open('/accounts')
+    expect(wrapper.get('main').text()).toContain('No accounts yet.')
+    const link = wrapper.get('main').get('a')
+    expect([link.text(), link.attributes('href')]).toEqual(['Import from Actual', '/import'])
+  })
+
+  it('groups them on phones and tables them on desktops, in the household currency', async () => {
+    const { wrapper } = await open('/accounts')
+    const groups = wrapper.findAll('main section')
+    expect(groups.map((g) => [g.get('h2').text(), g.findAll('li').map((li) => li.text())])).toEqual(
+      [
+        ['Budgeted', ['Everyday checkingChecking€21,458.01']],
+        ['Tracking', ['BrokerageInvestment€10,000.00']],
+        ['Closed', ['Old checkingChecking€0.00']],
+      ],
+    )
+    const rows = wrapper.get('table[aria-label="Accounts"]').findAll('tbody tr')
+    expect(rows.map((row) => row.findAll('th, td').map((cell) => cell.text()))).toEqual([
+      ['Everyday checking', 'Fake Bank', 'Checking', 'Budgeted', '€21,458.01', 'Oct 1, 2026'],
+      ['Brokerage', '—', 'Investment', 'Tracking', '€10,000.00', '—'],
+      ['Old checkingClosed', '—', 'Checking', 'Budgeted', '€0.00', '—'],
+    ])
+  })
+
+  it('opens an account with its balances and a link to its transactions', async () => {
+    const { router, wrapper } = await open('/accounts')
+    await wrapper.get('main li a').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/accounts/1')
+    expect(wrapper.get('h2').text()).toBe('Everyday checking')
+    expect(wrapper.get('main section p').text()).toBe('Checking · Budgeted · Fake Bank')
+    const figures = wrapper
+      .get('dl')
+      .findAll('dt, dd')
+      .map((cell) => cell.text())
+    expect(figures).toEqual([
+      'Balance',
+      '€21,458.01',
+      "App's balance",
+      '€21,458.01',
+      'Opening balance',
+      '€1,500.00 on Dec 31, 2025',
+      'Transactions',
+      '42',
+    ])
+    const link = wrapper.findAll('main a').find((a) => a.text() === 'See transactions')
+    expect(link?.attributes('href')).toBe('/transactions?account=1')
+  })
+
+  it('shows a balances-only account with its balance and no transactions', async () => {
+    const { wrapper } = await open('/accounts/3')
+    expect(
+      wrapper
+        .get('dl')
+        .findAll('dt, dd')
+        .map((cell) => cell.text()),
+    ).toEqual(['Balance', '€10,000.00'])
+    expect(wrapper.get('main').text()).toContain('Balances only')
+    expect(wrapper.findAll('main a').map((a) => a.text())).toEqual(['← All accounts'])
+  })
+
+  it('says so for an account that is not there', async () => {
+    const { wrapper } = await open('/accounts/9')
+    expect(wrapper.get('[role="alert"]').text()).toBe("There's no such account.")
   })
 })

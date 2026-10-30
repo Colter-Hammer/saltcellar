@@ -4,6 +4,7 @@ import { getSession } from '@/api/session'
 import { isSetupDone } from '@/api/setup'
 import type { Tab } from '@/lib/nav'
 import AccountsView from '@/views/AccountsView.vue'
+import AccountView from '@/views/AccountView.vue'
 import CategoriesView from '@/views/CategoriesView.vue'
 import ImportView from '@/views/ImportView.vue'
 import LoginView from '@/views/LoginView.vue'
@@ -37,6 +38,11 @@ export function createAppRouter(history: RouterHistory): Router {
         meta: { title: 'Transactions', tab: 'transactions' },
       },
       { path: '/accounts', component: AccountsView, meta: { title: 'Accounts', tab: 'accounts' } },
+      {
+        path: '/accounts/:id(\\d+)',
+        component: AccountView,
+        meta: { title: 'Account', tab: 'accounts' },
+      },
       { path: '/more', component: MoreView, meta: { title: 'More', tab: 'more' } },
       {
         path: '/categories',
