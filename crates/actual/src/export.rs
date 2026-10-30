@@ -1,14 +1,13 @@
 //! Reading an unpacked export: its database opened read-only, its raw tables, never its views
 //! (views can be missing or stale in older exports).
 
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 
-use domain::Date;
+use domain::{Date, actual};
 use serde::Deserialize;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
-use sqlx::{ConnectOptions, Connection};
+use sqlx::sqlite::{Sqlite, SqliteConnectOptions, SqliteConnection, SqliteRow};
+use sqlx::{ConnectOptions, Connection, Row as _};
 
 use crate::{DB_FILE, METADATA_FILE, ReadError};
 
@@ -72,109 +71,165 @@ impl Export {
     /// The budget's name, and its live accounts, transactions, categories and date range.
     ///
     /// # Errors
-    /// [`ReadError::NotAnExport`] if a table the importer reads is missing, or lacks a column it
-    /// can't do without; [`ReadError::Unreadable`] for a value it can't read.
+    /// As for [`Export::read`].
     pub async fn summary(&mut self) -> Result<Summary, ReadError> {
-        let accounts = self.accounts().await?;
-        let live_accounts: Vec<&str> = accounts
-            .iter()
-            .filter(|account| !account.tombstone)
-            .map(|account| account.id.as_str())
-            .collect();
-        let transactions = self.transactions().await?;
-        let by_id: HashMap<&str, &RawTransaction> = transactions
-            .iter()
-            .map(|transaction| (transaction.id.as_str(), transaction))
-            .collect();
-        let alive = |transaction: &RawTransaction| {
-            let parent_alive = || {
-                transaction
-                    .parent_id
-                    .as_deref()
-                    .and_then(|id| by_id.get(id))
-                    .is_some_and(|parent| !parent.tombstone)
-            };
-            !transaction.tombstone
-                && transaction.date.is_some()
-                && transaction
-                    .account
-                    .as_deref()
-                    .is_some_and(|id| live_accounts.contains(&id))
-                && (!transaction.is_child || parent_alive())
-        };
-        let mut count = 0;
-        let mut dates: Option<(Date, Date)> = None;
-        for transaction in transactions.iter().filter(|t| alive(t)) {
-            if !transaction.is_child {
-                count += 1;
-            }
-            if let Some(date) = transaction.date {
-                let date = parse_date(date)?;
-                dates = Some(dates.map_or((date, date), |(first, last)| {
-                    (first.min(date), last.max(date))
-                }));
-            }
-        }
+        let export = self.read().await?;
         Ok(Summary {
             budget_name: self.budget_name.clone(),
-            accounts: live_accounts.len() as u64,
-            transactions: count,
-            categories: self.live_categories().await?,
-            dates,
+            accounts: export.accounts.len() as u64,
+            transactions: export.transactions.len() as u64,
+            categories: export.categories.len() as u64,
+            dates: export.dates(),
         })
     }
 
-    async fn accounts(&mut self) -> Result<Vec<RawAccount>, ReadError> {
-        let sql = select(&mut self.db, "accounts", ACCOUNT_COLUMNS).await?;
-        let rows: Vec<(String, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+    /// Every live account, category and transaction, with each account's figures and each
+    /// category's use (docs/spec/m1-ledger-import.md#reading-the-export).
+    ///
+    /// # Errors
+    /// [`ReadError::NotAnExport`] if a table the importer reads is missing, or lacks a column it
+    /// can't do without; [`ReadError::Unreadable`] for a value it can't read.
+    pub async fn read(&mut self) -> Result<actual::Export, ReadError> {
+        let raw = actual::Raw {
+            accounts: self.accounts().await?,
+            groups: self.groups().await?,
+            categories: self.categories().await?,
+            category_mapping: self
+                .mapping("category_mapping", "transferId", "a category merge")
+                .await?,
+            payees: self.payees().await?,
+            payee_mapping: self
+                .mapping("payee_mapping", "targetId", "a payee merge")
+                .await?,
+            transactions: self.transactions().await?,
+        };
+        raw.read()
+            .map_err(|actual::Unreadable(what)| ReadError::Unreadable(what))
+    }
+
+    /// Every row of `table`, its `columns` in order.
+    async fn rows(
+        &mut self,
+        table: &str,
+        columns: &[Column],
+        what: &'static str,
+    ) -> Result<Vec<Row>, ReadError> {
+        let sql = select(&mut self.db, table, columns).await?;
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .fetch_all(&mut self.db)
             .await
-            .map_err(unreadable("an account"))?;
-        Ok(rows
-            .into_iter()
-            .map(|(id, tombstone)| RawAccount {
-                id,
-                tombstone: tombstone != 0,
+            .map_err(unreadable(what))?;
+        Ok(rows.into_iter().map(|row| Row { row, what }).collect())
+    }
+
+    async fn accounts(&mut self) -> Result<Vec<actual::RawAccount>, ReadError> {
+        let rows = self.rows("accounts", ACCOUNT_COLUMNS, "an account").await?;
+        rows.iter()
+            .map(|row| {
+                Ok(actual::RawAccount {
+                    id: row.get(0)?,
+                    name: row.get::<Option<String>>(1)?.unwrap_or_default(),
+                    off_budget: row.flag(2)?,
+                    closed: row.flag(3)?,
+                    bank_id: row.get(4)?,
+                    sort_order: row.get(5)?,
+                    tombstone: row.flag(6)?,
+                })
             })
-            .collect())
+            .collect()
     }
 
-    async fn transactions(&mut self) -> Result<Vec<RawTransaction>, ReadError> {
-        type Row = (
-            String,
-            Option<String>,
-            Option<i64>,
-            i64,
-            Option<String>,
-            i64,
-        );
-        let sql = select(&mut self.db, "transactions", TRANSACTION_COLUMNS).await?;
-        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
-            .fetch_all(&mut self.db)
-            .await
-            .map_err(unreadable("a transaction"))?;
-        Ok(rows
-            .into_iter()
-            .map(
-                |(id, account, date, is_child, parent_id, tombstone)| RawTransaction {
-                    id,
-                    account,
-                    date,
-                    is_child: is_child != 0,
-                    parent_id,
-                    tombstone: tombstone != 0,
-                },
-            )
-            .collect())
+    async fn groups(&mut self) -> Result<Vec<actual::RawGroup>, ReadError> {
+        let rows = self
+            .rows("category_groups", GROUP_COLUMNS, "a category group")
+            .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(actual::RawGroup {
+                    id: row.get(0)?,
+                    name: row.get::<Option<String>>(1)?.unwrap_or_default(),
+                    income: row.flag(2)?,
+                    sort_order: row.get(3)?,
+                    tombstone: row.flag(4)?,
+                })
+            })
+            .collect()
     }
 
-    async fn live_categories(&mut self) -> Result<u64, ReadError> {
-        let sql = select(&mut self.db, "categories", CATEGORY_COLUMNS).await?;
-        let rows: Vec<(String, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
-            .fetch_all(&mut self.db)
-            .await
-            .map_err(unreadable("a category"))?;
-        Ok(rows.iter().filter(|(_, tombstone)| *tombstone == 0).count() as u64)
+    async fn categories(&mut self) -> Result<Vec<actual::RawCategory>, ReadError> {
+        let rows = self
+            .rows("categories", CATEGORY_COLUMNS, "a category")
+            .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(actual::RawCategory {
+                    id: row.get(0)?,
+                    name: row.get::<Option<String>>(1)?.unwrap_or_default(),
+                    group: row.get(2)?,
+                    sort_order: row.get(3)?,
+                    tombstone: row.flag(4)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn payees(&mut self) -> Result<Vec<actual::RawPayee>, ReadError> {
+        let rows = self.rows("payees", PAYEE_COLUMNS, "a payee").await?;
+        rows.iter()
+            .map(|row| {
+                Ok(actual::RawPayee {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    transfer_account: row.get(2)?,
+                    tombstone: row.flag(3)?,
+                })
+            })
+            .collect()
+    }
+
+    /// A merge mapping as `(id, target)` pairs; a row without a target is left out.
+    async fn mapping(
+        &mut self,
+        table: &str,
+        target: &'static str,
+        what: &'static str,
+    ) -> Result<Vec<(String, String)>, ReadError> {
+        let columns = [required("id"), required(target)];
+        let rows = self.rows(table, &columns, what).await?;
+        let mut pairs = Vec::with_capacity(rows.len());
+        for row in &rows {
+            if let Some(to) = row.get::<Option<String>>(1)? {
+                pairs.push((row.get(0)?, to));
+            }
+        }
+        Ok(pairs)
+    }
+
+    async fn transactions(&mut self) -> Result<Vec<actual::RawTransaction>, ReadError> {
+        let rows = self
+            .rows("transactions", TRANSACTION_COLUMNS, "a transaction")
+            .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(actual::RawTransaction {
+                    id: row.get(0)?,
+                    account: row.get(1)?,
+                    date: row.get(2)?,
+                    is_child: row.flag(3)?,
+                    parent_id: row.get(4)?,
+                    tombstone: row.flag(5)?,
+                    category: row.get(6)?,
+                    amount: row.get(7)?,
+                    payee: row.get(8)?,
+                    imported_description: row.get(9)?,
+                    notes: row.get(10)?,
+                    financial_id: row.get(11)?,
+                    is_parent: row.flag(12)?,
+                    transferred_id: row.get(13)?,
+                    starting_balance: row.flag(14)?,
+                })
+            })
+            .collect()
     }
 
     /// Closes the database.
@@ -184,19 +239,24 @@ impl Export {
     }
 }
 
-struct RawAccount {
-    id: String,
-    tombstone: bool,
+/// A row of a raw table, read by column position, naming what it is when a value won't read.
+struct Row {
+    row: SqliteRow,
+    what: &'static str,
 }
 
-struct RawTransaction {
-    id: String,
-    account: Option<String>,
-    /// `YYYYMMDD`; Actual leaves out rows without one.
-    date: Option<i64>,
-    is_child: bool,
-    parent_id: Option<String>,
-    tombstone: bool,
+impl Row {
+    fn get<'r, T>(&'r self, index: usize) -> Result<T, ReadError>
+    where
+        T: sqlx::Decode<'r, Sqlite> + sqlx::Type<Sqlite>,
+    {
+        self.row.try_get(index).map_err(unreadable(self.what))
+    }
+
+    /// A 0/1 flag; [`select`] has made NULL or missing 0 already.
+    fn flag(&self, index: usize) -> Result<bool, ReadError> {
+        Ok(self.get::<i64>(index)? != 0)
+    }
 }
 
 /// A column the importer reads, and what to read when an older export lacks it.
@@ -212,36 +272,78 @@ enum Kind {
     Flag,
     /// May be NULL; missing reads as this SQL expression.
     Nullable(&'static str),
+    /// A sort position, as a real number: NULL or missing reads as 0.
+    Order,
+}
+
+const fn required(name: &'static str) -> Column {
+    Column {
+        name,
+        kind: Kind::Required,
+    }
+}
+
+const fn flag(name: &'static str) -> Column {
+    Column {
+        name,
+        kind: Kind::Flag,
+    }
+}
+
+/// May be NULL, and reads as NULL when an older export lacks it.
+const fn nullable(name: &'static str) -> Column {
+    Column {
+        name,
+        kind: Kind::Nullable("NULL"),
+    }
+}
+
+const fn order(name: &'static str) -> Column {
+    Column {
+        name,
+        kind: Kind::Order,
+    }
 }
 
 const ACCOUNT_COLUMNS: &[Column] = &[
-    Column {
-        name: "id",
-        kind: Kind::Required,
-    },
-    Column {
-        name: "tombstone",
-        kind: Kind::Flag,
-    },
+    required("id"),
+    required("name"),
+    flag("offbudget"),
+    flag("closed"),
+    // Actual's bank-sync account id.
+    nullable("account_id"),
+    order("sort_order"),
+    flag("tombstone"),
+];
+
+const GROUP_COLUMNS: &[Column] = &[
+    required("id"),
+    required("name"),
+    flag("is_income"),
+    order("sort_order"),
+    flag("tombstone"),
+];
+
+const CATEGORY_COLUMNS: &[Column] = &[
+    required("id"),
+    required("name"),
+    required("cat_group"),
+    order("sort_order"),
+    flag("tombstone"),
+];
+
+const PAYEE_COLUMNS: &[Column] = &[
+    required("id"),
+    required("name"),
+    nullable("transfer_acct"),
+    flag("tombstone"),
 ];
 
 const TRANSACTION_COLUMNS: &[Column] = &[
-    Column {
-        name: "id",
-        kind: Kind::Required,
-    },
-    Column {
-        name: "acct",
-        kind: Kind::Required,
-    },
-    Column {
-        name: "date",
-        kind: Kind::Required,
-    },
-    Column {
-        name: "isChild",
-        kind: Kind::Flag,
-    },
+    required("id"),
+    required("acct"),
+    required("date"),
+    flag("isChild"),
     // Before Actual had `parent_id`, a split child's id was `<parent id>/<child id>` *(agent)*.
     Column {
         name: "parent_id",
@@ -249,21 +351,17 @@ const TRANSACTION_COLUMNS: &[Column] = &[
             "CASE WHEN instr(id, '/') > 0 THEN substr(id, 1, instr(id, '/') - 1) END",
         ),
     },
-    Column {
-        name: "tombstone",
-        kind: Kind::Flag,
-    },
-];
-
-const CATEGORY_COLUMNS: &[Column] = &[
-    Column {
-        name: "id",
-        kind: Kind::Required,
-    },
-    Column {
-        name: "tombstone",
-        kind: Kind::Flag,
-    },
+    flag("tombstone"),
+    required("category"),
+    required("amount"),
+    // A payee id.
+    required("description"),
+    nullable("imported_description"),
+    nullable("notes"),
+    nullable("financial_id"),
+    flag("isParent"),
+    nullable("transferred_id"),
+    flag("starting_balance_flag"),
 ];
 
 /// A `SELECT` of `columns` from the raw `table`, in that order, filling in each column the export
@@ -289,6 +387,8 @@ async fn select(
             (Kind::Required | Kind::Nullable(_), true) => format!("\"{name}\""),
             (Kind::Flag, true) => format!("COALESCE(\"{name}\", 0)"),
             (Kind::Flag, false) => "0".to_owned(),
+            (Kind::Order, true) => format!("CAST(COALESCE(\"{name}\", 0) AS REAL)"),
+            (Kind::Order, false) => "0.0".to_owned(),
             (Kind::Nullable(missing), false) => (*missing).to_owned(),
             (Kind::Required, false) => return Err(ReadError::NotAnExport),
         });
@@ -300,28 +400,24 @@ fn unreadable(what: &'static str) -> impl Fn(sqlx::Error) -> ReadError {
     move |error| ReadError::Unreadable(format!("{what} ({error})"))
 }
 
-/// Actual's integer `YYYYMMDD` date.
-fn parse_date(date: i64) -> Result<Date, ReadError> {
-    let no_such_day = || ReadError::Unreadable(format!("a transaction dated {date}"));
-    let year = i16::try_from(date / 10_000).map_err(|_| no_such_day())?;
-    let month = i8::try_from(date / 100 % 100).map_err(|_| no_such_day())?;
-    let day = i8::try_from(date % 100).map_err(|_| no_such_day())?;
-    Date::from_ymd(year, month, day).map_err(|_| no_such_day())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn opens_the_database_read_only_and_leaves_it_unchanged() {
+    async fn unpacked() -> (tempfile::TempDir, Export) {
         let dir = tempfile::tempdir().unwrap();
         let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/actual-export.zip");
         crate::unpack(&zip, dir.path()).unwrap();
+        let export = Export::open(dir.path()).await.unwrap();
+        (dir, export)
+    }
+
+    #[tokio::test]
+    async fn opens_the_database_read_only_and_leaves_it_unchanged() {
+        let (dir, mut export) = unpacked().await;
         let before = std::fs::read(dir.path().join(DB_FILE)).unwrap();
 
-        let mut export = Export::open(dir.path()).await.unwrap();
-        export.summary().await.unwrap();
+        export.read().await.unwrap();
         let error = sqlx::query("CREATE TABLE app_was_here (id INTEGER)")
             .execute(&mut export.db)
             .await
@@ -361,12 +457,50 @@ mod tests {
         assert!(matches!(error, ReadError::NotAnExport), "{error}");
     }
 
-    #[test]
-    fn reads_actual_dates() {
-        assert_eq!(parse_date(20_260_131).unwrap().to_string(), "2026-01-31");
-        for bad in [20_260_231, 20_261_301, 0, -20_260_101, 99_999_999_999] {
-            let error = parse_date(bad).unwrap_err();
-            assert!(matches!(error, ReadError::Unreadable(_)), "{bad}: {error}");
-        }
+    #[tokio::test]
+    async fn columns_an_older_export_lacks_are_defaulted() {
+        let mut db = SqliteConnectOptions::new()
+            .in_memory(true)
+            .connect()
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE accounts (id TEXT, name TEXT)")
+            .execute(&mut db)
+            .await
+            .unwrap();
+        let sql = select(&mut db, "accounts", ACCOUNT_COLUMNS).await.unwrap();
+        assert_eq!(
+            sql,
+            r#"SELECT "id", "name", 0, 0, NULL, 0.0, 0 FROM "accounts""#
+        );
+        // Without a column it can't do without, or the table, it isn't an export.
+        let error = select(&mut db, "accounts", TRANSACTION_COLUMNS)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ReadError::NotAnExport), "{error}");
+        let error = select(&mut db, "payees", PAYEE_COLUMNS).await.unwrap_err();
+        assert!(matches!(error, ReadError::NotAnExport), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_value_of_the_wrong_kind_is_unreadable() {
+        let (_dir, mut export) = unpacked().await;
+        // The connection is read-only, so make the bad value in a temporary view of its own.
+        sqlx::query(
+            "CREATE TEMP TABLE payees (id TEXT, name BLOB, transfer_acct TEXT, tombstone INTEGER)",
+        )
+        .execute(&mut export.db)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO temp.payees VALUES ('p', x'00ff', NULL, 0)")
+            .execute(&mut export.db)
+            .await
+            .unwrap();
+        let error = export.read().await.unwrap_err();
+        assert!(
+            matches!(&error, ReadError::Unreadable(what) if what.starts_with("a payee (")),
+            "{error}"
+        );
+        export.close().await;
     }
 }

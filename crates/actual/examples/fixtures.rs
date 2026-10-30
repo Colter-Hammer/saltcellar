@@ -31,5 +31,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{budget_name}: {accounts} accounts, {transactions} transactions, {categories} categories, \
          {first_date} to {last_date}"
     )?;
+    for account in fake::expected_accounts() {
+        writeln!(
+            out,
+            "  {}: {} rows, balance {} cents{}{}",
+            account.name,
+            account.rows,
+            account.balance,
+            if account.off_budget {
+                ", off budget"
+            } else {
+                ""
+            },
+            if account.closed { ", closed" } else { "" },
+        )?;
+    }
     Ok(())
 }
