@@ -37,7 +37,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 - After changing a route or a type the API sends or takes, run `just gen-api` and commit `web/src/api/openapi.json` and `web/src/api/generated/` with the Rust change. The frontend imports those types only through `web/src/api/`.
 - A schema change is a new file in `migrations/`; a migration already on `main` is never edited.
 - When `just coverage` or `just web-coverage` says a floor can go up, raise it in `coverage-floors.txt` in the same PR.
-- The hooks run the fast subset on every commit and push. Don't skip them: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.
+- The hooks run the fast subset on every commit and push, and pre-push also runs `just e2e` when the checked-out commit is being pushed, so commit or stash first and expect a few minutes. Don't skip them: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.
 
 ## Pull requests
 
