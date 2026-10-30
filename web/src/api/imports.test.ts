@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from './client'
-import { uploadActualExport } from './imports'
+import { getActualImport, uploadActualExport } from './imports'
 
 function answer(status: number, body: string) {
   vi.stubGlobal(
@@ -52,5 +52,27 @@ describe('uploadActualExport', () => {
     const refused = uploadActualExport(new File(['hello'], 'notes.txt'))
     await expect(refused).rejects.toBeInstanceOf(ApiError)
     await expect(refused).rejects.toThrow("This isn't an Actual export.")
+  })
+})
+
+describe('getActualImport', () => {
+  const plan = {
+    id: 'abc',
+    budget_name: 'Example Household',
+    accounts: [],
+    categories: [],
+    app_accounts: [],
+  }
+
+  it('asks for the upload by its id', async () => {
+    answer(200, JSON.stringify(plan))
+    expect(await getActualImport('abc')).toEqual(plan)
+    expect(sent().method).toBe('GET')
+    expect(new URL(sent().url).pathname).toBe('/api/v1/imports/actual/abc')
+  })
+
+  it('throws once the upload is gone', async () => {
+    answer(404, '{"error":{"code":"upload_not_found","message":"This upload is gone."}}')
+    await expect(getActualImport('abc')).rejects.toThrow('This upload is gone.')
   })
 })
