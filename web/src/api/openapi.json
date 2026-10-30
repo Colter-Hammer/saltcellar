@@ -613,6 +613,68 @@
         }
       }
     },
+    "/api/v1/imports/actual/{id}": {
+      "get": {
+        "tags": [
+          "import"
+        ],
+        "summary": "`GET /api/v1/imports/actual/{id}`: an uploaded export's accounts and categories.",
+        "operationId": "getActualImport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The upload, as its upload answered.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export's accounts and categories; nothing is imported yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActualImport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`upload_not_found`: no such upload, or it's over a day old and deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`export_unreadable`: the export has data the app can't read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/password-reset": {
       "post": {
         "tags": [
@@ -1238,6 +1300,178 @@
   },
   "components": {
     "schemas": {
+      "AccountRole": {
+        "type": "string",
+        "description": "Whether an account's activity counts toward budgets, or only its balance over time is shown.",
+        "enum": [
+          "budgeted",
+          "tracking"
+        ]
+      },
+      "AccountRows": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "rows"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "Actual's id for the account."
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "AccountType": {
+        "type": "string",
+        "description": "What kind of account it is.",
+        "enum": [
+          "checking",
+          "savings",
+          "credit_card",
+          "investment",
+          "loan",
+          "cash",
+          "other"
+        ]
+      },
+      "ActualAccount": {
+        "type": "object",
+        "description": "A live Actual account, its figures, and what **Create new** starts from.",
+        "required": [
+          "id",
+          "name",
+          "closed",
+          "off_budget",
+          "rows",
+          "balance_minor",
+          "type",
+          "role",
+          "same_as"
+        ],
+        "properties": {
+          "balance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The balance Actual shows: every row, starting balances included, in minor units."
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "description": "Actual's id for it."
+          },
+          "name": {
+            "type": "string"
+          },
+          "off_budget": {
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole",
+            "description": "Tracking if it's off budget in Actual, else budgeted."
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its rows: a split counts once, a starting balance counts.",
+            "minimum": 0
+          },
+          "same_as": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The app account with the same bank-sync id, which **Same as** starts on; null when none."
+          },
+          "type": {
+            "$ref": "#/components/schemas/AccountType",
+            "description": "The best guess from its name."
+          }
+        }
+      },
+      "ActualCategory": {
+        "type": "object",
+        "description": "A live Actual category and the rows using it.",
+        "required": [
+          "id",
+          "name",
+          "group",
+          "income",
+          "rows"
+        ],
+        "properties": {
+          "group": {
+            "type": "string",
+            "description": "Its Actual group's name."
+          },
+          "id": {
+            "type": "string",
+            "description": "Actual's id for it."
+          },
+          "income": {
+            "type": "boolean",
+            "description": "Whether its Actual group is an income group."
+          },
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountRows"
+            },
+            "description": "How many rows in each Actual account use it, split lines included; only accounts with\nsome are listed. Skipping an account takes its rows away."
+          }
+        }
+      },
+      "ActualImport": {
+        "type": "object",
+        "description": "What's in an uploaded export for the importer's Accounts and Categories steps, with the\ndefaults each choice starts from. Choosing happens in the browser; nothing is written here.",
+        "required": [
+          "id",
+          "budget_name",
+          "accounts",
+          "categories",
+          "app_accounts"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActualAccount"
+            },
+            "description": "Every live Actual account: open before closed, on budget before off budget, then Actual's\norder."
+          },
+          "app_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppAccount"
+            },
+            "description": "The app's own accounts, for **Same as**; closed ones included."
+          },
+          "budget_name": {
+            "type": "string",
+            "example": "Our budget"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActualCategory"
+            },
+            "description": "Every live Actual category that any row uses, in Actual's order, but for Starting Balances,\nwhose rows become opening balances."
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
       "ActualUpload": {
         "type": "object",
         "description": "An uploaded Actual export and what's in it.",
@@ -1291,6 +1525,23 @@
             "format": "int64",
             "description": "Live transactions in live accounts; a split counts once.",
             "minimum": 0
+          }
+        }
+      },
+      "AppAccount": {
+        "type": "object",
+        "description": "One of the app's accounts.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },

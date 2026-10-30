@@ -90,6 +90,47 @@ pub fn expected() -> Expected {
     }
 }
 
+/// One live account as step 2 of the importer should show it, worked out from the household here
+/// rather than by the reader.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ExpectedAccount {
+    pub name: &'static str,
+    pub off_budget: bool,
+    pub closed: bool,
+    pub bank_id: Option<&'static str>,
+    /// A split counts once; starting balances count.
+    pub rows: u64,
+    /// Cents: every alive row's amount, a split's total once.
+    pub balance: i64,
+}
+
+/// The live accounts in the order the reader puts them: open before closed, on budget before off
+/// budget, then Actual's order.
+#[must_use]
+pub fn expected_accounts() -> Vec<ExpectedAccount> {
+    let household = household();
+    let mut accounts: Vec<&Account> = household.accounts.iter().filter(|a| !a.tombstone).collect();
+    accounts.sort_by_key(|a| (a.closed, a.off_budget));
+    accounts
+        .into_iter()
+        .map(|account| {
+            let rows: Vec<&Transaction> = household
+                .transactions
+                .iter()
+                .filter(|t| t.account == account.id && !t.tombstone && t.parent.is_none())
+                .collect();
+            ExpectedAccount {
+                name: account.name,
+                off_budget: account.off_budget,
+                closed: account.closed,
+                bank_id: account.bank_id,
+                rows: rows.len() as u64,
+                balance: rows.iter().map(|t| t.amount.unwrap_or(0)).sum(),
+            }
+        })
+        .collect()
+}
+
 /// Writes every file in [`FILES`] into `dir`.
 ///
 /// # Errors

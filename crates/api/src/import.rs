@@ -186,6 +186,212 @@ pub async fn upload(
     ))
 }
 
+/// What kind of account it is.
+#[derive(Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountType {
+    Checking,
+    Savings,
+    CreditCard,
+    Investment,
+    Loan,
+    Cash,
+    Other,
+}
+
+impl From<domain::accounts::AccountType> for AccountType {
+    fn from(kind: domain::accounts::AccountType) -> Self {
+        use domain::accounts::AccountType as Type;
+        match kind {
+            Type::Checking => AccountType::Checking,
+            Type::Savings => AccountType::Savings,
+            Type::CreditCard => AccountType::CreditCard,
+            Type::Investment => AccountType::Investment,
+            Type::Loan => AccountType::Loan,
+            Type::Cash => AccountType::Cash,
+            Type::Other => AccountType::Other,
+        }
+    }
+}
+
+/// Whether an account's activity counts toward budgets, or only its balance over time is shown.
+#[derive(Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum AccountRole {
+    Budgeted,
+    Tracking,
+}
+
+impl From<domain::accounts::Role> for AccountRole {
+    fn from(role: domain::accounts::Role) -> Self {
+        match role {
+            domain::accounts::Role::Budgeted => AccountRole::Budgeted,
+            domain::accounts::Role::Tracking => AccountRole::Tracking,
+        }
+    }
+}
+
+/// What's in an uploaded export for the importer's Accounts and Categories steps, with the
+/// defaults each choice starts from. Choosing happens in the browser; nothing is written here.
+#[derive(Serialize, ToSchema)]
+pub struct ActualImport {
+    id: String,
+    #[schema(example = "Our budget")]
+    budget_name: String,
+    /// Every live Actual account: open before closed, on budget before off budget, then Actual's
+    /// order.
+    accounts: Vec<ActualAccount>,
+    /// Every live Actual category that any row uses, in Actual's order, but for Starting Balances,
+    /// whose rows become opening balances.
+    categories: Vec<ActualCategory>,
+    /// The app's own accounts, for **Same as**; closed ones included.
+    app_accounts: Vec<AppAccount>,
+}
+
+/// A live Actual account, its figures, and what **Create new** starts from.
+#[derive(Serialize, ToSchema)]
+pub struct ActualAccount {
+    /// Actual's id for it.
+    id: String,
+    name: String,
+    closed: bool,
+    off_budget: bool,
+    /// Its rows: a split counts once, a starting balance counts.
+    rows: u64,
+    /// The balance Actual shows: every row, starting balances included, in minor units.
+    balance_minor: i64,
+    /// The best guess from its name.
+    #[serde(rename = "type")]
+    kind: AccountType,
+    /// Tracking if it's off budget in Actual, else budgeted.
+    role: AccountRole,
+    /// The app account with the same bank-sync id, which **Same as** starts on; null when none.
+    #[schema(required = true)]
+    same_as: Option<i64>,
+}
+
+/// A live Actual category and the rows using it.
+#[derive(Serialize, ToSchema)]
+pub struct ActualCategory {
+    /// Actual's id for it.
+    id: String,
+    name: String,
+    /// Its Actual group's name.
+    group: String,
+    /// Whether its Actual group is an income group.
+    income: bool,
+    /// How many rows in each Actual account use it, split lines included; only accounts with
+    /// some are listed. Skipping an account takes its rows away.
+    rows: Vec<AccountRows>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AccountRows {
+    /// Actual's id for the account.
+    account_id: String,
+    rows: u64,
+}
+
+/// One of the app's accounts.
+#[derive(Serialize, ToSchema)]
+pub struct AppAccount {
+    id: i64,
+    name: String,
+}
+
+/// `GET /api/v1/imports/actual/{id}`: an uploaded export's accounts and categories.
+#[utoipa::path(
+    get,
+    path = "/api/v1/imports/actual/{id}",
+    operation_id = "getActualImport",
+    params(("id" = String, Path, description = "The upload, as its upload answered.")),
+    responses(
+        (status = 200, description = "The export's accounts and categories; nothing is imported yet.", body = ActualImport),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 404, description = "`upload_not_found`: no such upload, or it's over a day old and deleted.", body = ErrorEnvelope),
+        (status = 422, description = "`export_unreadable`: the export has data the app can't read.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn get(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<ActualImport>, ApiError> {
+    let gone = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "upload_not_found",
+            "This upload is gone: uploads wait a day. Upload the export again.",
+        )
+    };
+    // Only an id this server made names a folder: 64 hex digits, nothing that could leave it.
+    if id.len() != 64 || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err(gone());
+    }
+    let dir = state.uploads.dir.join(&id);
+    if !dir.join(actual::DB_FILE).is_file() {
+        return Err(gone());
+    }
+    let mut export = actual::Export::open(&dir).await.map_err(refusal)?;
+    let read = export.read().await;
+    let budget_name = export.budget_name().to_owned();
+    export.close().await;
+    let read = read.map_err(refusal)?;
+
+    let app_accounts = db::accounts(&state.pool).await?;
+    let accounts = read
+        .accounts
+        .iter()
+        .map(|account| {
+            let role = domain::accounts::Role::from_actual(account.off_budget);
+            ActualAccount {
+                id: account.id.clone(),
+                name: account.name.clone(),
+                closed: account.closed,
+                off_budget: account.off_budget,
+                rows: account.rows,
+                balance_minor: account.balance.minor(),
+                kind: domain::accounts::AccountType::guess(&account.name, role).into(),
+                role: role.into(),
+                same_as: account.bank_id.as_ref().and_then(|bank_id| {
+                    app_accounts
+                        .iter()
+                        .find(|app| app.external_account_id.as_ref() == Some(bank_id))
+                        .map(|app| app.id)
+                }),
+            }
+        })
+        .collect();
+    let categories = read
+        .categories
+        .into_iter()
+        .filter(|category| !category.rows.is_empty() && !category.is_starting_balances())
+        .map(|category| ActualCategory {
+            id: category.id,
+            name: category.name,
+            group: category.group,
+            income: category.income,
+            rows: category
+                .rows
+                .into_iter()
+                .map(|(account_id, rows)| AccountRows { account_id, rows })
+                .collect(),
+        })
+        .collect();
+    Ok(Json(ActualImport {
+        id,
+        budget_name,
+        accounts,
+        categories,
+        app_accounts: app_accounts
+            .into_iter()
+            .map(|account| AppAccount {
+                id: account.id,
+                name: account.name,
+            })
+            .collect(),
+    }))
+}
+
 fn is_zip(headers: &HeaderMap) -> bool {
     headers
         .get(header::CONTENT_TYPE)

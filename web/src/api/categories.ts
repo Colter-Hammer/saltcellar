@@ -25,9 +25,9 @@ export function useCategories() {
  */
 export function useCategoryEdits() {
   const queryClient = useQueryClient()
-  async function edit(request: Promise<unknown>): Promise<void> {
+  async function edit<T>(request: Promise<T>): Promise<T> {
     try {
-      await request
+      return await request
     } finally {
       await queryClient.invalidateQueries({ queryKey: CATEGORIES })
     }
@@ -36,8 +36,9 @@ export function useCategoryEdits() {
     /** Writes the starter categories and the always-review payees into an empty list. */
     applyStarter: () =>
       edit(call(client.POST('/api/v1/categories/starter', { headers: JSON_HEADERS }))),
-    addGroup: (name: string, kind: CategoryGroupKind) =>
-      edit(call(client.POST('/api/v1/category-groups', { body: { name, kind } }))),
+    /** Adds a group at the end; resolves to its id once the list has reloaded. */
+    addGroup: async (name: string, kind: CategoryGroupKind) =>
+      (await edit(call(client.POST('/api/v1/category-groups', { body: { name, kind } })))).id,
     /** Renames the group, or hides it or shows it again. */
     changeGroup: (id: number, change: { name?: string; hidden?: boolean }) =>
       edit(
@@ -55,8 +56,10 @@ export function useCategoryEdits() {
           }),
         ),
       ),
-    addCategory: (groupId: number, name: string) =>
-      edit(call(client.POST('/api/v1/categories', { body: { group_id: groupId, name } }))),
+    /** Adds a category at the end of its group; resolves to its id once the list has reloaded. */
+    addCategory: async (groupId: number, name: string) =>
+      (await edit(call(client.POST('/api/v1/categories', { body: { group_id: groupId, name } }))))
+        .id,
     /** Renames the category, or hides it or shows it again. */
     changeCategory: (id: number, change: { name?: string; hidden?: boolean }) =>
       edit(

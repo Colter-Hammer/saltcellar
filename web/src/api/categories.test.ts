@@ -76,10 +76,10 @@ describe('the categories', () => {
     const { edits } = await setUp()
     sent = []
     await edits.applyStarter()
-    await edits.addGroup('Pets', 'expense')
+    expect(await edits.addGroup('Pets', 'expense')).toBe(99)
     await edits.changeGroup(1, { name: 'Eating' })
     await edits.deleteGroup(2)
-    await edits.addCategory(1, 'Coffee')
+    expect(await edits.addCategory(1, 'Coffee')).toBe(99)
     await edits.changeCategory(11, { hidden: true })
     await edits.deleteCategory(12)
     const reload = 'GET /api/v1/categories'

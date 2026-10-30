@@ -54,7 +54,8 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         categories::add_category,
         categories::change_category,
         categories::delete_category,
-        import::upload
+        import::upload,
+        import::get
     ),
     components(schemas(error::ErrorEnvelope))
 )]
@@ -158,6 +159,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/category-groups", post(categories::add_group))
         .route("/imports/actual", post(import::upload))
+        .route("/imports/actual/{id}", get(import::get))
         .route(
             "/category-groups/{id}",
             patch(categories::change_group).delete(categories::delete_group),

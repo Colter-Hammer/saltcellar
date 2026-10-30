@@ -48,7 +48,7 @@ function open(form: string) {
 }
 
 /** Runs `work`; true if it worked. A name error goes to the open form, anything else above the list. */
-async function attempt(work: () => Promise<void>): Promise<boolean> {
+async function attempt(work: () => Promise<unknown>): Promise<boolean> {
   nameError.value = undefined
   problem.value = null
   try {
@@ -62,7 +62,7 @@ async function attempt(work: () => Promise<void>): Promise<boolean> {
   }
 }
 
-async function save(work: () => Promise<void>) {
+async function save(work: () => Promise<unknown>) {
   if (await attempt(work)) editing.value = null
 }
 
