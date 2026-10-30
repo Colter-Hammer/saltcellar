@@ -199,10 +199,16 @@ pub struct Unreadable(pub String);
 /// If it isn't a day on the calendar.
 pub fn parse_date(date: i64) -> Result<Date, Unreadable> {
     let no_such_day = || Unreadable(format!("a transaction dated {date}"));
-    let year = i16::try_from(date / 10_000).map_err(|_| no_such_day())?;
-    let month = i8::try_from(date / 100 % 100).map_err(|_| no_such_day())?;
-    let day = i8::try_from(date % 100).map_err(|_| no_such_day())?;
-    Date::from_ymd(year, month, day).map_err(|_| no_such_day())
+    let parts = (
+        i16::try_from(date / 10_000),
+        i8::try_from(date / 100 % 100),
+        i8::try_from(date % 100),
+    );
+    match parts {
+        (Ok(year), Ok(month), Ok(day)) => Date::from_ymd(year, month, day).ok(),
+        _ => None,
+    }
+    .ok_or_else(no_such_day)
 }
 
 /// `id` through a merge mapping: where it went, or itself when it was never merged.
