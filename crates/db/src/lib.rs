@@ -1,5 +1,6 @@
 //! The SQLite database: one file in the data dir, in WAL mode, owned by the app alone.
 
+mod accounts;
 mod auth;
 mod categories;
 mod household;
@@ -12,6 +13,7 @@ use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
+pub use accounts::{Account, accounts};
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
     password_login, recent_failures, record_failure, use_session,
@@ -161,6 +163,7 @@ mod tests {
         assert_eq!(
             tables,
             [
+                "accounts",
                 "categories",
                 "category_groups",
                 "household",
