@@ -45,6 +45,25 @@ const TYPE_WORDS: &[(AccountType, &[&str])] = &[
 ];
 
 impl AccountType {
+    /// Every type, in the order the app lists them.
+    pub const ALL: [AccountType; 7] = [
+        AccountType::Checking,
+        AccountType::Savings,
+        AccountType::CreditCard,
+        AccountType::Investment,
+        AccountType::Loan,
+        AccountType::Cash,
+        AccountType::Other,
+    ];
+
+    /// The type spelled as stored; `None` for anything else.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<AccountType> {
+        AccountType::ALL
+            .into_iter()
+            .find(|kind| kind.as_str() == text)
+    }
+
     /// As stored and as the API sends it.
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -90,6 +109,14 @@ pub enum Role {
 }
 
 impl Role {
+    /// The role spelled as stored; `None` for anything else.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Role> {
+        [Role::Budgeted, Role::Tracking]
+            .into_iter()
+            .find(|role| role.as_str() == text)
+    }
+
     /// As stored and as the API sends it.
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -269,8 +296,13 @@ mod tests {
         ];
         for (kind, text) in types {
             assert_eq!(kind.as_str(), text);
+            assert_eq!(AccountType::from_stored(text), Some(kind));
         }
+        assert_eq!(AccountType::from_stored("wallet"), None);
         assert_eq!(Role::Budgeted.as_str(), "budgeted");
         assert_eq!(Role::Tracking.as_str(), "tracking");
+        assert_eq!(Role::from_stored("budgeted"), Some(Role::Budgeted));
+        assert_eq!(Role::from_stored("tracking"), Some(Role::Tracking));
+        assert_eq!(Role::from_stored("saved"), None);
     }
 }

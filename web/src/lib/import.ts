@@ -43,21 +43,6 @@ function sameName(a: string, b: string): boolean {
 
 // ── Step 2: Accounts ──
 
-export const ACCOUNT_TYPES: readonly { value: AccountType; label: string }[] = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit_card', label: 'Credit card' },
-  { value: 'investment', label: 'Investment' },
-  { value: 'loan', label: 'Loan' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'other', label: 'Other' },
-]
-
-export const ACCOUNT_ROLES: readonly { value: AccountRole; label: string }[] = [
-  { value: 'budgeted', label: 'Budgeted' },
-  { value: 'tracking', label: 'Tracking' },
-]
-
 /** Create a new app account, use one that exists (Same as), or leave the account out. */
 type AccountAction = 'create' | 'same' | 'skip'
 

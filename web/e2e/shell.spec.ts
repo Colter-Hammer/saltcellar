@@ -11,6 +11,14 @@ test('the shell loads on Transactions, with the server reachable', async ({ page
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
+test('Accounts offers the import on a fresh install', async ({ page }) => {
+  await page.goto('/accounts')
+
+  await expect(page.getByRole('main')).toContainText('No accounts yet.')
+  await page.getByRole('main').getByRole('link', { name: 'Import from Actual' }).click()
+  await expect(heading(page)).toHaveText('Import from Actual')
+})
+
 test('a reload deep in the app lands back on that screen', async ({ page }) => {
   await page.goto('/settings')
 

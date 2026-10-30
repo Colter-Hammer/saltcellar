@@ -4,7 +4,8 @@
 import { computed } from 'vue'
 import type { ActualAccount, ActualImport } from '@/api/imports'
 import { formatMoney, type Formatting } from '@/lib/format'
-import { ACCOUNT_ROLES, ACCOUNT_TYPES, type AccountChoice } from '@/lib/import'
+import { ACCOUNT_ROLES, ACCOUNT_TYPES } from '@/lib/accounts'
+import type { AccountChoice } from '@/lib/import'
 
 const props = defineProps<{
   account: ActualAccount

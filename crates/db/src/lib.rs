@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
-pub use accounts::{Account, AccountBalance, account_balances, accounts};
+pub use accounts::{Account, AccountBalance, account_balance, account_balances, accounts};
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
     password_login, recent_failures, record_failure, use_session,

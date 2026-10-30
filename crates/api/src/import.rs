@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use utoipa::ToSchema;
 
+use crate::accounts::{AccountRole, AccountType};
 use crate::auth;
 use crate::error::{Body as JsonBody, ErrorEnvelope};
 use crate::session::Current;
@@ -186,75 +187,6 @@ pub async fn upload(
             last_date,
         }),
     ))
-}
-
-/// What kind of account it is.
-#[derive(Clone, Copy, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AccountType {
-    Checking,
-    Savings,
-    CreditCard,
-    Investment,
-    Loan,
-    Cash,
-    Other,
-}
-
-impl From<domain::accounts::AccountType> for AccountType {
-    fn from(kind: domain::accounts::AccountType) -> Self {
-        use domain::accounts::AccountType as Type;
-        match kind {
-            Type::Checking => AccountType::Checking,
-            Type::Savings => AccountType::Savings,
-            Type::CreditCard => AccountType::CreditCard,
-            Type::Investment => AccountType::Investment,
-            Type::Loan => AccountType::Loan,
-            Type::Cash => AccountType::Cash,
-            Type::Other => AccountType::Other,
-        }
-    }
-}
-
-/// Whether an account's activity counts toward budgets, or only its balance over time is shown.
-#[derive(Clone, Copy, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum AccountRole {
-    Budgeted,
-    Tracking,
-}
-
-impl From<AccountType> for domain::accounts::AccountType {
-    fn from(kind: AccountType) -> Self {
-        use domain::accounts::AccountType as Type;
-        match kind {
-            AccountType::Checking => Type::Checking,
-            AccountType::Savings => Type::Savings,
-            AccountType::CreditCard => Type::CreditCard,
-            AccountType::Investment => Type::Investment,
-            AccountType::Loan => Type::Loan,
-            AccountType::Cash => Type::Cash,
-            AccountType::Other => Type::Other,
-        }
-    }
-}
-
-impl From<AccountRole> for domain::accounts::Role {
-    fn from(role: AccountRole) -> Self {
-        match role {
-            AccountRole::Budgeted => domain::accounts::Role::Budgeted,
-            AccountRole::Tracking => domain::accounts::Role::Tracking,
-        }
-    }
-}
-
-impl From<domain::accounts::Role> for AccountRole {
-    fn from(role: domain::accounts::Role) -> Self {
-        match role {
-            domain::accounts::Role::Budgeted => AccountRole::Budgeted,
-            domain::accounts::Role::Tracking => AccountRole::Tracking,
-        }
-    }
 }
 
 /// What's in an uploaded export for the importer's Accounts and Categories steps, with the

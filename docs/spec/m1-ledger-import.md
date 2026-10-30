@@ -69,6 +69,7 @@ Read-only in this milestone; accounts are created by the Actual importer. Every 
 - **Account detail:** balance, opening balance and its date, row count, a link to Transactions filtered to the account.
 - **Balance shown** is the latest balance snapshot. In this milestone that's the one the import wrote, so it equals Actual's balance. The app's own balance (opening + transactions) is computed beside it; if they ever differ that's drift, which milestone 2 surfaces.
 - Empty state: "No accounts yet" with **Import from Actual**.
+- Details placed in building it *(agent)*: the desktop table lists the accounts in the phone's group order, closed ones last and marked Closed; the detail is its own screen, `/accounts/{id}`, under the Accounts tab. Its figures are Balance, App's balance, Opening balance ("€1,500.00 on Dec 31, 2025") and Transactions (the row count); a balances-only account shows only its balance and says it holds balances, not transactions, with no transaction link. **See transactions** opens `/transactions?account={id}`, which the Transactions filter reads once it lands. A missing figure shows as "—". The API is `GET /api/v1/accounts` and `GET /api/v1/accounts/{id}`.
 
 ## Transactions
 
