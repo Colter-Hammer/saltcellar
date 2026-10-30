@@ -50,7 +50,10 @@ fn locate<'a>(names: impl Iterator<Item = &'a str>) -> Option<String> {
         .iter()
         .filter_map(|name| name.strip_suffix(DB_FILE))
         .filter(|folder| {
-            folder.is_empty() || folder.find('/').is_some_and(|slash| slash + 1 == folder.len())
+            folder.is_empty()
+                || folder
+                    .find('/')
+                    .is_some_and(|slash| slash + 1 == folder.len())
         })
         .filter(|folder| names.contains(format!("{folder}{METADATA_FILE}").as_str()))
         .collect();
@@ -93,9 +96,17 @@ mod tests {
 
     #[test]
     fn finds_the_pair_at_the_root() {
-        assert_eq!(located(&["db.sqlite", "metadata.json"]), Some(String::new()));
         assert_eq!(
-            located(&["metadata.json", "db.sqlite", "Budget/db.sqlite", "Budget/metadata.json"]),
+            located(&["db.sqlite", "metadata.json"]),
+            Some(String::new())
+        );
+        assert_eq!(
+            located(&[
+                "metadata.json",
+                "db.sqlite",
+                "Budget/db.sqlite",
+                "Budget/metadata.json"
+            ]),
             Some(String::new())
         );
     }
@@ -125,7 +136,12 @@ mod tests {
             &["db.sqlite"],
             &["metadata.json"],
             &["A/db.sqlite", "B/metadata.json"],
-            &["A/db.sqlite", "A/metadata.json", "B/db.sqlite", "B/metadata.json"],
+            &[
+                "A/db.sqlite",
+                "A/metadata.json",
+                "B/db.sqlite",
+                "B/metadata.json",
+            ],
             &["A/B/db.sqlite", "A/B/metadata.json"],
             &["old-db.sqlite", "old-metadata.json"],
         ] {

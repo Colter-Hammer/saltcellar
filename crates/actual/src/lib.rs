@@ -5,6 +5,10 @@
 //! [`Export::open`] opens that copy read-only and reads Actual's raw tables, never its views.
 
 mod export;
+#[cfg(test)]
+mod fake;
+#[cfg(test)]
+mod tests;
 mod unpack;
 
 pub use export::{Export, Summary};

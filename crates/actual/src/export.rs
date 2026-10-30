@@ -140,7 +140,14 @@ impl Export {
     }
 
     async fn transactions(&mut self) -> Result<Vec<RawTransaction>, ReadError> {
-        type Row = (String, Option<String>, Option<i64>, i64, Option<String>, i64);
+        type Row = (
+            String,
+            Option<String>,
+            Option<i64>,
+            i64,
+            Option<String>,
+            i64,
+        );
         let sql = select(&mut self.db, "transactions", TRANSACTION_COLUMNS).await?;
         let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
             .fetch_all(&mut self.db)
@@ -238,7 +245,9 @@ const TRANSACTION_COLUMNS: &[Column] = &[
     // Before Actual had `parent_id`, a split child's id was `<parent id>/<child id>` *(agent)*.
     Column {
         name: "parent_id",
-        kind: Kind::Nullable("CASE WHEN instr(id, '/') > 0 THEN substr(id, 1, instr(id, '/') - 1) END"),
+        kind: Kind::Nullable(
+            "CASE WHEN instr(id, '/') > 0 THEN substr(id, 1, instr(id, '/') - 1) END",
+        ),
     },
     Column {
         name: "tombstone",
@@ -303,6 +312,51 @@ fn parse_date(date: i64) -> Result<Date, ReadError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn opens_the_database_read_only_and_leaves_it_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/actual-export.zip");
+        crate::unpack(&zip, dir.path()).unwrap();
+        let before = std::fs::read(dir.path().join(DB_FILE)).unwrap();
+
+        let mut export = Export::open(dir.path()).await.unwrap();
+        export.summary().await.unwrap();
+        let error = sqlx::query("CREATE TABLE app_was_here (id INTEGER)")
+            .execute(&mut export.db)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("readonly"), "{error}");
+        let error = sqlx::query("UPDATE accounts SET tombstone = 1")
+            .execute(&mut export.db)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("readonly"), "{error}");
+        export.close().await;
+
+        assert!(std::fs::read(dir.path().join(DB_FILE)).unwrap() == before);
+    }
+
+    #[tokio::test]
+    async fn a_database_that_isnt_sqlite_is_not_an_export() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(DB_FILE), b"not a database at all").unwrap();
+        std::fs::write(dir.path().join(METADATA_FILE), br#"{"budgetName":"Fake"}"#).unwrap();
+        let outcome = match Export::open(dir.path()).await {
+            Ok(mut export) => export.summary().await.map(|_| ()),
+            Err(error) => Err(error),
+        };
+        assert!(matches!(outcome, Err(ReadError::NotAnExport)), "{outcome:?}");
+    }
+
+    #[tokio::test]
+    async fn metadata_without_a_budget_name_is_not_an_export() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(DB_FILE), b"").unwrap();
+        std::fs::write(dir.path().join(METADATA_FILE), br#"{"id":"x"}"#).unwrap();
+        let error = Export::open(dir.path()).await.err().unwrap();
+        assert!(matches!(error, ReadError::NotAnExport), "{error}");
+    }
 
     #[test]
     fn reads_actual_dates() {

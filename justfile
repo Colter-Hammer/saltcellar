@@ -83,6 +83,11 @@ api-contract:
 gen-api:
     scripts/gen-api.sh write
 
+# Rewrite the fake Actual exports in fixtures/ after changing their builder (crates/actual/src/fake.rs).
+# `just test` fails while the committed ones don't match it.
+fixtures:
+    cargo run --quiet --locked -p actual --example fixtures -- fixtures
+
 # Frontend types, with vue-tsc.
 web-typecheck:
     npm --prefix web run typecheck
