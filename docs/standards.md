@@ -60,6 +60,7 @@ The frontend is `web/`. Its checks run with `npm --prefix web run <script>`; `ju
 | Rule | Check | Where |
 | --- | --- | --- |
 | Every Rust test passes. | `cargo nextest run --workspace` | check, CI `test` |
+| The fake Actual exports committed in `fixtures/` match what their builder (`crates/actual/src/fake.rs`) writes, compared by content (zip entries, tables and rows), so a new zlib or SQLite doesn't count as drift. Regenerate them with `just fixtures`. | the `actual` crate's test `the_committed_fixtures_match_the_builder` | check, CI `test` |
 | Every Vitest test passes. | `vitest run` | check, CI `web-test` |
 | Line coverage of `domain` is at or above its floor, and floors only go up: lowering or removing one fails. | `scripts/coverage.py rust` with `coverage-floors.txt` (`cargo llvm-cov nextest`) | check, CI `coverage` |
 | Line coverage of the frontend's logic (the TypeScript modules in `web/src/`, tests and `main.ts` aside) is at or above the `web` floor, which only goes up the same way. | `scripts/coverage.py web` with `coverage-floors.txt` (Vitest coverage, v8) | check, CI `web-coverage` |

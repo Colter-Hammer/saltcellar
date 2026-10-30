@@ -72,7 +72,7 @@ Bank sync adds its own (e.g. the key that encrypts the connection secret) in the
 
 - JSON under `/api/v1/…`; the OpenAPI document at `/api/openapi.json`. Everything else serves the built frontend, with unknown paths falling back to `index.html`.
 - Errors return `{ "error": { "code": "snake_case_code", "message": "Human sentence." } }` with a fitting status. Validation errors add `"fields": { name: message }`.
-- Mutating requests must be JSON (`Content-Type: application/json`), which with `SameSite=Lax` cookies blocks cross-site form posts. No CORS.
+- Mutating requests must be JSON (`Content-Type: application/json`), which with `SameSite=Lax` cookies blocks cross-site form posts. No CORS. The one exception is the Actual export upload, sent as the zip itself (`application/zip`), which a cross-site form can't send either *(agent)*.
 - Lists the UI pages through (transactions) use cursor pagination on `(date, id)`.
 - `GET /api/v1/health` (no auth) for the Docker healthcheck: 200 when the database answers.
 

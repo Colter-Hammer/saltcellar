@@ -34,6 +34,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 - `just e2e` builds the app image, starts it with compose on a fresh volume at <http://localhost:8180> (`E2E_PORT` moves it) and runs the Playwright tests in `web/e2e/` against it. The first test claims the install through the setup wizard, reading the setup code from the container's log (`E2E_APP_LOGS` is the command that prints it); the rest run logged in. Tests use fake data only.
 - After adding or changing frontend dependencies, commit `web/package-lock.json` with `web/package.json`; CI installs with `npm ci`.
 - After adding or changing a sqlx query, run `just sqlx-prepare` and commit the new `.sqlx/` files.
+- After changing the fake Actual export's builder (`crates/actual/src/fake.rs`), run `just fixtures` and commit the zips it rewrites in `fixtures/`; `just test` fails until they match.
 - After changing a route or a type the API sends or takes, run `just gen-api` and commit `web/src/api/openapi.json` and `web/src/api/generated/` with the Rust change. The frontend imports those types only through `web/src/api/`.
 - A schema change is a new file in `migrations/`; a migration already on `main` is never edited.
 - When `just coverage` or `just web-coverage` says a floor can go up, raise it in `coverage-floors.txt` in the same PR.
