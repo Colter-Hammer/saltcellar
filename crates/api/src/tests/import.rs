@@ -1,4 +1,5 @@
-//! Import from Actual, step 1, through the API: uploading the fake exports in `fixtures/`.
+//! Import from Actual through the API: uploading the fake exports in `fixtures/` (step 1), and
+//! reading their accounts and categories back (steps 2 and 3).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -7,7 +8,7 @@ use axum::body::{Body, Bytes};
 use axum::http::{Request, StatusCode, header};
 use serde_json::{Value, json};
 
-use super::{App, app, finish, send, send_full, session_cookie, set_up, with};
+use super::{App, app, finish, get, send, send_full, session_cookie, set_up, with};
 
 const UPLOAD: &str = "/api/v1/imports/actual";
 
@@ -240,4 +241,210 @@ async fn uploads_older_than_a_day_are_deleted() {
         .join("imports")
         .join(second["id"].as_str().unwrap());
     assert_eq!(uploads(&app), vec![second]);
+}
+
+/// `GET` the accounts and categories of the upload `id`.
+async fn plan(app: &App, id: &str) -> (StatusCode, Value) {
+    send(
+        app.router.clone(),
+        with(&app.cookie, get(&format!("{UPLOAD}/{id}"))),
+    )
+    .await
+}
+
+/// Uploads the fake export and reads its accounts and categories back.
+async fn fake_plan(app: &App) -> Value {
+    let (status, upload) = upload(app, fixture("actual-export.zip")).await;
+    assert_eq!(status, StatusCode::CREATED, "{upload}");
+    let id = upload["id"].as_str().unwrap();
+    let (status, body) = plan(app, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["id"], id);
+    body
+}
+
+/// The fake export's ids for its accounts (kind 1) and categories (kind 3).
+fn fake_id(kind: u32, n: u32) -> String {
+    format!("{kind:08x}-0000-4000-8000-{n:012x}")
+}
+
+#[tokio::test]
+async fn the_fake_exports_accounts_come_with_their_figures_and_defaults() {
+    let app = set_up().await;
+    let before = row_counts(&app).await;
+    let body = fake_plan(&app).await;
+    assert_eq!(body["budget_name"], "Example Household");
+    assert_eq!(body["app_accounts"], json!([]));
+    let account = |n, name, closed, off_budget, rows, balance: i64, kind, role| {
+        json!({
+            "id": fake_id(1, n),
+            "name": name,
+            "closed": closed,
+            "off_budget": off_budget,
+            "rows": rows,
+            "balance_minor": balance,
+            "type": kind,
+            "role": role,
+            "same_as": null,
+        })
+    };
+    assert_eq!(
+        body["accounts"],
+        json!([
+            account(
+                1,
+                "Everyday checking",
+                false,
+                false,
+                43,
+                2_145_801,
+                "checking",
+                "budgeted"
+            ),
+            account(
+                2,
+                "Rewards card",
+                false,
+                false,
+                30,
+                -136_335,
+                "credit_card",
+                "budgeted"
+            ),
+            account(
+                3,
+                "Rainy day savings",
+                false,
+                false,
+                2,
+                400_000,
+                "savings",
+                "budgeted"
+            ),
+            account(
+                4,
+                "Brokerage",
+                false,
+                true,
+                2,
+                1_100_000,
+                "investment",
+                "tracking"
+            ),
+            account(5, "Old checking", true, false, 3, 0, "checking", "budgeted"),
+        ])
+    );
+    // Reading it back writes nothing either.
+    assert_eq!(row_counts(&app).await, before);
+}
+
+#[tokio::test]
+async fn the_categories_are_those_rows_use_without_starting_balances() {
+    let app = set_up().await;
+    let body = fake_plan(&app).await;
+    let rows = |uses: &[(u32, u64)]| {
+        uses.iter()
+            .map(|(n, rows)| json!({ "account_id": fake_id(1, *n), "rows": rows }))
+            .collect::<Vec<_>>()
+    };
+    let category = |n, name, group, income, uses: &[(u32, u64)]| {
+        json!({
+            "id": fake_id(3, n),
+            "name": name,
+            "group": group,
+            "income": income,
+            "rows": rows(uses),
+        })
+    };
+    assert_eq!(
+        body["categories"],
+        json!([
+            category(1, "Groceries", "Everyday", false, &[(2, 14), (5, 1)]),
+            category(2, "Dining out", "Everyday", false, &[(2, 2)]),
+            category(3, "Fuel", "Everyday", false, &[(1, 1), (2, 12)]),
+            category(4, "Rent", "Home", false, &[(1, 12)]),
+            category(5, "Utilities", "Home", false, &[(1, 12)]),
+            category(6, "Paycheck", "Income", true, &[(1, 12)]),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn same_as_starts_on_the_app_account_with_the_same_bank_sync_id() {
+    let app = set_up().await;
+    sqlx::query(
+        "INSERT INTO accounts (name, type, role, external_account_id) VALUES
+           ('Shared card', 'credit_card', 'budgeted', 'fake-bank-0002'),
+           ('Wallet', 'cash', 'budgeted', NULL)",
+    )
+    .execute(&app.pool)
+    .await
+    .unwrap();
+    let body = fake_plan(&app).await;
+    let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM accounts ORDER BY id")
+        .fetch_all(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        body["app_accounts"],
+        json!([
+            { "id": ids[0], "name": "Shared card" },
+            { "id": ids[1], "name": "Wallet" },
+        ])
+    );
+    let same_as: Vec<&Value> = body["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|account| &account["same_as"])
+        .collect();
+    assert_eq!(
+        same_as,
+        [
+            &json!(null),
+            &json!(ids[0]),
+            &json!(null),
+            &json!(null),
+            &json!(null)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_upload_that_isnt_there_is_not_found() {
+    let app = set_up().await;
+    let unknown = "0".repeat(64);
+    for id in [unknown.as_str(), "..", "ABC", &"g".repeat(64)] {
+        let (status, body) = plan(&app, id).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{id}");
+        assert_eq!(body["error"]["code"], "upload_not_found", "{id}");
+        assert_eq!(
+            body["error"]["message"],
+            "This upload is gone: uploads wait a day. Upload the export again."
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_upload_whose_database_went_bad_is_unreadable() {
+    let app = set_up().await;
+    let (_, upload) = upload(&app, fixture("actual-export.zip")).await;
+    let id = upload["id"].as_str().unwrap();
+    let dir = app.dir.path().join("imports").join(id);
+    std::fs::write(dir.join("db.sqlite"), b"not a database").unwrap();
+    let (status, body) = plan(&app, id).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "not_an_actual_export");
+}
+
+#[tokio::test]
+async fn reading_an_upload_needs_a_login() {
+    let app = set_up().await;
+    let (status, body) = send(
+        app.router.clone(),
+        get(&format!("{UPLOAD}/{}", "0".repeat(64))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"]["code"], "login_required");
 }

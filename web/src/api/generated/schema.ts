@@ -163,6 +163,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/actual/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/imports/actual/{id}`: an uploaded export's accounts and categories. */
+        get: operations["getActualImport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/password-reset": {
         parameters: {
             query?: never;
@@ -340,6 +357,85 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description Whether an account's activity counts toward budgets, or only its balance over time is shown.
+         * @enum {string}
+         */
+        AccountRole: "budgeted" | "tracking";
+        AccountRows: {
+            /** @description Actual's id for the account. */
+            account_id: string;
+            /** Format: int64 */
+            rows: number;
+        };
+        /**
+         * @description What kind of account it is.
+         * @enum {string}
+         */
+        AccountType: "checking" | "savings" | "credit_card" | "investment" | "loan" | "cash" | "other";
+        /** @description A live Actual account, its figures, and what **Create new** starts from. */
+        ActualAccount: {
+            /**
+             * Format: int64
+             * @description The balance Actual shows: every row, starting balances included, in minor units.
+             */
+            balance_minor: number;
+            closed: boolean;
+            /** @description Actual's id for it. */
+            id: string;
+            name: string;
+            off_budget: boolean;
+            /** @description Tracking if it's off budget in Actual, else budgeted. */
+            role: components["schemas"]["AccountRole"];
+            /**
+             * Format: int64
+             * @description Its rows: a split counts once, a starting balance counts.
+             */
+            rows: number;
+            /**
+             * Format: int64
+             * @description The app account with the same bank-sync id, which **Same as** starts on; null when none.
+             */
+            same_as: number | null;
+            /** @description The best guess from its name. */
+            type: components["schemas"]["AccountType"];
+        };
+        /** @description A live Actual category and the rows using it. */
+        ActualCategory: {
+            /** @description Its Actual group's name. */
+            group: string;
+            /** @description Actual's id for it. */
+            id: string;
+            /** @description Whether its Actual group is an income group. */
+            income: boolean;
+            name: string;
+            /**
+             * @description How many rows in each Actual account use it, split lines included; only accounts with
+             *     some are listed. Skipping an account takes its rows away.
+             */
+            rows: components["schemas"]["AccountRows"][];
+        };
+        /**
+         * @description What's in an uploaded export for the importer's Accounts and Categories steps, with the
+         *     defaults each choice starts from. Choosing happens in the browser; nothing is written here.
+         */
+        ActualImport: {
+            /**
+             * @description Every live Actual account: open before closed, on budget before off budget, then Actual's
+             *     order.
+             */
+            accounts: components["schemas"]["ActualAccount"][];
+            /** @description The app's own accounts, for **Same as**; closed ones included. */
+            app_accounts: components["schemas"]["AppAccount"][];
+            /** @example Our budget */
+            budget_name: string;
+            /**
+             * @description Every live Actual category that any row uses, in Actual's order, but for Starting Balances,
+             *     whose rows become opening balances.
+             */
+            categories: components["schemas"]["ActualCategory"][];
+            id: string;
+        };
         /** @description An uploaded Actual export and what's in it. */
         ActualUpload: {
             /**
@@ -368,6 +464,12 @@ export interface components {
              * @description Live transactions in live accounts; a split counts once.
              */
             transactions: number;
+        };
+        /** @description One of the app's accounts. */
+        AppAccount: {
+            /** Format: int64 */
+            id: number;
+            name: string;
         };
         Category: {
             hidden: boolean;
@@ -1054,6 +1156,56 @@ export interface operations {
                 };
             };
             /** @description `not_an_actual_export`, or `export_unreadable`: an Actual export with data the app can't read. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getActualImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The upload, as its upload answered. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export's accounts and categories; nothing is imported yet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActualImport"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `upload_not_found`: no such upload, or it's over a day old and deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `export_unreadable`: the export has data the app can't read. */
             422: {
                 headers: {
                     [name: string]: unknown;
