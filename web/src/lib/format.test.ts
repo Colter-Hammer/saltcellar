@@ -126,6 +126,13 @@ describe('formatMoney', () => {
     expect(formatMoney(-5, { currency: 'USD', locale: 'en-US' })).toBe('-$0.05')
   })
 
+  it('marks money in with a plus when signed, and zero with neither', () => {
+    const usd = { currency: 'USD', locale: 'en-US' }
+    expect(formatMoney(4000, usd, { signed: true })).toBe('+$40.00')
+    expect(formatMoney(-1250, usd, { signed: true })).toBe('-$12.50')
+    expect(formatMoney(0, usd, { signed: true })).toBe('$0.00')
+  })
+
   it('knows currencies without minor units', () => {
     expect(formatMoney(1500, { currency: 'JPY', locale: 'en-US' })).toBe('¥1,500')
   })

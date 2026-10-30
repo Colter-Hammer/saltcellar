@@ -33,7 +33,8 @@ export function createAppRouter(history: RouterHistory): Router {
     routes: [
       { path: '/', redirect: '/transactions' },
       {
-        path: '/transactions',
+        // The open transaction's detail, if any, is in the address.
+        path: '/transactions/:id(\\d+)?',
         component: TransactionsView,
         meta: { title: 'Transactions', tab: 'transactions' },
       },

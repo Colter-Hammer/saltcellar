@@ -1472,6 +1472,122 @@
           }
         }
       }
+    },
+    "/api/v1/transactions": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "`GET /api/v1/transactions`: a page of transactions, newest first by date then id.",
+        "operationId": "getTransactions",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "The `next_cursor` of the page before; leave it out for the newest rows.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many rows, 1 to 200; 50 if left out.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of transactions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "`GET /api/v1/transactions/{id}`: one transaction in full.",
+        "operationId": "getTransaction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2332,6 +2448,28 @@
           }
         }
       },
+      "ImportBatchRef": {
+        "type": "object",
+        "description": "The import a transaction came in with.",
+        "required": [
+          "id",
+          "file_name",
+          "imported_at"
+        ],
+        "properties": {
+          "file_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "imported_at": {
+            "type": "string",
+            "description": "RFC 3339, UTC."
+          }
+        }
+      },
       "ImportedAccount": {
         "type": "object",
         "required": [
@@ -2464,6 +2602,209 @@
             "description": "Whether setup is finished. Until it is, the app shows only the setup wizard."
           }
         }
+      },
+      "SplitLine": {
+        "type": "object",
+        "description": "One of a split transaction's lines.",
+        "required": [
+          "category_id",
+          "category",
+          "amount_minor",
+          "memo"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units."
+          },
+          "category": {
+            "type": "string"
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Transaction": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TransactionRow"
+          },
+          {
+            "type": "object",
+            "required": [
+              "memo",
+              "splits",
+              "source",
+              "categorization_reason",
+              "import_batch"
+            ],
+            "properties": {
+              "categorization_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "How it got its category, in words; null when nothing gave it one."
+              },
+              "import_batch": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportBatchRef",
+                    "description": "The import it came in with; null if it came in with none."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "memo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "$ref": "#/components/schemas/TransactionSource"
+              },
+              "splits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SplitLine"
+                },
+                "description": "Empty unless it's split."
+              }
+            }
+          }
+        ],
+        "description": "A transaction in full."
+      },
+      "TransactionPage": {
+        "type": "object",
+        "description": "A page of transactions, newest first.",
+        "required": [
+          "transactions",
+          "next_cursor"
+        ],
+        "properties": {
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass it back as `after` for the next page; null on the last."
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransactionRow"
+            }
+          }
+        }
+      },
+      "TransactionRow": {
+        "type": "object",
+        "description": "A transaction as the list shows it.",
+        "required": [
+          "id",
+          "date",
+          "amount_minor",
+          "status",
+          "payee",
+          "raw_description",
+          "account_id",
+          "account",
+          "category_id",
+          "category",
+          "split",
+          "tags"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units: negative is money out, positive money in."
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null when it's split, a transfer leg, or uncategorized."
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "payee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null when it has none."
+          },
+          "raw_description": {
+            "type": "string",
+            "description": "Exactly what the bank sent; never edited."
+          },
+          "split": {
+            "type": "boolean",
+            "description": "Split across categories: its lines are in its detail."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TransactionStatus"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its tags' names, in name order."
+          }
+        }
+      },
+      "TransactionSource": {
+        "type": "string",
+        "description": "Where it came from: the bank (through the sync provider), a file, or entered by hand.",
+        "enum": [
+          "provider",
+          "import",
+          "manual"
+        ]
+      },
+      "TransactionStatus": {
+        "type": "string",
+        "description": "Whether the bank has settled it.",
+        "enum": [
+          "pending",
+          "posted"
+        ]
       },
       "UseReset": {
         "type": "object",

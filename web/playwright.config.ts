@@ -43,6 +43,7 @@ export default defineConfig({
         'categories.spec.ts',
         'import-commit.spec.ts',
         'accounts.spec.ts',
+        'transactions.spec.ts',
       ],
       dependencies: ['categories'],
       use: { ...devices['Pixel 7'], storageState: STORAGE_STATE },
@@ -55,6 +56,7 @@ export default defineConfig({
         'categories.spec.ts',
         'import-commit.spec.ts',
         'accounts.spec.ts',
+        'transactions.spec.ts',
       ],
       dependencies: ['categories'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
@@ -71,6 +73,13 @@ export default defineConfig({
     {
       name: 'accounts',
       testMatch: 'accounts.spec.ts',
+      dependencies: ['import-commit'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // And Transactions, with the imported rows in it, on both widths in turn.
+    {
+      name: 'transactions',
+      testMatch: 'transactions.spec.ts',
       dependencies: ['import-commit'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

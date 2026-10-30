@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
 import type { Account } from './api/accounts'
+import type { Transaction } from './api/transactions'
 import { call, client } from './api/client'
 import { createAppRouter } from './router'
 
@@ -31,6 +32,8 @@ interface FakeServer {
   groups: { id: number; name: string; kind: string; hidden: boolean; categories: unknown[] }[]
   /** The accounts, as `GET /api/v1/accounts` lists them. */
   accounts: Account[]
+  /** The transactions in full, newest first; `GET /api/v1/transactions` pages them by 2. */
+  transactions: Transaction[]
 }
 
 let server: FakeServer
@@ -61,6 +64,7 @@ async function answer(request: Request): Promise<Response> {
     const found = server.accounts.find((a) => `/api/v1/accounts/${String(a.id)}` === path)
     return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
   }
+  if (path.startsWith('/api/v1/transactions')) return transactions(request, path)
   if (path === '/api/v1/setup' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, string>
     if (body.code !== server.code) {
@@ -103,6 +107,35 @@ async function answer(request: Request): Promise<Response> {
     { error: { code: 'not_found', message: "There's nothing at this address." } },
     { status: 404 },
   )
+}
+
+function transactions(request: Request, path: string): Response {
+  if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+  if (path === '/api/v1/transactions') {
+    // The cursor is the index to start at.
+    const start = Number(new URL(request.url).searchParams.get('after') ?? '0')
+    const page = server.transactions.slice(start, start + 2)
+    const next = start + 2 < server.transactions.length ? String(start + 2) : null
+    return Response.json({
+      transactions: page.map((t) => ({
+        id: t.id,
+        date: t.date,
+        amount_minor: t.amount_minor,
+        status: t.status,
+        payee: t.payee,
+        raw_description: t.raw_description,
+        account_id: t.account_id,
+        account: t.account,
+        category_id: t.category_id,
+        category: t.category,
+        split: t.split,
+        tags: t.tags,
+      })),
+      next_cursor: next,
+    })
+  }
+  const found = server.transactions.find((t) => `/api/v1/transactions/${String(t.id)}` === path)
+  return found ? Response.json(found) : error(404, 'not_found', "There's no such transaction.")
 }
 
 async function session(request: Request): Promise<Response> {
@@ -243,6 +276,7 @@ beforeEach(() => {
     weekStart: null,
     groups: [],
     accounts: [],
+    transactions: [],
   }
   serverUp()
 })
@@ -669,8 +703,8 @@ describe('logging in', () => {
       ),
     )
     // A screen that asks the server nothing itself: one that does would find the login gone.
-    const { router } = await open('/transactions')
-    expect(router.currentRoute.value.path).toBe('/transactions')
+    const { router } = await open('/more')
+    expect(router.currentRoute.value.path).toBe('/more')
   })
 })
 
@@ -1074,5 +1108,171 @@ describe('Accounts', () => {
   it('says so for an account that is not there', async () => {
     const { wrapper } = await open('/accounts/9')
     expect(wrapper.get('[role="alert"]').text()).toBe("There's no such account.")
+  })
+})
+
+describe('Transactions', () => {
+  const fake = (id: number, fields: Partial<Transaction>): Transaction => ({
+    id,
+    date: '2026-01-05',
+    amount_minor: -1250,
+    status: 'posted',
+    payee: 'Corner Market',
+    raw_description: `CORNER MKT ${String(id)}`,
+    account_id: 1,
+    account: 'Checking',
+    category_id: null,
+    category: null,
+    split: false,
+    tags: [],
+    memo: null,
+    splits: [],
+    source: 'import',
+    categorization_reason: null,
+    import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
+    ...fields,
+  })
+
+  beforeEach(() => {
+    server.transactions = [
+      fake(5, {
+        category_id: 1,
+        category: 'Groceries',
+        tags: ['trip'],
+        categorization_reason: 'From Actual: Groceries',
+      }),
+      fake(4, { payee: null, raw_description: 'REFUND 0042', amount_minor: 4000 }),
+      fake(3, {
+        date: '2026-01-03',
+        amount_minor: -12_000,
+        account: 'Card',
+        memo: 'Big shop\nSplit in Actual: Groceries -80.00; Dining out -40.00',
+      }),
+      fake(2, {
+        date: '2026-01-02',
+        status: 'pending',
+        split: true,
+        source: 'provider',
+        import_batch: null,
+        splits: [
+          { category_id: 1, category: 'Groceries', amount_minor: -800, memo: 'food' },
+          { category_id: 2, category: 'Dining out', amount_minor: -450, memo: null },
+        ],
+      }),
+    ]
+  })
+
+  it('lists them by day on phones, with money in marked plus', async () => {
+    const { wrapper } = await open('/transactions')
+    const days = wrapper.findAll('main section')
+    expect(days.map((d) => [d.get('h2').text(), d.findAll('li').map((li) => li.text())])).toEqual([
+      [
+        'Jan 5, 2026',
+        ['Corner Market Groceries-€12.50Checking', 'REFUND 0042 Uncategorized+€40.00Checking'],
+      ],
+    ])
+  })
+
+  it('tables them on desktops, and loads more at the end', async () => {
+    const { wrapper } = await open('/transactions')
+    const table = wrapper.get('table[aria-label="Transactions"]')
+    expect(table.findAll('th').map((th) => th.text())).toEqual([
+      'Date',
+      'Payee',
+      'Category',
+      'Account',
+      'Amount',
+      'Tags',
+    ])
+    const cells = () =>
+      table.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text()))
+    expect(cells()).toEqual([
+      ['Jan 5, 2026', 'Corner Market', 'Groceries', 'Checking', '-€12.50', 'trip'],
+      ['Jan 5, 2026', 'REFUND 0042', 'Uncategorized', 'Checking', '+€40.00', ''],
+    ])
+    const more = wrapper.findAll('main button').find((b) => b.text() === 'Load more')
+    await more?.trigger('click')
+    await flushPromises()
+    expect(cells().map((row) => [row[1], row[2], row[4]])).toEqual([
+      ['Corner Market', 'Groceries', '-€12.50'],
+      ['REFUND 0042', 'Uncategorized', '+€40.00'],
+      ['Corner Market', 'Uncategorized', '-€120.00'],
+      ['Corner Market', 'Split', '-€12.50'],
+    ])
+    expect(wrapper.findAll('main button').map((b) => b.text())).not.toContain('Load more')
+    expect(wrapper.findAll('main section').map((d) => d.get('h2').text())).toEqual([
+      'Jan 5, 2026',
+      'Jan 3, 2026',
+      'Jan 2, 2026',
+    ])
+  })
+
+  it('opens one in full, and closes it again', async () => {
+    const { router, wrapper } = await open('/transactions')
+    await wrapper.get('main li a').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/transactions/5')
+    const detail = wrapper.get('aside')
+    expect(detail.get('h2').text()).toBe('Corner Market')
+    expect(detail.text()).toContain('-€12.50')
+    const pairs = detail.findAll('dt').map((dt, i) => [dt.text(), detail.findAll('dd')[i]?.text()])
+    expect(pairs).toEqual([
+      ['Date', 'Jan 5, 2026'],
+      ['Account', 'Checking'],
+      ['Payee', 'Corner Market'],
+      ['Bank description', 'CORNER MKT 5'],
+      ['Category', 'Groceries'],
+      ['Memo', '—'],
+      ['Tags', 'trip'],
+      ['Status', 'Posted'],
+      ['Source', 'Import'],
+      ['Categorized', 'From Actual: Groceries'],
+      ['Import', 'export.zip, Feb 1, 2026'],
+    ])
+    const row = wrapper.get('table tbody tr[aria-current="true"]')
+    expect(row.text()).toContain('Corner Market')
+    await detail.get('button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/transactions')
+    expect(wrapper.find('aside').exists()).toBe(false)
+  })
+
+  it('shows the split lines, the memo and where it came from', async () => {
+    const { wrapper } = await open('/transactions/2')
+    const detail = wrapper.get('aside')
+    expect(detail.get('h2').text()).toBe('Corner Market')
+    expect(
+      detail
+        .get('ul[aria-label="Split lines"]')
+        .findAll('li')
+        .map((li) => li.text()),
+    ).toEqual(['Groceries · food-€8.00', 'Dining out -€4.50'])
+    const text = detail.text()
+    expect(text).toContain('Pending')
+    expect(text).toContain('Bank')
+    expect(text).not.toContain('export.zip')
+  })
+
+  it("shows a fallback split's Actual split in its memo, and a payee-less row's bank text", async () => {
+    let { wrapper } = await open('/transactions/3')
+    expect(wrapper.get('aside').text()).toContain(
+      'Big shop\nSplit in Actual: Groceries -80.00; Dining out -40.00',
+    )
+    ;({ wrapper } = await open('/transactions/4'))
+    expect(wrapper.get('aside h2').text()).toBe('REFUND 0042')
+    expect(wrapper.get('aside').text()).toContain('+€40.00')
+  })
+
+  it('closes the open one on Escape', async () => {
+    const { router } = await open('/transactions/5')
+    globalThis.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/transactions')
+  })
+
+  it('says so for a transaction that is not there', async () => {
+    const { wrapper } = await open('/transactions/9')
+    expect(wrapper.get('aside [role="alert"]').text()).toBe("There's no such transaction.")
+    expect(wrapper.get('aside h2').text()).toBe('Transaction')
   })
 })

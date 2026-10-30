@@ -72,14 +72,19 @@ export function weekdayName(day: number, locale: string): string {
   return new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(instant)
 }
 
-/** An amount in integer minor units, in the currency's decimal places and the locale's style. */
+/**
+ * An amount in integer minor units, in the currency's decimal places and the locale's style.
+ * `signed` marks money in with a plus, as a transaction's amount shows *(agent)*.
+ */
 export function formatMoney(
   minor: number,
   formatting: Pick<Formatting, 'currency' | 'locale'> = DEFAULT,
+  { signed = false }: { signed?: boolean } = {},
 ): string {
   const format = new Intl.NumberFormat(formatting.locale, {
     style: 'currency',
     currency: formatting.currency,
+    signDisplay: signed ? 'exceptZero' : 'auto',
   })
   const places = format.resolvedOptions().maximumFractionDigits ?? 0
   // A decimal string, never a float, so large amounts keep their last digit.
