@@ -86,7 +86,10 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let pool = db::connect(&data.path().join(db::FILE_NAME)).await.unwrap();
         db::migrate(&pool).await.unwrap();
-        let addr = serve(api::router(api::AppState::load(pool).await.unwrap())).await;
+        let addr = serve(api::router(
+            api::AppState::load(pool, data.path()).await.unwrap(),
+        ))
+        .await;
 
         check_in_background(addr).await.unwrap();
     }

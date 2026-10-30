@@ -106,7 +106,7 @@ async fn run(config: Config) -> Result<(), StartError> {
         .map_err(|error| StartError::DataDir(config.data_dir.display().to_string(), error))?;
     let pool = db::connect(&config.data_dir.join(db::FILE_NAME)).await?;
     db::migrate(&pool).await?;
-    let state = api::AppState::load(pool.clone()).await?;
+    let state = api::AppState::load(pool.clone(), &config.data_dir).await?;
 
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await

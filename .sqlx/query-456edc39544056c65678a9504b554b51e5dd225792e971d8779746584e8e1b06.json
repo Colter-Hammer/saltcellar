@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (\n             SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'import_batches'\n           ) AS \"has!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "has!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "456edc39544056c65678a9504b554b51e5dd225792e971d8779746584e8e1b06"
+}

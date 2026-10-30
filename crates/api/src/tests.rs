@@ -19,7 +19,8 @@ struct App {
     now: Arc<Mutex<Timestamp>>,
     /// The first login's session cookie (`session=…`), once setup is finished.
     cookie: String,
-    _dir: tempfile::TempDir,
+    /// The data dir: the database, and uploads waiting for the import.
+    dir: tempfile::TempDir,
 }
 
 impl App {
@@ -36,7 +37,7 @@ async fn app() -> App {
     db::migrate(&pool).await.unwrap();
     let now = Arc::new(Mutex::new("2026-10-28T09:00:00Z".parse().unwrap()));
     let clock = Arc::clone(&now);
-    let state = crate::AppState::load(pool.clone())
+    let state = crate::AppState::load(pool.clone(), dir.path())
         .await
         .unwrap()
         .with_clock(move || *clock.lock().unwrap());
@@ -47,7 +48,7 @@ async fn app() -> App {
         code,
         now,
         cookie: String::new(),
-        _dir: dir,
+        dir,
     }
 }
 
@@ -264,7 +265,9 @@ async fn before_setup_only_health_and_setup_answer() {
 #[tokio::test]
 async fn each_start_before_setup_gets_a_new_code() {
     let app = app().await;
-    let again = crate::AppState::load(app.pool.clone()).await.unwrap();
+    let again = crate::AppState::load(app.pool.clone(), app.dir.path())
+        .await
+        .unwrap();
     let code = app.code.unwrap();
     assert_eq!(code.len(), 9);
     assert_ne!(again.setup_code().unwrap().to_string(), code);
@@ -393,7 +396,9 @@ async fn after_setup_the_code_and_the_wizard_stop_working() {
         .unwrap();
     assert_eq!(users, 1);
 
-    let restarted = crate::AppState::load(app.pool.clone()).await.unwrap();
+    let restarted = crate::AppState::load(app.pool.clone(), app.dir.path())
+        .await
+        .unwrap();
     assert!(restarted.setup_code().is_none());
     let (status, _) = send(
         crate::router(restarted),
@@ -1152,3 +1157,4 @@ fn the_openapi_document_describes_health_and_the_error_envelope() {
 
 #[path = "tests/categories.rs"]
 mod categories;
+mod import;

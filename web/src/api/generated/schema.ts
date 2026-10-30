@@ -146,6 +146,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/actual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/actual`: reads an Actual export. */
+        post: operations["uploadActualExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/password-reset": {
         parameters: {
             query?: never;
@@ -323,6 +340,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description An uploaded Actual export and what's in it. */
+        ActualUpload: {
+            /**
+             * Format: int64
+             * @description Live accounts, closed ones included.
+             */
+            accounts: number;
+            /**
+             * @description The budget's name in Actual.
+             * @example Our budget
+             */
+            budget_name: string;
+            /**
+             * Format: int64
+             * @description Live categories.
+             */
+            categories: number;
+            /** @description The earliest transaction's date, `YYYY-MM-DD`; null when there are none. */
+            first_date: string | null;
+            /** @description Names this upload in the importer's next steps. */
+            id: string;
+            /** @description The latest transaction's date, `YYYY-MM-DD`; null when there are none. */
+            last_date: string | null;
+            /**
+             * Format: int64
+             * @description Live transactions in live accounts; a split counts once.
+             */
+            transactions: number;
+        };
         Category: {
             hidden: boolean;
             /** Format: int64 */
@@ -930,6 +976,85 @@ export interface operations {
             };
             /** @description `setup_required`: setup isn't finished. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    uploadActualExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The `.zip` Actual's Settings › Export data saves, as is. At most 100 MB. */
+        requestBody: {
+            content: {
+                "application/zip": string;
+            };
+        };
+        responses: {
+            /** @description The export is read; nothing is imported yet. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActualUpload"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do; `earlier_import`: an earlier import from Actual hasn't been undone. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `file_too_large`: over 100 MB, or unpacks to more than the app reads. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `zip_required`: the body isn't sent as `application/zip`. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_an_actual_export`, or `export_unreadable`: an Actual export with data the app can't read. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
