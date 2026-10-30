@@ -8,6 +8,7 @@ pub mod actual;
 pub mod categories;
 mod currency;
 mod date;
+pub mod import;
 pub mod login;
 mod money;
 pub mod profile;

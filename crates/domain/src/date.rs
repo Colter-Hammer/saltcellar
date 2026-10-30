@@ -44,6 +44,13 @@ impl Date {
     pub fn day(self) -> i8 {
         self.0.day()
     }
+
+    /// The day before; `None` before the first day there is (0001-01-01).
+    #[must_use]
+    pub fn previous_day(self) -> Option<Date> {
+        let day = self.0.yesterday().ok()?;
+        (day.year() >= 1).then_some(Date(day))
+    }
 }
 
 /// Exactly `YYYY-MM-DD`: four-digit year, two-digit month and day, nothing before or after.
@@ -83,6 +90,13 @@ mod tests {
 
     fn date(s: &str) -> Date {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn the_day_before() {
+        assert_eq!(date("2026-03-01").previous_day(), Some(date("2026-02-28")));
+        assert_eq!(date("2025-01-01").previous_day(), Some(date("2024-12-31")));
+        assert_eq!(date("0001-01-01").previous_day(), None);
     }
 
     #[test]
