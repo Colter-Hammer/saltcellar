@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use domain::accounts::{Opening, app_balance};
-use domain::import::{Disposition, Plan, PlannedAccount, Row, Target, dedupe_key};
+use domain::import::{Disposition, LinkedTransfer, Plan, PlannedAccount, Row, Target, dedupe_key};
 use domain::{Date, Money};
 use sqlx::SqliteConnection;
 
@@ -78,7 +78,7 @@ impl From<sqlx::Error> for ImportError {
 }
 
 /// Commits an Actual import in one database transaction: the accounts it creates, its rows with
-/// their payees, aliases and tags, each account's opening balance and balance snapshot, and the
+/// their payees, aliases, tags and split lines, the transfers linking their legs, each account's opening balance and balance snapshot, and the
 /// import batch recording it all, so it can be undone. On any failure nothing is written.
 ///
 /// # Errors
@@ -110,6 +110,7 @@ pub async fn commit_actual_import(
         batch_id,
         payees: HashMap::new(),
         tags: HashMap::new(),
+        inserted: HashMap::new(),
     };
     let mut accounts = Vec::with_capacity(commit.plan.accounts.len());
     let mut added: i64 = 0;
@@ -117,6 +118,9 @@ pub async fn commit_actual_import(
         let account = writer.account(planned, commit.today).await?;
         added += i64::try_from(account.rows).unwrap_or(i64::MAX);
         accounts.push(account);
+    }
+    for transfer in &commit.plan.transfers {
+        writer.transfer(transfer).await?;
     }
     sqlx::query!(
         "UPDATE import_batches SET added = ? WHERE id = ?",
@@ -135,6 +139,8 @@ struct Writer<'t> {
     batch_id: i64,
     payees: HashMap<String, i64>,
     tags: HashMap<String, i64>,
+    /// Each row inserted so far by its Actual id: its transaction's id and its account's.
+    inserted: HashMap<String, (i64, i64)>,
 }
 
 impl Writer<'_> {
@@ -270,6 +276,7 @@ impl Writer<'_> {
                 category_id,
                 reason,
             } => (Some(*category_id), Some("import"), Some(reason.as_str())),
+            Disposition::Split { reason, .. } => (None, Some("import"), Some(reason.as_str())),
             _ => (None, None, None),
         };
         let date = row.date.to_string();
@@ -295,6 +302,22 @@ impl Writer<'_> {
         )
         .fetch_one(&mut *self.tx)
         .await?;
+        if let Disposition::Split { lines, .. } = &row.disposition {
+            for line in lines {
+                let amount = line.amount.minor();
+                sqlx::query!(
+                    "INSERT INTO transaction_splits (transaction_id, category_id, amount_minor, memo)
+                     VALUES (?, ?, ?, ?)",
+                    id,
+                    line.category_id,
+                    amount,
+                    line.memo
+                )
+                .execute(&mut *self.tx)
+                .await?;
+            }
+        }
+        self.inserted.insert(row.import_ref.clone(), (id, account));
         for tag in &row.tags {
             let tag = self.tag(tag).await?;
             sqlx::query!(
@@ -315,6 +338,40 @@ impl Writer<'_> {
             row.import_ref,
             row.source_category,
             disposition
+        )
+        .execute(&mut *self.tx)
+        .await?;
+        Ok(())
+    }
+
+    /// The `transfers` row for a pair of inserted legs, which are now transfer legs.
+    async fn transfer(&mut self, transfer: &LinkedTransfer) -> Result<(), ImportError> {
+        let leg = |import_ref: &str| {
+            self.inserted
+                .get(import_ref)
+                .copied()
+                .ok_or_else(|| Error::Unreadable {
+                    what: "a linked transfer's leg",
+                    value: import_ref.to_owned(),
+                })
+        };
+        let (from_txn, from_account) = leg(&transfer.from)?;
+        let (to_txn, to_account) = leg(&transfer.to)?;
+        sqlx::query!(
+            "INSERT INTO transfers
+               (from_account_id, to_account_id, from_txn_id, to_txn_id, matched_by, state)
+             VALUES (?, ?, ?, ?, 'import', 'confirmed')",
+            from_account,
+            to_account,
+            from_txn,
+            to_txn
+        )
+        .execute(&mut *self.tx)
+        .await?;
+        sqlx::query!(
+            "UPDATE transactions SET categorized_by = 'transfer' WHERE id IN (?, ?)",
+            from_txn,
+            to_txn
         )
         .execute(&mut *self.tx)
         .await?;

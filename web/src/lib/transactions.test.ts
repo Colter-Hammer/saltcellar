@@ -5,6 +5,7 @@ import {
   dateRangeLabel,
   groupByDate,
   isFiltered,
+  isUncategorized,
   payeeLabel,
   readFilter,
   sourceLabel,
@@ -25,6 +26,8 @@ function row(id: number, fields: Partial<TransactionRow> = {}): TransactionRow {
     category_id: null,
     category: null,
     split: false,
+    split_categories: 0,
+    transfer_account: null,
     tags: [],
     ...fields,
   }
@@ -40,8 +43,18 @@ describe('payeeLabel', () => {
 describe('categoryLabel', () => {
   it('names the category, a split, or says Uncategorized', () => {
     expect(categoryLabel(row(1, { category_id: 3, category: 'Groceries' }))).toBe('Groceries')
-    expect(categoryLabel(row(1, { split: true }))).toBe('Split')
+    expect(categoryLabel(row(1, { split: true, split_categories: 3 }))).toBe('Split · 3 categories')
+    expect(categoryLabel(row(1, { split: true, split_categories: 1 }))).toBe('Split · 1 category')
     expect(categoryLabel(row(1))).toBe('Uncategorized')
+  })
+
+  it('names the other account of a transfer leg, by which way the money went', () => {
+    expect(categoryLabel(row(1, { transfer_account: 'Savings' }))).toBe('Transfer to Savings')
+    expect(categoryLabel(row(1, { transfer_account: 'Savings', amount_minor: 500 }))).toBe(
+      'Transfer from Savings',
+    )
+    expect(isUncategorized(row(1, { transfer_account: 'Savings' }))).toBe(false)
+    expect(isUncategorized(row(1))).toBe(true)
   })
 })
 

@@ -8,10 +8,23 @@ export function payeeLabel(row: TransactionRow): string {
   return row.payee ?? row.raw_description
 }
 
-/** The category's name, "Split" for a split row, or "Uncategorized". */
+/**
+ * The category's name; "Split · 3 categories" for a split row; "Transfer to Savings" or "Transfer
+ * from Savings" for a transfer leg, by which way the money went; else "Uncategorized" *(agent)*.
+ */
 export function categoryLabel(row: TransactionRow): string {
-  if (row.split) return 'Split'
+  if (row.split) {
+    return `Split · ${String(row.split_categories)} ${row.split_categories === 1 ? 'category' : 'categories'}`
+  }
+  if (row.transfer_account !== null) {
+    return `Transfer ${row.amount_minor < 0 ? 'to' : 'from'} ${row.transfer_account}`
+  }
   return row.category ?? 'Uncategorized'
+}
+
+/** Whether the row has nothing to name: no category, no split lines and no transfer. */
+export function isUncategorized(row: TransactionRow): boolean {
+  return row.category === null && !row.split && row.transfer_account === null
 }
 
 export interface TransactionDay {

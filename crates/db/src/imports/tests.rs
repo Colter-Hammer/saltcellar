@@ -1,5 +1,5 @@
 use domain::accounts::{AccountType, Role};
-use domain::import::NewAccount;
+use domain::import::{LinkedTransfer, NewAccount, SplitLine};
 
 use super::*;
 use crate::tests::set_up;
@@ -135,6 +135,7 @@ fn full_plan(category: i64) -> Plan {
             },
         ],
         skipped: 4,
+        transfers: Vec::new(),
     }
 }
 
@@ -346,6 +347,7 @@ async fn a_commit_sets_each_accounts_opening_balance_and_snapshot() {
         &Plan {
             accounts: Vec::new(),
             skipped: 0,
+            transfers: Vec::new(),
         },
         user,
     )
@@ -411,6 +413,7 @@ async fn an_unworkable_balance_is_refused() {
             vec![row("t1", "2025-01-01", 1)],
         )],
         skipped: 0,
+        transfers: Vec::new(),
     };
     let failed = commit(&pool, &plan, user).await;
     assert!(
@@ -437,6 +440,7 @@ async fn rows_go_into_an_account_that_is_the_same_as_theirs() {
             vec![row("t1", "2025-01-02", 100)],
         )],
         skipped: 0,
+        transfers: Vec::new(),
     };
     let committed = commit(&pool, &plan, user).await.unwrap();
     assert_eq!(
@@ -482,4 +486,160 @@ async fn a_category_transactions_or_split_lines_use_cant_be_deleted() {
         .await
         .unwrap();
     delete_category(&pool, category).await.unwrap();
+}
+
+/// Checking with a split of 3 lines over two categories, and a linked transfer to Savings.
+fn split_and_transfer_plan(groceries: i64, fuel: i64) -> Plan {
+    let mut split = row("s", "2025-03-02", -3_000);
+    split.disposition = Disposition::Split {
+        lines: vec![
+            SplitLine {
+                category_id: groceries,
+                amount: Money::from_minor(-2_000),
+                memo: Some("food".to_owned()),
+            },
+            SplitLine {
+                category_id: fuel,
+                amount: Money::from_minor(-500),
+                memo: None,
+            },
+            SplitLine {
+                category_id: groceries,
+                amount: Money::from_minor(-500),
+                memo: None,
+            },
+        ],
+        reason: "From Actual: Groceries, Fuel".to_owned(),
+    };
+    let mut plain = row("p", "2025-03-03", -700);
+    plain.disposition = Disposition::Mapped {
+        category_id: groceries,
+        reason: "From Actual: Groceries".to_owned(),
+    };
+    let mut out = row("out", "2025-03-05", -5_000);
+    out.disposition = Disposition::Transfer;
+    let mut into = row("in", "2025-03-05", 5_000);
+    into.disposition = Disposition::Transfer;
+    Plan {
+        accounts: vec![
+            planned(
+                new_account("Checking", false),
+                10_000,
+                vec![split, plain, out],
+            ),
+            planned(new_account("Savings", false), 20_000, vec![into]),
+        ],
+        skipped: 0,
+        transfers: vec![LinkedTransfer {
+            from: "out".to_owned(),
+            to: "in".to_owned(),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn a_split_comes_in_with_its_lines_and_a_linked_pair_with_one_transfer() {
+    let (_dir, pool) = set_up().await;
+    let (user, groceries) = login_and_category(&pool).await;
+    let fuel: i64 = sqlx::query_scalar(
+        "INSERT INTO categories (group_id, name) VALUES (1, 'Fuel') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    commit(&pool, &split_and_transfer_plan(groceries, fuel), user)
+        .await
+        .unwrap();
+
+    let split = crate::transaction(&pool, 1).await.unwrap().unwrap();
+    assert_eq!(split.row.category_id, None);
+    assert!(split.row.split);
+    assert_eq!(split.row.split_categories, 2);
+    assert_eq!(
+        split.categorization_reason.as_deref(),
+        Some("From Actual: Groceries, Fuel")
+    );
+    let lines: Vec<(i64, i64, Option<String>)> = split
+        .splits
+        .iter()
+        .map(|l| (l.category_id, l.amount.minor(), l.memo.clone()))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            (groceries, -2_000, Some("food".to_owned())),
+            (fuel, -500, None),
+            (groceries, -500, None)
+        ]
+    );
+    let by: Option<String> =
+        sqlx::query_scalar("SELECT categorized_by FROM transactions WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(by.as_deref(), Some("import"));
+
+    // One transfer, confirmed, out of Checking and into Savings, its legs without a category.
+    let (from, to, by, state): (String, String, String, String) = sqlx::query_as(
+        "SELECT fa.name, ta.name, matched_by, state FROM transfers
+           JOIN accounts fa ON fa.id = from_account_id JOIN accounts ta ON ta.id = to_account_id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((from.as_str(), to.as_str()), ("Checking", "Savings"));
+    assert_eq!((by.as_str(), state.as_str()), ("import", "confirmed"));
+    assert_eq!(count(&pool, "transfers").await, 1);
+    let legs: Vec<(i64, Option<i64>, Option<String>)> = sqlx::query_as(
+        "SELECT amount_minor, category_id, categorized_by FROM transactions
+         WHERE id IN (SELECT from_txn_id FROM transfers UNION SELECT to_txn_id FROM transfers)
+         ORDER BY amount_minor",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        legs,
+        [
+            (-5_000, None, Some("transfer".into())),
+            (5_000, None, Some("transfer".into()))
+        ]
+    );
+
+    // The leg names the other account.
+    let page = crate::transactions(&pool, &crate::Filter::default(), None, 50)
+        .await
+        .unwrap();
+    let transfers: Vec<(i64, Option<&str>)> = page
+        .transactions
+        .iter()
+        .filter(|t| t.amount.minor().abs() == 5_000)
+        .map(|t| (t.amount.minor(), t.transfer_account.as_deref()))
+        .collect();
+    assert_eq!(transfers.len(), 2);
+    assert!(transfers.contains(&(-5_000, Some("Savings"))));
+    assert!(transfers.contains(&(5_000, Some("Checking"))));
+
+    // Each amount counts once in the category-amounts view: the split's lines and the plain row,
+    // and nothing for the transfer legs or the split's parent.
+    let counted: Vec<(Option<i64>, i64)> = sqlx::query_as(
+        "SELECT category_id, amount_minor FROM v_category_lines ORDER BY txn_id, amount_minor, category_id DESC",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        counted,
+        [
+            (Some(groceries), -2_000),
+            (Some(fuel), -500),
+            (Some(groceries), -500),
+            (Some(groceries), -700)
+        ]
+    );
+    let total: i64 = sqlx::query_scalar("SELECT SUM(amount_minor) FROM v_category_lines")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(total, -3_700);
 }

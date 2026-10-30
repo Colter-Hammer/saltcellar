@@ -148,6 +148,8 @@ function transactions(request: Request, path: string): Response {
         category_id: t.category_id,
         category: t.category,
         split: t.split,
+        split_categories: t.split_categories,
+        transfer_account: t.transfer_account,
         tags: t.tags,
       })),
       next_cursor: next,
@@ -1158,6 +1160,8 @@ describe('Transactions', () => {
     category_id: null,
     category: null,
     split: false,
+    split_categories: 0,
+    transfer_account: null,
     tags: [],
     memo: null,
     splits: [],
@@ -1186,6 +1190,7 @@ describe('Transactions', () => {
         date: '2026-01-02',
         status: 'pending',
         split: true,
+        split_categories: 2,
         source: 'provider',
         import_batch: null,
         splits: [
@@ -1231,7 +1236,7 @@ describe('Transactions', () => {
       ['Corner Market', 'Groceries', '-€12.50'],
       ['REFUND 0042', 'Uncategorized', '+€40.00'],
       ['Corner Market', 'Uncategorized', '-€120.00'],
-      ['Corner Market', 'Split', '-€12.50'],
+      ['Corner Market', 'Split · 2 categories', '-€12.50'],
     ])
     expect(wrapper.findAll('main button').map((b) => b.text())).not.toContain('Load more')
     expect(wrapper.findAll('main section').map((d) => d.get('h2').text())).toEqual([
@@ -1285,6 +1290,16 @@ describe('Transactions', () => {
     expect(text).toContain('Pending')
     expect(text).toContain('Bank')
     expect(text).not.toContain('export.zip')
+  })
+
+  it('names the other account in a transfer leg, in the list and the detail', async () => {
+    server.transactions.unshift(
+      fake(9, { date: '2026-01-06', amount_minor: -5000, transfer_account: 'Savings' }),
+    )
+    const { wrapper } = await open('/transactions/9')
+    const detail = wrapper.get('aside')
+    expect(detail.get('dl').text()).toContain('Transfer to Savings')
+    expect(wrapper.get('main').text()).toContain('Transfer to Savings')
   })
 
   it("shows a fallback split's Actual split in its memo, and a payee-less row's bank text", async () => {

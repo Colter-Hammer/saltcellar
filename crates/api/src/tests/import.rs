@@ -558,7 +558,15 @@ async fn the_fake_export_comes_in_with_every_balance_matching_actual() {
         .collect();
     assert_eq!(rows, expected_rows);
     assert_eq!(done["accounts_created"], 5);
-    assert_eq!(done["linked_transfers"], 0);
+    // The card payment, the brokerage top-up and the closed account's balance moved out.
+    assert_eq!(done["linked_transfers"], 3);
+    let linked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM transfers WHERE matched_by = 'import' AND state = 'confirmed'",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(linked, 3);
     let total: u64 = expected_rows.iter().map(|(_, rows)| rows).sum();
     let counts: Vec<u64> = ["mapped", "undecided", "transfer", "uncategorized"]
         .iter()
@@ -858,7 +866,7 @@ async fn an_imported_transaction_reads_in_full() {
     let app = set_up().await;
     let (category, _) = imported(&app).await;
 
-    // A split comes in unsplit, with the Actual split in its memo.
+    // A split with a child on Transfer comes in unsplit, with the Actual split in its memo.
     let split: i64 = sqlx::query_scalar(
         "SELECT id FROM transactions WHERE memo LIKE '%Split in Actual:%' AND date = '2025-07-12'",
     )
@@ -897,6 +905,200 @@ async fn an_imported_transaction_reads_in_full() {
         assert_eq!(status, StatusCode::NOT_FOUND, "{missing}");
         assert_eq!(body["error"]["code"], "not_found");
     }
+}
+
+/// The fake export committed with Groceries and Dining out both mapped to categories, so its split
+/// takes its lines; `skip` is the Actual id of an account to skip. Returns the two categories.
+async fn imported_with_split(app: &App, skip: Option<&str>) -> (i64, i64) {
+    let groceries = groceries(app).await;
+    let dining: i64 = sqlx::query_scalar(
+        "INSERT INTO categories (group_id, name) VALUES (1, 'Dining out') RETURNING id",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    let plan = fake_plan(app).await;
+    let id = plan["id"].as_str().unwrap().to_owned();
+    let mut accounts = create_all(&plan);
+    for account in &mut accounts {
+        if Some(account["actual_id"].as_str().unwrap()) == skip {
+            account["action"] = json!("skip");
+        }
+    }
+    let (status, done) = commit(
+        app,
+        &id,
+        &json!({
+            "file_name": "actual-export.zip",
+            "accounts": accounts,
+            "categories": [
+                { "actual_id": fake_id(3, 1), "goes_to": "category", "category_id": groceries },
+                { "actual_id": fake_id(3, 2), "goes_to": "category", "category_id": dining },
+            ],
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{done}");
+    (groceries, dining)
+}
+
+#[tokio::test]
+async fn a_split_with_every_line_mapped_arrives_as_one_row_with_its_lines() {
+    let app = set_up().await;
+    let (groceries, dining) = imported_with_split(&app, None).await;
+    let split: i64 = sqlx::query_scalar(
+        "SELECT id FROM transactions WHERE date = '2025-07-12' AND amount_minor = -12000",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    let (status, detail) = get_json(&app, &format!("/api/v1/transactions/{split}")).await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["split"], true);
+    assert_eq!(detail["split_categories"], 2);
+    assert_eq!(detail["category"], Value::Null);
+    assert_eq!(detail["transfer_account"], Value::Null);
+    let lines: Vec<(i64, i64)> = detail["splits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            (
+                l["category_id"].as_i64().unwrap(),
+                l["amount_minor"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    // The tombstoned third child is gone; the lines add up to the parent.
+    assert_eq!(lines, [(groceries, -8_000), (dining, -4_000)]);
+    assert_eq!(detail["memo"], "Big shop #household");
+    assert_eq!(
+        detail["categorization_reason"],
+        "From Actual: Groceries, Dining out"
+    );
+
+    // Still one row, and the category filter finds it.
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM transactions WHERE date = '2025-07-12' AND amount_minor = -12000",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(rows, 1);
+    assert!(
+        listed(&app, &format!("category={dining}"))
+            .await
+            .contains(&split)
+    );
+    assert!(
+        !listed(&app, "category=uncategorized")
+            .await
+            .contains(&split)
+    );
+}
+
+#[tokio::test]
+async fn a_linked_pair_is_two_legs_and_one_transfer() {
+    let app = set_up().await;
+    imported_with_split(&app, None).await;
+    let (_, day) = get_json(
+        &app,
+        "/api/v1/transactions?limit=200&from=2025-06-25&to=2025-06-25",
+    )
+    .await;
+    let legs = day["transactions"].as_array().unwrap();
+    assert_eq!(legs.len(), 2);
+    for leg in legs {
+        assert_eq!(leg["category"], Value::Null);
+        assert_eq!(leg["split"], false);
+    }
+    let named = |amount: i64| {
+        legs.iter()
+            .find(|l| l["amount_minor"] == amount)
+            .map(|l| l["transfer_account"].as_str().unwrap().to_owned())
+            .unwrap()
+    };
+    assert_eq!(named(-50_000), "Rewards card");
+    assert_eq!(named(50_000), "Everyday checking");
+    let transfer: (String, String, String) = sqlx::query_as(
+        "SELECT matched_by, state, categorized_by FROM transfers
+           JOIN transactions ON transactions.id = from_txn_id WHERE transactions.date = '2025-06-25'",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        transfer,
+        ("import".into(), "confirmed".into(), "transfer".into())
+    );
+}
+
+#[tokio::test]
+async fn skipping_one_side_of_a_pair_leaves_one_transfer_like_leg() {
+    let app = set_up().await;
+    // The brokerage top-up's other side is skipped: the checking-side leg stays, with no transfer.
+    imported_with_split(&app, Some(&fake_id(1, 4))).await;
+    let transfers: i64 = sqlx::query_scalar("SELECT count(*) FROM transfers")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(transfers, 2);
+    let (_, day) = get_json(
+        &app,
+        "/api/v1/transactions?limit=200&from=2025-09-10&to=2025-09-10",
+    )
+    .await;
+    let day = day["transactions"].as_array().unwrap();
+    assert_eq!(day.len(), 1);
+    assert_eq!(day[0]["amount_minor"], -100_000);
+    assert_eq!(day[0]["category"], Value::Null);
+    assert_eq!(day[0]["transfer_account"], Value::Null);
+    let disposition: String = sqlx::query_scalar(
+        "SELECT source_disposition FROM import_batch_rows WHERE transaction_id = ?",
+    )
+    .bind(day[0]["id"].as_i64().unwrap())
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(disposition, "transfer");
+}
+
+#[tokio::test]
+async fn no_amount_is_counted_twice_in_the_category_amounts_view() {
+    let app = set_up().await;
+    imported_with_split(&app, None).await;
+    // Every budgeted amount that isn't a transfer leg counts once: the view's lines sum to those
+    // transactions, a split's lines standing for their parent.
+    let counted: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount_minor), 0) FROM v_category_lines")
+            .fetch_one(&app.pool)
+            .await
+            .unwrap();
+    let expected: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
+           JOIN accounts a ON a.id = t.account_id AND a.role = 'budgeted'
+          WHERE t.id NOT IN (SELECT from_txn_id FROM transfers UNION ALL SELECT to_txn_id FROM transfers)",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(counted, expected);
+    let twice: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM (SELECT txn_id FROM v_category_lines GROUP BY txn_id
+           HAVING count(*) > 1 AND txn_id NOT IN (SELECT transaction_id FROM transaction_splits))",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(twice, 0);
+    let legs: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM v_category_lines WHERE txn_id IN
+           (SELECT from_txn_id FROM transfers UNION ALL SELECT to_txn_id FROM transfers)",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    assert_eq!(legs, 0);
 }
 
 // ── Transactions search and filters, on the imported fake export ──
@@ -966,6 +1168,11 @@ async fn the_search_picks_the_right_imported_rows() {
     );
 }
 
+/// SQL for a row that is neither split nor a transfer leg.
+const NOT_SPLIT_OR_LEG: &str = "t.id NOT IN (SELECT transaction_id FROM transaction_splits)
+  AND t.id NOT IN (SELECT from_txn_id FROM transfers WHERE from_txn_id IS NOT NULL
+                   UNION ALL SELECT to_txn_id FROM transfers WHERE to_txn_id IS NOT NULL)";
+
 #[tokio::test]
 async fn each_filter_picks_the_right_imported_rows() {
     let app = set_up().await;
@@ -985,7 +1192,12 @@ async fn each_filter_picks_the_right_imported_rows() {
         listed(&app, &format!("category={groceries}")).await,
         in_groceries
     );
-    let uncategorized = picked(&app, "t.category_id IS NULL").await;
+    // Transfer legs and split rows aren't uncategorized.
+    let uncategorized = picked(
+        &app,
+        &format!("t.category_id IS NULL AND {NOT_SPLIT_OR_LEG}"),
+    )
+    .await;
     assert_eq!(listed(&app, "category=uncategorized").await, uncategorized);
 
     let june = picked(&app, "t.date BETWEEN '2025-06-01' AND '2025-06-30'").await;
@@ -1015,7 +1227,10 @@ async fn each_filter_picks_the_right_imported_rows() {
     // Combined, every filter narrows.
     let both = picked(
         &app,
-        &format!("t.account_id = {account} AND t.category_id IS NULL AND t.date >= '2025-06-01'"),
+        &format!(
+            "t.account_id = {account} AND t.category_id IS NULL AND t.date >= '2025-06-01'
+               AND {NOT_SPLIT_OR_LEG}"
+        ),
     )
     .await;
     assert_eq!(

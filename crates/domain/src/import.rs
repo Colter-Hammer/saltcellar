@@ -2,9 +2,10 @@
 //! importer's steps 2 and 3, applied to an export's live rows, as the plan of what the import
 //! writes (docs/spec/m1-ledger-import.md#turning-actual-rows-into-transactions).
 //!
-//! In this version splits and linked transfers take the spec's fallback paths *(agent)*: a split
-//! comes in unsplit and uncategorized with the Actual split in its memo, and every transfer leg is
-//! treated like a row whose category goes to Transfer.
+//! A split whose lines all go to app categories comes in as one row with its lines; otherwise it
+//! takes the spec's fallback *(agent)*: unsplit and uncategorized, with the Actual split in its
+//! memo. A transfer whose two legs are both imported is linked into one `transfers` row; a leg
+//! whose other side isn't (or doesn't match) is treated like a row whose category goes to Transfer.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -12,7 +13,8 @@ use std::fmt::Write as _;
 use sha2::{Digest, Sha256};
 
 use crate::accounts::{AccountType, Role};
-use crate::actual::{Export, Payee, Transaction};
+use crate::actual::{Export, Line, Payee, Transaction};
+use crate::transactions::lines_add_up;
 use crate::{Date, Money};
 
 /// What happens to one Actual account (step 2).
@@ -81,6 +83,17 @@ pub struct Plan {
     pub accounts: Vec<PlannedAccount>,
     /// Actual rows left out: starting balances, and the rows of skipped and balances-only accounts.
     pub skipped: u64,
+    /// The linked transfers between two imported accounts, in the export's order.
+    pub transfers: Vec<LinkedTransfer>,
+}
+
+/// A transfer both of whose legs the import inserts: the legs' Actual transaction ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedTransfer {
+    /// The leg that took the money out (negative; the first of two zero legs).
+    pub from: String,
+    /// The leg that took it in.
+    pub to: String,
 }
 
 /// Where an Actual account's rows and balance go.
@@ -138,13 +151,28 @@ pub struct Row {
     pub source_category: Option<String>,
 }
 
+/// One line of a split row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplitLine {
+    pub category_id: i64,
+    pub amount: Money,
+    pub memo: Option<String>,
+}
+
 /// What the category mapping did with a row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Disposition {
     /// Took this app category, for this reason ("From Actual: Groceries").
     Mapped { category_id: i64, reason: String },
-    /// Decide later: uncategorized, listed in From Actual, undecided. Also a split, which comes in
-    /// unsplit *(agent)*.
+    /// A split whose lines all took app categories: one row with its lines, which add up to its
+    /// amount. Stored as `mapped`.
+    Split {
+        lines: Vec<SplitLine>,
+        /// "From Actual: Groceries, Fuel".
+        reason: String,
+    },
+    /// Decide later: uncategorized, listed in From Actual, undecided. Also a split that can't
+    /// take its lines, which comes in unsplit *(agent)*.
     Undecided,
     /// Transfer (not a category), or a transfer leg: uncategorized, transfer-like.
     Transfer,
@@ -157,7 +185,7 @@ impl Disposition {
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
-            Disposition::Mapped { .. } => "mapped",
+            Disposition::Mapped { .. } | Disposition::Split { .. } => "mapped",
             Disposition::Undecided => "undecided",
             Disposition::Transfer => "transfer",
             Disposition::Uncategorized => "uncategorized",
@@ -261,9 +289,11 @@ impl Plan {
                 rows: imported,
             });
         }
+        let transfers = link(export, &planned);
         Ok(Plan {
             accounts: planned,
             skipped,
+            transfers,
         })
     }
 
@@ -273,7 +303,7 @@ impl Plan {
         let mut counts = Counts::default();
         for row in self.accounts.iter().flat_map(|a| &a.rows) {
             *match row.disposition {
-                Disposition::Mapped { .. } => &mut counts.mapped,
+                Disposition::Mapped { .. } | Disposition::Split { .. } => &mut counts.mapped,
                 Disposition::Undecided => &mut counts.undecided,
                 Disposition::Transfer => &mut counts.transfer,
                 Disposition::Uncategorized => &mut counts.uncategorized,
@@ -281,6 +311,55 @@ impl Plan {
         }
         counts
     }
+}
+
+/// The transfers whose two legs are both imported rows (not split ones) in different accounts,
+/// each other's twins in Actual, and equal and opposite *(agent)*. Any other leg stays a lone
+/// transfer-like row.
+fn link(export: &Export, planned: &[PlannedAccount]) -> Vec<LinkedTransfer> {
+    let twins: HashMap<&str, &str> = export
+        .transactions
+        .iter()
+        .filter_map(|t| Some((t.id.as_str(), t.twin.as_deref()?)))
+        .collect();
+    let imported: HashMap<&str, (usize, &Row)> = planned
+        .iter()
+        .enumerate()
+        .flat_map(|(at, account)| {
+            account
+                .rows
+                .iter()
+                .map(move |row| (row.import_ref.as_str(), (at, row)))
+        })
+        .collect();
+    let mut linked = Vec::new();
+    for (at, account) in planned.iter().enumerate() {
+        for row in &account.rows {
+            let Some(&twin) = twins.get(row.import_ref.as_str()) else {
+                continue;
+            };
+            let Some(&(other_at, other)) = imported.get(twin) else {
+                continue;
+            };
+            let same_account = at == other_at
+                || matches!((&account.target, &planned[other_at].target),
+                    (Target::Existing(a), Target::Existing(b)) if a == b);
+            let opposite = row.amount.checked_add(other.amount) == Some(Money::ZERO);
+            let legs = row.disposition == Disposition::Transfer
+                && other.disposition == Disposition::Transfer;
+            let mutual = twins.get(twin).copied() == Some(row.import_ref.as_str());
+            // One entry per pair: from the leg that took the money out.
+            let first = row.amount.is_negative()
+                || (row.amount.is_zero() && row.import_ref.as_str() < twin);
+            if first && legs && mutual && opposite && !same_account {
+                linked.push(LinkedTransfer {
+                    from: row.import_ref.clone(),
+                    to: other.import_ref.clone(),
+                });
+            }
+        }
+    }
+    linked
 }
 
 /// Every account has a choice that can go ahead, and every category goes somewhere there is.
@@ -343,6 +422,32 @@ struct Rows<'a> {
 }
 
 impl Rows<'_> {
+    /// The split's lines in app categories, and why, when every line's category goes to one and the
+    /// lines add up to the row's amount; `None` takes the fallback.
+    fn split_lines(&self, t: &Transaction) -> Option<(Vec<SplitLine>, String)> {
+        if !lines_add_up(t.amount, t.lines.iter().map(|line| line.amount)) {
+            return None;
+        }
+        let mut names: Vec<&str> = Vec::new();
+        let mut lines = Vec::with_capacity(t.lines.len());
+        for line in &t.lines {
+            let id = line.category.as_deref()?;
+            let Some(GoesTo::Category(category_id)) = self.choices.get(id) else {
+                return None;
+            };
+            let name = self.categories.get(id)?;
+            if !names.contains(name) {
+                names.push(name);
+            }
+            lines.push(SplitLine {
+                category_id: *category_id,
+                amount: line.amount,
+                memo: line_notes(line).map(str::to_owned),
+            });
+        }
+        Some((lines, format!("From Actual: {}", names.join(", "))))
+    }
+
     fn row(&self, t: &Transaction) -> Row {
         let payee = match &t.payee {
             Some(Payee::Named(name)) => Some(name.clone()),
@@ -391,6 +496,12 @@ impl Rows<'_> {
                 }
             };
             (disposition, source_category, memo(t.notes.as_deref(), None))
+        } else if let Some((lines, reason)) = self.split_lines(t) {
+            (
+                Disposition::Split { lines, reason },
+                None,
+                memo(t.notes.as_deref(), None),
+            )
         } else {
             let split = t
                 .lines
@@ -399,12 +510,7 @@ impl Rows<'_> {
                     let mut text =
                         category_name(&line.category).unwrap_or_else(|| "Uncategorized".to_owned());
                     let _ = write!(text, " {}", cents(line.amount));
-                    if let Some(notes) = line
-                        .notes
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|n| !n.is_empty())
-                    {
+                    if let Some(notes) = line_notes(line) {
                         let _ = write!(text, " ({notes})");
                     }
                     text
@@ -435,6 +541,14 @@ impl Rows<'_> {
             source_category,
         }
     }
+}
+
+/// A split line's notes, if it has any.
+fn line_notes(line: &Line) -> Option<&str> {
+    line.notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
 }
 
 /// The notes, then the split, on lines of their own; `None` when both are empty.
