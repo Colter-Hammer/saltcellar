@@ -26,17 +26,25 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
+    // Then the categories, on their own too: the list is the install's, and the test works it on
+    // both widths in turn.
+    {
+      name: 'categories',
+      testMatch: 'categories.spec.ts',
+      dependencies: ['profile'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
     // Then the two layouts: a phone (tab bar) and a desktop (sidebar), both in Chromium.
     {
       name: 'phone',
-      testIgnore: ['setup.spec.ts', 'profile.spec.ts'],
-      dependencies: ['profile'],
+      testIgnore: ['setup.spec.ts', 'profile.spec.ts', 'categories.spec.ts'],
+      dependencies: ['categories'],
       use: { ...devices['Pixel 7'], storageState: STORAGE_STATE },
     },
     {
       name: 'desktop',
-      testIgnore: ['setup.spec.ts', 'profile.spec.ts'],
-      dependencies: ['profile'],
+      testIgnore: ['setup.spec.ts', 'profile.spec.ts', 'categories.spec.ts'],
+      dependencies: ['categories'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

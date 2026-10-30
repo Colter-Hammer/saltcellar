@@ -1149,3 +1149,6 @@ fn the_openapi_document_describes_health_and_the_error_envelope() {
     assert_eq!(schemas["ErrorEnvelope"]["required"], json!(["error"]));
     assert_eq!(schemas["ErrorBody"]["required"], json!(["code", "message"]));
 }
+
+#[path = "tests/categories.rs"]
+mod categories;

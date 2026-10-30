@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO categories (group_id, name, sort_order)\n           VALUES (?1, ?2, (SELECT coalesce(max(sort_order) + 1, 0) FROM categories WHERE group_id = ?1))\n           RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "categories",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "5e985d953e88aaa1d3827dce5f345733f178bb70b78ef5e9a64a6b24c4eceed6"
+}

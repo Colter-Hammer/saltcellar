@@ -1,6 +1,7 @@
 //! The SQLite database: one file in the data dir, in WAL mode, owned by the app alone.
 
 mod auth;
+mod categories;
 mod household;
 mod profile;
 mod reset;
@@ -13,6 +14,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
     password_login, recent_failures, record_failure, use_session,
+};
+pub use categories::{
+    Category, CategoryError, Group, add_category, add_group, category_groups, delete_category,
+    delete_group, set_order, update_category, update_group, use_starter_categories,
 };
 pub use household::{Household, household};
 pub use profile::{
@@ -154,11 +159,16 @@ mod tests {
         assert_eq!(
             tables,
             [
+                "categories",
+                "category_groups",
                 "household",
                 "login_failures",
                 "password_resets",
+                "payee_aliases",
+                "payees",
                 "sessions",
                 "settings",
+                "tags",
                 "users"
             ]
         );

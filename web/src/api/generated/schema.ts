@@ -4,6 +4,114 @@
  */
 
 export interface paths {
+    "/api/v1/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/categories`: every group in order, each with its categories in order. */
+        get: operations["getCategories"];
+        put?: never;
+        /** `POST /api/v1/categories`: adds a category at the end of its group. */
+        post: operations["addCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** `PUT /api/v1/categories/order`: puts every group and category in order. */
+        put: operations["orderCategories"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories/starter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/categories/starter`: writes the starter categories and the always-review payees. */
+        post: operations["useStarterCategories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * `DELETE /api/v1/categories/{id}`: deletes a category. Until transactions exist nothing uses
+         *     one, so every category can be; after, one in use answers `category_in_use` and can be hidden.
+         */
+        delete: operations["deleteCategory"];
+        options?: never;
+        head?: never;
+        /** `PATCH /api/v1/categories/{id}`: renames a category, hides it or shows it again. */
+        patch: operations["changeCategory"];
+        trace?: never;
+    };
+    "/api/v1/category-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/category-groups`: adds a group at the end. */
+        post: operations["addCategoryGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/category-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** `DELETE /api/v1/category-groups/{id}`: deletes an empty group. */
+        delete: operations["deleteCategoryGroup"];
+        options?: never;
+        head?: never;
+        /** `PATCH /api/v1/category-groups/{id}`: renames a group, hides it or shows it again. */
+        patch: operations["changeCategoryGroup"];
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -215,6 +323,49 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Category: {
+            hidden: boolean;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description What a change to a group or a category sets; a field left out stays as it is. */
+        CategoryChange: {
+            hidden?: boolean | null;
+            name?: string | null;
+        };
+        CategoryGroup: {
+            /** @description In order, hidden ones included. */
+            categories: components["schemas"]["Category"][];
+            /** @description A hidden group hides its categories with it. */
+            hidden: boolean;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["CategoryGroupKind"];
+            name: string;
+        };
+        /**
+         * @description Whether a group's categories are spending or money coming in.
+         * @enum {string}
+         */
+        CategoryGroupKind: "expense" | "income";
+        CategoryGroupPlace: {
+            /** @description The group's categories' ids, in order. */
+            categories: number[];
+            /** Format: int64 */
+            id: number;
+        };
+        CategoryList: {
+            /** @description In order, hidden ones included. */
+            groups: components["schemas"]["CategoryGroup"][];
+        };
+        CategoryOrder: {
+            /**
+             * @description Every group, in order, each listing its categories: every group and every category exactly
+             *     once, hidden ones included. A category listed under another group moves to it.
+             */
+            groups: components["schemas"]["CategoryGroupPlace"][];
+        };
         ChangePassword: {
             current_password: string;
             /** @description At least 12 characters. */
@@ -239,6 +390,10 @@ export interface components {
         CheckSetupCode: {
             /** @description As typed: case, spaces and dashes don't matter. */
             code: string;
+        };
+        Created: {
+            /** Format: int64 */
+            id: number;
         };
         ErrorBody: {
             /** @description What went wrong, for code to branch on: `snake_case`, stable. */
@@ -292,6 +447,15 @@ export interface components {
             /** @description As typed: case and surrounding spaces don't matter. */
             username: string;
         };
+        NewCategory: {
+            /** Format: int64 */
+            group_id: number;
+            name: string;
+        };
+        NewCategoryGroup: {
+            kind: components["schemas"]["CategoryGroupKind"];
+            name: string;
+        };
         Profile: {
             /** @description BCP 47, like `de-DE`; null = the browser's locale. */
             display_locale?: string | null;
@@ -328,6 +492,395 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every group and category, hidden ones included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryList"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCategory"];
+            };
+        };
+        responses: {
+            /** @description The category is added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Created"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such group. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the name is empty, too long or taken in the group. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    orderCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryOrder"];
+            };
+        };
+        responses: {
+            /** @description The order is saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `categories_changed`: the order doesn't list every group and category exactly once; `name_taken`: a moved category's name is taken in its new group. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    useStarterCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The starter categories are written. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `categories_exist`: there's a group already. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The category. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The category is deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such category. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The category. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryChange"];
+            };
+        };
+        responses: {
+            /** @description The category is changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such category. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the name is empty, too long or taken in its group. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addCategoryGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCategoryGroup"];
+            };
+        };
+        responses: {
+            /** @description The group is added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Created"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the name is empty, too long or taken. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteCategoryGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The group is deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such group. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `group_not_empty`: it still holds categories, hidden ones included. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeCategoryGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryChange"];
+            };
+        };
+        responses: {
+            /** @description The group is changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such group. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the name is empty, too long or taken. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;

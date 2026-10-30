@@ -26,6 +26,8 @@ interface FakeServer {
   weekStart: number | null
   /** The reset link's token that still works, if any. */
   resetToken?: string | undefined
+  /** The category groups, as `GET /api/v1/categories` lists them. */
+  groups: { id: number; name: string; kind: string; hidden: boolean; categories: unknown[] }[]
 }
 
 let server: FakeServer
@@ -47,6 +49,7 @@ async function answer(request: Request): Promise<Response> {
   }
   if (path.startsWith('/api/v1/profile')) return profile(request, path)
   if (path.startsWith('/api/v1/password-reset')) return reset(request, path)
+  if (path.startsWith('/api/v1/categor')) return categories(request, path)
   if (path === '/api/v1/setup' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, string>
     if (body.code !== server.code) {
@@ -176,6 +179,31 @@ async function reset(request: Request, path: string): Promise<Response> {
   return new Response(null, { status: 204 })
 }
 
+async function categories(request: Request, path: string): Promise<Response> {
+  if (path === '/api/v1/categories/starter') {
+    server.groups = [
+      {
+        id: 1,
+        name: 'Food',
+        kind: 'expense',
+        hidden: false,
+        categories: [{ id: 11, name: 'Groceries', hidden: false }],
+      },
+      { id: 2, name: 'Pets', kind: 'expense', hidden: true, categories: [] },
+    ]
+    return new Response(null, { status: 204 })
+  }
+  if (path === '/api/v1/category-groups' && request.method === 'POST') {
+    const { name, kind } = (await request.json()) as { name: string; kind: string }
+    if (server.groups.some((group) => group.name === name)) {
+      return invalid({ name: `There's already a group called ${name}.` })
+    }
+    server.groups.push({ id: 3, name, kind, hidden: false, categories: [] })
+    return Response.json({ id: 3 }, { status: 201 })
+  }
+  return Response.json({ groups: server.groups })
+}
+
 function serverUp() {
   vi.stubGlobal(
     'fetch',
@@ -202,6 +230,7 @@ beforeEach(() => {
     password: PASSWORD,
     locale: null,
     weekStart: null,
+    groups: [],
   }
   serverUp()
 })
@@ -665,11 +694,12 @@ describe('logging out', () => {
 })
 
 describe('Settings', () => {
-  it('lists Profile, which opens it', async () => {
+  it('lists Profile and Categories, and opens Profile', async () => {
     const { router, wrapper } = await open('/settings')
     const links = wrapper.get('main').findAll('a')
     expect(links.map((a) => [a.text(), a.attributes('href')])).toEqual([
       ['Profile', '/settings/profile'],
+      ['Categories', '/categories'],
     ])
     await links[0]?.trigger('click')
     await flushPromises()
@@ -873,5 +903,51 @@ describe('the reset link', () => {
     const { wrapper } = await open(`/reset-password#${TOKEN}`)
     expect(wrapper.find('form').exists()).toBe(true)
     expect(wrapper.get('form [role="alert"]').text()).toBe("Can't reach the server.")
+  })
+})
+
+describe('Settings › Categories', () => {
+  const buttons = (wrapper: Awaited<ReturnType<typeof open>>['wrapper']) =>
+    wrapper
+      .get('main')
+      .findAll('button')
+      .map((button) => button.text())
+
+  it('offers the starter set or an empty start while there are none, and writes the starters', async () => {
+    const { wrapper } = await open('/categories')
+    expect(buttons(wrapper)).toEqual(['Use starter categories', 'Start empty'])
+    const starter = wrapper.findAll('button').find((b) => b.text() === 'Use starter categories')
+    await starter?.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('main h2').map((h) => h.text())).toEqual(['Food', 'Hidden'])
+    expect(wrapper.get('main').text()).toContain('Groceries')
+    expect(wrapper.get('main').text()).toMatch(/Pets\s+· group, 0 categories/)
+  })
+
+  it('starts empty with a way to add a group, and names a taken name', async () => {
+    const { wrapper } = await open('/categories')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Start empty')
+      ?.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '+ Group')
+      ?.trigger('click')
+    await wrapper.get('#new-group-name').setValue('Income')
+    await wrapper.get('select[aria-label="Kind"]').setValue('income')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.findAll('main h2').map((h) => h.text())).toEqual(['Income'])
+    expect(wrapper.get('main').text()).toContain('Income')
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '+ Group')
+      ?.trigger('click')
+    await wrapper.get('#new-group-name').setValue('Income')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe("There's already a group called Income.")
   })
 })

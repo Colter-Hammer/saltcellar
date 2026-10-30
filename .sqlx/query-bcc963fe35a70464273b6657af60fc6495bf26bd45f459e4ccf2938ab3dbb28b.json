@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO payees (name, review_mode) VALUES (?, 'always') ON CONFLICT (name) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "bcc963fe35a70464273b6657af60fc6495bf26bd45f459e4ccf2938ab3dbb28b"
+}
