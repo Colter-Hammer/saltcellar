@@ -404,6 +404,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/tags`: every tag, for the Transactions tag filter. */
+        get: operations["getTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transactions": {
         parameters: {
             query?: never;
@@ -411,7 +428,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /api/v1/transactions`: a page of transactions, newest first by date then id. */
+        /**
+         * `GET /api/v1/transactions`: a page of the transactions the search and filters pick, newest
+         *     first by date then id.
+         */
         get: operations["getTransactions"];
         put?: never;
         post?: never;
@@ -870,6 +890,18 @@ export interface components {
             /** Format: int64 */
             category_id: number;
             memo: string | null;
+        };
+        /** @description A tag, as the tag filter offers it. */
+        Tag: {
+            /** Format: int64 */
+            id: number;
+            /** @description Without the `#`. */
+            name: string;
+        };
+        /** @description Every tag the household has. */
+        TagList: {
+            /** @description By name, ignoring case. */
+            tags: components["schemas"]["Tag"][];
         };
         /** @description A transaction in full. */
         Transaction: components["schemas"]["TransactionRow"] & {
@@ -2214,13 +2246,62 @@ export interface operations {
             };
         };
     };
+    getTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every tag, by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagList"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getTransactions: {
         parameters: {
             query?: {
-                /** @description The `next_cursor` of the page before; leave it out for the newest rows. */
+                /**
+                 * @description The `next_cursor` of the page before; leave it out for the newest rows. Pass the same
+                 *     search and filters with it.
+                 */
                 after?: string;
                 /** @description How many rows, 1 to 200; 50 if left out. */
                 limit?: number;
+                /**
+                 * @description Text in the payee, raw description or memo (ignoring case), or an amount in the household
+                 *     currency, either way round: `12.50` matches −12.50 and 12.50.
+                 */
+                q?: string;
+                /** @description An account's id. */
+                account?: number;
+                /** @description A category's id (split rows count in each of their lines' categories), or `uncategorized`. */
+                category?: string;
+                /** @description On or after this day, `YYYY-MM-DD`. */
+                from?: string;
+                /** @description On or before this day, `YYYY-MM-DD`. */
+                to?: string;
+                /** @description A tag's id. */
+                tag?: number;
+                /** @description `true` for only the rows still waiting in **From Actual, undecided**. */
+                undecided?: boolean;
             };
             header?: never;
             path?: never;
@@ -2237,7 +2318,7 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionPage"];
                 };
             };
-            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. */
+            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag` or `undecided` can't be read. */
             400: {
                 headers: {
                     [name: string]: unknown;

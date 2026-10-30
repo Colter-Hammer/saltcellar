@@ -898,3 +898,198 @@ async fn an_imported_transaction_reads_in_full() {
         assert_eq!(body["error"]["code"], "not_found");
     }
 }
+
+// ── Transactions search and filters, on the imported fake export ──
+
+/// The ids `query` lists, all on one page, newest first.
+async fn listed(app: &App, query: &str) -> Vec<i64> {
+    let (status, body) = get_json(app, &format!("/api/v1/transactions?limit=200&{query}")).await;
+    assert_eq!(status, StatusCode::OK, "{query}: {body}");
+    assert_eq!(body["next_cursor"], Value::Null, "{query}");
+    body["transactions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_i64().unwrap())
+        .collect()
+}
+
+/// The ids SQL `condition` picks, newest first, to check `listed` against.
+async fn picked(app: &App, condition: &str) -> Vec<i64> {
+    let ids: Vec<i64> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT t.id FROM transactions t LEFT JOIN payees p ON p.id = t.payee_id
+         WHERE {condition} ORDER BY t.date DESC, t.id DESC"
+    )))
+    .fetch_all(&app.pool)
+    .await
+    .unwrap();
+    assert!(!ids.is_empty(), "nothing has {condition}");
+    ids
+}
+
+#[tokio::test]
+async fn the_search_picks_the_right_imported_rows() {
+    let app = set_up().await;
+    let (_, total) = imported(&app).await;
+    assert_eq!(listed(&app, "").await.len(), total);
+
+    // Payee text, any case; the raw description and memo too.
+    let corner = picked(
+        &app,
+        "lower(p.name) LIKE '%corner grocer%' OR lower(t.raw_description) LIKE '%corner grocer%'
+           OR lower(t.memo) LIKE '%corner grocer%'",
+    )
+    .await;
+    assert_eq!(listed(&app, "q=CORNER%20grocer").await, corner);
+    let split = picked(&app, "t.memo LIKE '%Split in Actual:%'").await;
+    assert_eq!(listed(&app, "q=split%20in%20actual").await, split);
+
+    // Amounts in dollars, whole or decimal, either sign: the −120.00 split row among them.
+    let hundred_twenty = picked(
+        &app,
+        "abs(t.amount_minor) = 12000 OR p.name LIKE '%120%' OR t.raw_description LIKE '%120%'
+           OR t.memo LIKE '%120%'",
+    )
+    .await;
+    assert!(hundred_twenty.contains(&split[0]));
+    assert_eq!(listed(&app, "q=120").await, hundred_twenty);
+    let decimal = picked(
+        &app,
+        "abs(t.amount_minor) = 12000 OR p.name LIKE '%120.00%' OR t.raw_description LIKE '%120.00%'
+           OR t.memo LIKE '%120.00%'",
+    )
+    .await;
+    assert_eq!(listed(&app, "q=120.00").await, decimal);
+    assert_eq!(
+        listed(&app, "q=-120.0").await,
+        picked(&app, "abs(t.amount_minor) = 12000").await
+    );
+}
+
+#[tokio::test]
+async fn each_filter_picks_the_right_imported_rows() {
+    let app = set_up().await;
+    let (groceries, total) = imported(&app).await;
+    let account: i64 = sqlx::query_scalar("SELECT min(id) FROM accounts")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    let in_account = picked(&app, &format!("t.account_id = {account}")).await;
+    assert_eq!(
+        listed(&app, &format!("account={account}")).await,
+        in_account
+    );
+
+    let in_groceries = picked(&app, &format!("t.category_id = {groceries}")).await;
+    assert_eq!(
+        listed(&app, &format!("category={groceries}")).await,
+        in_groceries
+    );
+    let uncategorized = picked(&app, "t.category_id IS NULL").await;
+    assert_eq!(listed(&app, "category=uncategorized").await, uncategorized);
+
+    let june = picked(&app, "t.date BETWEEN '2025-06-01' AND '2025-06-30'").await;
+    assert_eq!(listed(&app, "from=2025-06-01&to=2025-06-30").await, june);
+
+    let (status, tags) = get_json(&app, "/api/v1/tags").await;
+    assert_eq!(status, StatusCode::OK);
+    let tag = &tags["tags"][0];
+    let tagged = picked(
+        &app,
+        &format!(
+            "t.id IN (SELECT transaction_id FROM transaction_tags WHERE tag_id = {})",
+            tag["id"]
+        ),
+    )
+    .await;
+    assert_eq!(listed(&app, &format!("tag={}", tag["id"])).await, tagged);
+
+    let undecided = picked(
+        &app,
+        "t.id IN (SELECT transaction_id FROM import_batch_rows WHERE source_disposition = 'undecided')",
+    )
+    .await;
+    assert_eq!(listed(&app, "undecided=true").await, undecided);
+    assert_eq!(listed(&app, "undecided=false").await.len(), total);
+
+    // Combined, every filter narrows.
+    let both = picked(
+        &app,
+        &format!("t.account_id = {account} AND t.category_id IS NULL AND t.date >= '2025-06-01'"),
+    )
+    .await;
+    assert_eq!(
+        listed(
+            &app,
+            &format!("account={account}&category=uncategorized&from=2025-06-01")
+        )
+        .await,
+        both
+    );
+    let nothing = listed(
+        &app,
+        &format!("q=corner%20grocer&category={groceries}&undecided=true"),
+    )
+    .await;
+    assert_eq!(nothing, Vec::<i64>::new());
+
+    // A filtered page's cursor carries on through the filtered rows.
+    let (_, first) = get_json(
+        &app,
+        &format!("/api/v1/transactions?limit=1&account={account}"),
+    )
+    .await;
+    let cursor = first["next_cursor"].as_str().unwrap();
+    let (_, rest) = get_json(
+        &app,
+        &format!("/api/v1/transactions?limit=200&account={account}&after={cursor}"),
+    )
+    .await;
+    let mut paged = vec![first["transactions"][0]["id"].as_i64().unwrap()];
+    paged.extend(
+        rest["transactions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["id"].as_i64().unwrap()),
+    );
+    assert_eq!(paged, in_account);
+
+    for bad in [
+        "account=x",
+        "account=0",
+        "category=none",
+        "category=-1",
+        "from=2025-13-01",
+        "to=yesterday",
+        "tag=1.5",
+        "undecided=yes",
+    ] {
+        let (status, body) = get_json(&app, &format!("/api/v1/transactions?{bad}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(body["error"]["code"], "invalid_filter", "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn the_tags_list_by_name() {
+    let app = set_up().await;
+    let (_, empty) = get_json(&app, "/api/v1/tags").await;
+    assert_eq!(empty, json!({ "tags": [] }));
+    imported(&app).await;
+    let (status, body) = get_json(&app, "/api/v1/tags").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let names: Vec<&str> = body["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag["name"].as_str().unwrap())
+        .collect();
+    assert_ne!(names, Vec::<&str>::new());
+    let mut sorted = names.clone();
+    sorted.sort_by_key(|name| name.to_lowercase());
+    assert_eq!(names, sorted);
+    assert!(names.iter().all(|name| !name.starts_with('#')));
+    let (status, _) = send(app.router.clone(), get("/api/v1/tags")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

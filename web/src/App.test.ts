@@ -34,6 +34,8 @@ interface FakeServer {
   accounts: Account[]
   /** The transactions in full, newest first; `GET /api/v1/transactions` pages them by 2. */
   transactions: Transaction[]
+  /** The search and filters `GET /api/v1/transactions` was last asked for. */
+  listedWith?: Record<string, string>
 }
 
 let server: FakeServer
@@ -65,6 +67,14 @@ async function answer(request: Request): Promise<Response> {
     return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
   }
   if (path.startsWith('/api/v1/transactions')) return transactions(request, path)
+  if (path === '/api/v1/tags') {
+    return Response.json({
+      tags: [
+        { id: 1, name: 'trip' },
+        { id: 2, name: 'gift' },
+      ],
+    })
+  }
   if (path === '/api/v1/setup' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, string>
     if (body.code !== server.code) {
@@ -112,10 +122,19 @@ async function answer(request: Request): Promise<Response> {
 function transactions(request: Request, path: string): Response {
   if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
   if (path === '/api/v1/transactions') {
-    // The cursor is the index to start at.
-    const start = Number(new URL(request.url).searchParams.get('after') ?? '0')
-    const page = server.transactions.slice(start, start + 2)
-    const next = start + 2 < server.transactions.length ? String(start + 2) : null
+    // The cursor is the index to start at. Of the filters, only the search (in the payee and
+    // raw description) and the account narrow the list here; the rest are just recorded.
+    const { after, ...filters } = Object.fromEntries(new URL(request.url).searchParams)
+    server.listedWith = filters
+    const q = filters.q?.toLowerCase()
+    const picked = server.transactions.filter(
+      (t) =>
+        (q === undefined || `${t.payee ?? ''} ${t.raw_description}`.toLowerCase().includes(q)) &&
+        (filters.account === undefined || String(t.account_id) === filters.account),
+    )
+    const start = Number(after ?? '0')
+    const page = picked.slice(start, start + 2)
+    const next = start + 2 < picked.length ? String(start + 2) : null
     return Response.json({
       transactions: page.map((t) => ({
         id: t.id,
@@ -1112,6 +1131,21 @@ describe('Accounts', () => {
 })
 
 describe('Transactions', () => {
+  const account = (id: number, name: string): Account => ({
+    id,
+    name,
+    institution: null,
+    type: 'checking',
+    role: 'budgeted',
+    closed: false,
+    balances_only: false,
+    balance_minor: 0,
+    app_balance_minor: 0,
+    opening_balance_minor: 0,
+    opening_date: '2025-12-31',
+    rows: 0,
+    last_transaction_date: null,
+  })
   const fake = (id: number, fields: Partial<Transaction>): Transaction => ({
     id,
     date: '2026-01-05',
@@ -1268,6 +1302,125 @@ describe('Transactions', () => {
     globalThis.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/transactions')
+  })
+
+  it('keeps the search and filters in the address, so reloading it keeps them', async () => {
+    server.accounts = [account(1, 'Checking'), account(2, 'Card')]
+    server.groups = [
+      {
+        id: 1,
+        name: 'Food',
+        kind: 'expense',
+        hidden: false,
+        categories: [{ id: 1, name: 'Groceries', hidden: false }],
+      },
+    ]
+    const { wrapper } = await open(
+      '/transactions?q=refund&account=1&category=uncategorized&from=2026-01-01&to=2026-01-31&tag=2&undecided=true',
+    )
+    expect(server.listedWith).toEqual({
+      q: 'refund',
+      account: '1',
+      category: 'uncategorized',
+      from: '2026-01-01',
+      to: '2026-01-31',
+      tag: '2',
+      undecided: 'true',
+    })
+    expect(wrapper.get<HTMLInputElement>('input[type="search"]').element.value).toBe('refund')
+    expect(wrapper.get<HTMLSelectElement>('select[aria-label="Account"]').element.value).toBe('1')
+    expect(wrapper.get<HTMLSelectElement>('select[aria-label="Category"]').element.value).toBe(
+      'uncategorized',
+    )
+    expect(wrapper.get<HTMLSelectElement>('select[aria-label="Tag"]').element.value).toBe('2')
+    const chips = wrapper.findAll('[role="group"] button')
+    expect(chips.map((b) => b.text())).toEqual([
+      'Jan 1, 2026 – Jan 31, 2026',
+      'From Actual, undecided',
+      'Clear all',
+    ])
+    expect(chips[1]?.attributes('aria-pressed')).toBe('true')
+    expect(wrapper.findAll('table tbody tr').map((row) => row.text())).toEqual([
+      expect.stringContaining('REFUND 0042'),
+    ])
+  })
+
+  it('searches on Enter, and filters by the chips', async () => {
+    server.accounts = [account(1, 'Checking'), account(2, 'Card')]
+    const { router, wrapper } = await open('/transactions')
+    expect(wrapper.get<HTMLSelectElement>('select[aria-label="Account"]').text()).toBe(
+      'Any accountCheckingCard',
+    )
+    const search = wrapper.get('input[type="search"]')
+    await search.setValue('  refund ')
+    await search.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/transactions?q=refund')
+    expect(server.listedWith).toEqual({ q: 'refund' })
+    expect(wrapper.findAll('table tbody tr')).toHaveLength(1)
+
+    await wrapper.get('select[aria-label="Account"]').setValue('2')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ q: 'refund', account: '2' })
+    expect(wrapper.text()).toContain('No transactions match.')
+
+    const chip = (text: string) => wrapper.findAll('main button').find((b) => b.text() === text)
+    await chip('From Actual, undecided')?.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({
+      q: 'refund',
+      account: '2',
+      undecided: 'true',
+    })
+    await chip('From Actual, undecided')?.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ q: 'refund', account: '2' })
+
+    await chip('Any date')?.trigger('click')
+    await wrapper.get('#transaction-dates input[type="date"]').setValue('2026-01-04')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({
+      q: 'refund',
+      account: '2',
+      from: '2026-01-04',
+    })
+    expect(chip('From Jan 4, 2026')).toBeDefined()
+    const ends = wrapper.findAll('#transaction-dates input[type="date"]')
+    await ends[1]?.setValue('2026-01-05')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ to: '2026-01-05' })
+    await wrapper.get('#transaction-dates button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ q: 'refund', account: '2' })
+
+    await chip('Clear all')?.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/transactions')
+    expect(wrapper.get<HTMLInputElement>('input[type="search"]').element.value).toBe('')
+    expect(wrapper.findAll('table tbody tr')).toHaveLength(2)
+  })
+
+  it('searches once typing stops', async () => {
+    vi.useFakeTimers()
+    try {
+      const { router, wrapper } = await open('/transactions')
+      await wrapper.get('input[type="search"]').setValue('corner')
+      expect(router.currentRoute.value.query).toEqual({})
+      await vi.advanceTimersByTimeAsync(300)
+      expect(router.currentRoute.value.query).toEqual({ q: 'corner' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('opens and closes one without losing the filters', async () => {
+    const { router, wrapper } = await open('/transactions?q=corner')
+    await wrapper.get('main li a').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/transactions/5?q=corner')
+    await wrapper.get('aside button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/transactions?q=corner')
   })
 
   it('says so for a transaction that is not there', async () => {

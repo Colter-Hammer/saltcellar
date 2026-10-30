@@ -1,10 +1,11 @@
 //! Transactions (docs/spec/m1-ledger-import.md#transactions): read-only in milestone 1, where the
-//! Actual importer writes them. The list pages on `(date, id)`, newest first.
+//! Actual importer writes them. The list pages on `(date, id)`, newest first, searched and filtered
+//! by its query; the tags are listed for its tag filter.
 
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use domain::transactions::{Cursor, Source, Status};
+use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -107,16 +108,97 @@ pub struct TransactionPage {
     next_cursor: Option<String>,
 }
 
+/// A page, and the search and filters that pick its rows. Every filter given narrows the list; the
+/// Transactions screen's address carries the same parameters *(agent)*.
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct PageQuery {
-    /// The `next_cursor` of the page before; leave it out for the newest rows.
+    /// The `next_cursor` of the page before; leave it out for the newest rows. Pass the same
+    /// search and filters with it.
     after: Option<String>,
     /// How many rows, 1 to 200; 50 if left out.
     limit: Option<u32>,
+    /// Text in the payee, raw description or memo (ignoring case), or an amount in the household
+    /// currency, either way round: `12.50` matches −12.50 and 12.50.
+    q: Option<String>,
+    /// An account's id.
+    #[param(value_type = Option<i64>)]
+    account: Option<String>,
+    /// A category's id (split rows count in each of their lines' categories), or `uncategorized`.
+    category: Option<String>,
+    /// On or after this day, `YYYY-MM-DD`.
+    from: Option<String>,
+    /// On or before this day, `YYYY-MM-DD`.
+    to: Option<String>,
+    /// A tag's id.
+    #[param(value_type = Option<i64>)]
+    tag: Option<String>,
+    /// `true` for only the rows still waiting in **From Actual, undecided**.
+    #[param(value_type = Option<bool>)]
+    undecided: Option<String>,
 }
 
-/// `GET /api/v1/transactions`: a page of transactions, newest first by date then id.
+/// A filter parameter that can't be read.
+fn invalid_filter() -> ApiError {
+    ApiError::new(
+        StatusCode::BAD_REQUEST,
+        "invalid_filter",
+        "Those filters can't be read.",
+    )
+}
+
+/// `text`, if given, as an id.
+fn read_id(text: Option<&str>) -> Result<Option<i64>, ApiError> {
+    text.map(|text| {
+        text.parse::<i64>()
+            .ok()
+            .filter(|id| *id > 0)
+            .ok_or_else(invalid_filter)
+    })
+    .transpose()
+}
+
+/// `text`, if given, as a day.
+fn read_day(text: Option<&str>) -> Result<Option<domain::Date>, ApiError> {
+    text.map(|text| text.parse().map_err(|_| invalid_filter()))
+        .transpose()
+}
+
+impl PageQuery {
+    /// The filter its search and filter parameters ask for.
+    async fn filter(&self, state: &AppState) -> Result<db::Filter, ApiError> {
+        let category = match self.category.as_deref() {
+            None => None,
+            Some("uncategorized") => Some(CategoryFilter::Uncategorized),
+            Some(text) => read_id(Some(text))?.map(CategoryFilter::Category),
+        };
+        let undecided = match self.undecided.as_deref() {
+            None | Some("false") => false,
+            Some("true") => true,
+            Some(_) => return Err(invalid_filter()),
+        };
+        let mut filter = db::Filter {
+            search: None,
+            account_id: read_id(self.account.as_deref())?,
+            category,
+            from: read_day(self.from.as_deref())?,
+            to: read_day(self.to.as_deref())?,
+            tag_id: read_id(self.tag.as_deref())?,
+            undecided,
+        };
+        if let Some(text) = self.q.as_deref().filter(|text| !text.trim().is_empty()) {
+            // Behind the setup gate, so the household exists unless the database lost it.
+            let household = db::household(&state.pool)
+                .await?
+                .ok_or_else(|| ApiError::internal(&"setup is done but there's no household"))?;
+            filter.search = Search::new(text, household.currency);
+        }
+        Ok(filter)
+    }
+}
+
+/// `GET /api/v1/transactions`: a page of the transactions the search and filters pick, newest
+/// first by date then id.
 #[utoipa::path(
     get,
     path = "/api/v1/transactions",
@@ -124,7 +206,7 @@ pub struct PageQuery {
     params(PageQuery),
     responses(
         (status = 200, description = "A page of transactions.", body = TransactionPage),
-        (status = 400, description = "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range.", body = ErrorEnvelope),
+        (status = 400, description = "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag` or `undecided` can't be read.", body = ErrorEnvelope),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
     ),
 )]
@@ -142,17 +224,57 @@ pub async fn list(
     let Query(query) = query.map_err(|_| invalid())?;
     let after = query
         .after
-        .map(|after| after.parse::<Cursor>())
+        .as_deref()
+        .map(str::parse::<Cursor>)
         .transpose()
         .map_err(|_| invalid())?;
     let limit = query.limit.unwrap_or(PAGE);
     if !(1..=MOST).contains(&limit) {
         return Err(invalid());
     }
-    let page = db::transactions(&state.pool, after, limit).await?;
+    let filter = query.filter(&state).await?;
+    let page = db::transactions(&state.pool, &filter, after, limit).await?;
     Ok(Json(TransactionPage {
         transactions: page.transactions.into_iter().map(Into::into).collect(),
         next_cursor: page.next.map(|cursor| cursor.to_string()),
+    }))
+}
+
+/// A tag, as the tag filter offers it.
+#[derive(Serialize, ToSchema)]
+pub struct Tag {
+    id: i64,
+    /// Without the `#`.
+    name: String,
+}
+
+/// Every tag the household has.
+#[derive(Serialize, ToSchema)]
+pub struct TagList {
+    /// By name, ignoring case.
+    tags: Vec<Tag>,
+}
+
+/// `GET /api/v1/tags`: every tag, for the Transactions tag filter.
+#[utoipa::path(
+    get,
+    path = "/api/v1/tags",
+    operation_id = "getTags",
+    responses(
+        (status = 200, description = "Every tag, by name.", body = TagList),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn tags(State(state): State<AppState>) -> Result<Json<TagList>, ApiError> {
+    let tags = db::tags(&state.pool).await?;
+    Ok(Json(TagList {
+        tags: tags
+            .into_iter()
+            .map(|tag| Tag {
+                id: tag.id,
+                name: tag.name,
+            })
+            .collect(),
     }))
 }
 

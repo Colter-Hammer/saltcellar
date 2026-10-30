@@ -1,7 +1,7 @@
 //! Transactions (docs/spec/m1-ledger-import.md#transactions): read a page at a time, newest first,
-//! and one at a time in full. Read-only in milestone 1, where the Actual importer writes them.
+//! searched and filtered, and one at a time in full. Read-only in milestone 1, where the Actual importer writes them.
 
-use domain::transactions::{Cursor, Source, Status};
+use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status};
 use domain::{Date, Money};
 
 use crate::{Error, SqlitePool, parse_stamp};
@@ -35,18 +35,37 @@ pub struct TransactionPage {
     pub next: Option<Cursor>,
 }
 
-/// Up to `limit` transactions, newest first by date then id, starting after `after` (or from the
-/// newest).
+/// Which transactions the list shows: every one when it's the default. Each filter set narrows it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Filter {
+    /// Payee, raw description or memo containing the text (ignoring ASCII case), or the amount
+    /// either way round.
+    pub search: Option<Search>,
+    pub account_id: Option<i64>,
+    pub category: Option<CategoryFilter>,
+    /// On or after this day.
+    pub from: Option<Date>,
+    /// On or before this day.
+    pub to: Option<Date>,
+    pub tag_id: Option<i64>,
+    /// Only rows from an Actual import whose category was mapped to "Decide later" and that still
+    /// have none: the **From Actual, undecided** rows.
+    pub undecided: bool,
+}
+
+/// Up to `limit` of the transactions `filter` lets through, newest first by date then id, starting
+/// after `after` (or from the newest).
 ///
 /// # Errors
 /// If the database fails, or holds a date or a status it can't read.
 pub async fn transactions(
     pool: &SqlitePool,
+    filter: &Filter,
     after: Option<Cursor>,
     limit: u32,
 ) -> Result<TransactionPage, Error> {
     // One more than asked, to know whether there's another page.
-    let mut transactions = rows(pool, None, after, i64::from(limit) + 1).await?;
+    let mut transactions = rows(pool, None, filter, after, i64::from(limit) + 1).await?;
     let next = if transactions.len() > limit as usize {
         transactions.truncate(limit as usize);
         transactions.last().map(|last| Cursor {
@@ -95,7 +114,11 @@ pub struct TransactionDetail {
 /// # Errors
 /// As [`transactions`], or if it holds a source or a timestamp it can't read.
 pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<TransactionDetail>, Error> {
-    let Some(row) = rows(pool, Some(id), None, 1).await?.into_iter().next() else {
+    let Some(row) = rows(pool, Some(id), &Filter::default(), None, 1)
+        .await?
+        .into_iter()
+        .next()
+    else {
         return Ok(None);
     };
     let more = sqlx::query!(
@@ -150,15 +173,35 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
     }))
 }
 
-/// Up to `limit` rows newest first, only transaction `only` if given, after `after` if given.
+/// Up to `limit` rows newest first that `filter` lets through, only transaction `only` if given,
+/// after `after` if given.
+///
+/// The sets the filters look in (payees, tags, split lines, undecided import rows) are read once
+/// each with `IN (SELECT …)`, not per row, so a filter costs one pass over the transactions.
 async fn rows(
     pool: &SqlitePool,
     only: Option<i64>,
+    filter: &Filter,
     after: Option<Cursor>,
     limit: i64,
 ) -> Result<Vec<TransactionRow>, Error> {
     let after_date = after.map(|cursor| cursor.date.to_string());
     let after_id = after.map(|cursor| cursor.id);
+    let pattern = filter
+        .search
+        .as_ref()
+        .map(|search| like_pattern(&search.text));
+    let amount = filter
+        .search
+        .as_ref()
+        .and_then(|search| search.amount_minor);
+    let category_id = match filter.category {
+        Some(CategoryFilter::Category(id)) => Some(id),
+        _ => None,
+    };
+    let uncategorized = filter.category == Some(CategoryFilter::Uncategorized);
+    let from = filter.from.map(|date| date.to_string());
+    let to = filter.to.map(|date| date.to_string());
     let found = sqlx::query!(
         r#"SELECT t.id AS "id!: i64", t.date, t.amount_minor, t.status, p.name AS "payee?",
              t.raw_description, t.account_id, a.name AS account, t.category_id, c.name AS "category?",
@@ -173,12 +216,44 @@ async fn rows(
            LEFT JOIN categories c ON c.id = t.category_id
            WHERE (?1 IS NULL OR t.id = ?1)
              AND (?2 IS NULL OR t.date < ?2 OR (t.date = ?2 AND t.id < ?3))
+             AND (?5 IS NULL
+               OR t.raw_description LIKE ?5 ESCAPE '\'
+               OR t.memo LIKE ?5 ESCAPE '\'
+               OR t.payee_id IN (SELECT id FROM payees WHERE name LIKE ?5 ESCAPE '\')
+               OR abs(t.amount_minor) = ?6)
+             AND (?7 IS NULL OR t.account_id = ?7)
+             AND (?8 IS NULL
+               OR t.category_id = ?8
+               OR t.id IN (SELECT transaction_id FROM transaction_splits WHERE category_id = ?8))
+             AND (NOT ?9 OR (t.category_id IS NULL
+               AND t.id NOT IN (SELECT transaction_id FROM transaction_splits)
+               AND t.id NOT IN (SELECT from_txn_id FROM transfers WHERE from_txn_id IS NOT NULL
+                                UNION ALL
+                                SELECT to_txn_id FROM transfers WHERE to_txn_id IS NOT NULL)))
+             AND (?10 IS NULL OR t.date >= ?10)
+             AND (?11 IS NULL OR t.date <= ?11)
+             AND (?12 IS NULL
+               OR t.id IN (SELECT transaction_id FROM transaction_tags WHERE tag_id = ?12))
+             AND (NOT ?13 OR (t.category_id IS NULL
+               AND t.id NOT IN (SELECT transaction_id FROM transaction_splits)
+               AND t.id IN (SELECT ib.transaction_id FROM import_batch_rows ib
+                              JOIN import_batches b ON b.id = ib.batch_id
+                            WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided')))
            ORDER BY t.date DESC, t.id DESC
            LIMIT ?4"#,
         only,
         after_date,
         after_id,
-        limit
+        limit,
+        pattern,
+        amount,
+        filter.account_id,
+        category_id,
+        uncategorized,
+        from,
+        to,
+        filter.tag_id,
+        filter.undecided
     )
     .fetch_all(pool)
     .await?;
@@ -209,6 +284,41 @@ async fn rows(
         .collect()
 }
 
+/// A `LIKE … ESCAPE '\'` pattern for text containing `text`: its `%`, `_` and `\` match only
+/// themselves.
+fn like_pattern(text: &str) -> String {
+    let mut pattern = String::with_capacity(text.len() + 2);
+    pattern.push('%');
+    for character in text.chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+    pattern
+}
+
+/// A tag the household has, for the Transactions tag filter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+}
+
+/// Every tag, by name (ignoring case).
+///
+/// # Errors
+/// If the database fails.
+pub async fn tags(pool: &SqlitePool) -> Result<Vec<Tag>, Error> {
+    Ok(sqlx::query_as!(
+        Tag,
+        r#"SELECT id AS "id!: i64", name FROM tags ORDER BY name COLLATE NOCASE, id"#
+    )
+    .fetch_all(pool)
+    .await?)
+}
+
 /// The tag names SQLite's `json_group_array` wrote: a JSON array of strings.
 fn read_tags(json: &str) -> Result<Vec<String>, Error> {
     serde_json::from_str(json).map_err(|_| Error::Unreadable {
@@ -222,7 +332,8 @@ mod tests {
     use super::*;
     use crate::tests::migrated;
 
-    /// Two accounts and five transactions, two of them on one day, one split and one tagged.
+    /// Two accounts and five transactions, two of them on one day, one split and one tagged, and
+    /// one (5) an undecided Actual row.
     async fn ledger() -> (tempfile::TempDir, SqlitePool) {
         let (dir, pool) = migrated().await;
         sqlx::query(
@@ -245,8 +356,10 @@ mod tests {
                INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (3, 2), (3, 1);
                INSERT INTO import_batches (id, format, file_name, added, matched, skipped, imported_at)
                  VALUES (7, 'actual', 'export.zip', 3, 0, 0, '2026-02-01T10:00:00.000Z');
-               INSERT INTO import_batch_rows (batch_id, transaction_id, outcome, import_ref) VALUES
-                 (7, 1, 'inserted', 'x1'), (7, 4, 'inserted', 'x4'), (7, 5, 'inserted', 'x5');"#,
+               INSERT INTO import_batch_rows (batch_id, transaction_id, outcome, import_ref,
+                   source_category, source_disposition) VALUES
+                 (7, 1, 'inserted', 'x1', 'Food', 'mapped'), (7, 4, 'inserted', 'x4', 'Cafe', 'mapped'),
+                 (7, 5, 'inserted', 'x5', 'Bank fees', 'undecided');"#,
         )
         .execute(&pool)
         .await
@@ -260,7 +373,9 @@ mod tests {
         let mut seen = Vec::new();
         let mut after = None;
         loop {
-            let page = transactions(&pool, after, 2).await.unwrap();
+            let page = transactions(&pool, &Filter::default(), after, 2)
+                .await
+                .unwrap();
             assert!(page.transactions.len() <= 2);
             seen.extend(page.transactions.iter().map(|row| row.id));
             match page.next {
@@ -271,17 +386,23 @@ mod tests {
         // By date, then id, newest first.
         assert_eq!(seen, [3, 2, 4, 1, 5]);
 
-        let all = transactions(&pool, None, 10).await.unwrap();
+        let all = transactions(&pool, &Filter::default(), None, 10)
+            .await
+            .unwrap();
         assert_eq!(all.next, None);
         assert_eq!(all.transactions.len(), 5);
-        let exact = transactions(&pool, None, 5).await.unwrap();
+        let exact = transactions(&pool, &Filter::default(), None, 5)
+            .await
+            .unwrap();
         assert_eq!(exact.next, None);
     }
 
     #[tokio::test]
     async fn rows_carry_what_the_list_shows() {
         let (_dir, pool) = ledger().await;
-        let page = transactions(&pool, None, 10).await.unwrap();
+        let page = transactions(&pool, &Filter::default(), None, 10)
+            .await
+            .unwrap();
         let split = &page.transactions[0];
         assert_eq!(
             split,
@@ -356,6 +477,345 @@ mod tests {
         assert_eq!(refund.source, Source::Manual);
 
         assert_eq!(transaction(&pool, 99).await.unwrap(), None);
+    }
+
+    /// The ids of the first page `filter` lets through, newest first.
+    async fn ids(pool: &SqlitePool, filter: Filter) -> Vec<i64> {
+        let page = transactions(pool, &filter, None, 200).await.unwrap();
+        page.transactions.iter().map(|row| row.id).collect()
+    }
+
+    fn search(text: &str) -> Option<Search> {
+        Search::new(text, "USD".parse().unwrap())
+    }
+
+    fn day(text: &str) -> Option<Date> {
+        text.parse().ok()
+    }
+
+    #[tokio::test]
+    async fn search_looks_in_payee_raw_description_memo_and_amount() {
+        let (_dir, pool) = ledger().await;
+        let find = |text: &str| Filter {
+            search: search(text),
+            ..Filter::default()
+        };
+        // Payee (1 and 3), then the raw description alone.
+        assert_eq!(ids(&pool, find("corner market")).await, [3, 1]);
+        assert_eq!(ids(&pool, find("mkt 02")).await, [3]);
+        assert_eq!(ids(&pool, find("CAFE")).await, [4]);
+        assert_eq!(ids(&pool, find("returned")).await, [2]);
+        // Amounts, either way round, whole or decimal.
+        assert_eq!(ids(&pool, find("12.50")).await, [1]);
+        assert_eq!(ids(&pool, find("-12.5")).await, [1]);
+        assert_eq!(ids(&pool, find("40")).await, [2]);
+        assert_eq!(ids(&pool, find("9.00")).await, [4]);
+        // "1" is 1.00 (5) and in "CORNER MKT 01" (1).
+        assert_eq!(ids(&pool, find("1")).await, [1, 5]);
+        // LIKE's wildcards match only themselves.
+        assert_eq!(ids(&pool, find("_")).await, Vec::<i64>::new());
+        assert_eq!(ids(&pool, find("%")).await, Vec::<i64>::new());
+        assert_eq!(ids(&pool, find("nothing like it")).await, Vec::<i64>::new());
+    }
+
+    #[tokio::test]
+    async fn each_filter_narrows_the_list() {
+        let (_dir, pool) = ledger().await;
+        let account = Filter {
+            account_id: Some(2),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, account).await, [3, 4]);
+        // A split row counts as in each of its lines' categories.
+        let groceries = Filter {
+            category: Some(CategoryFilter::Category(1)),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, groceries).await, [3, 1]);
+        let dining = Filter {
+            category: Some(CategoryFilter::Category(2)),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, dining).await, [3, 4]);
+        let uncategorized = Filter {
+            category: Some(CategoryFilter::Uncategorized),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, uncategorized).await, [2, 5]);
+        let dates = Filter {
+            from: day("2026-01-02"),
+            to: day("2026-01-03"),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, dates).await, [4, 1]);
+        let since = Filter {
+            from: day("2026-01-05"),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, since).await, [3, 2]);
+        let until = Filter {
+            to: day("2026-01-01"),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, until).await, [5]);
+        let tag = Filter {
+            tag_id: Some(1),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, tag).await, [3]);
+        let undecided = Filter {
+            undecided: true,
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, undecided).await, [5]);
+    }
+
+    #[tokio::test]
+    async fn filters_and_search_combine() {
+        let (_dir, pool) = ledger().await;
+        let corner_checking = Filter {
+            search: search("corner"),
+            account_id: Some(1),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, corner_checking).await, [1]);
+        let uncategorized_since = Filter {
+            category: Some(CategoryFilter::Uncategorized),
+            from: day("2026-01-02"),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, uncategorized_since).await, [2]);
+        let everything = Filter {
+            search: search("30"),
+            account_id: Some(2),
+            category: Some(CategoryFilter::Category(2)),
+            from: day("2026-01-04"),
+            to: day("2026-01-05"),
+            tag_id: Some(2),
+            undecided: false,
+        };
+        assert_eq!(ids(&pool, everything).await, [3]);
+        let none = Filter {
+            account_id: Some(2),
+            undecided: true,
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, none).await, Vec::<i64>::new());
+        // Filtered pages run on with no gaps.
+        let checking = Filter {
+            account_id: Some(1),
+            ..Filter::default()
+        };
+        let first = transactions(&pool, &checking, None, 2).await.unwrap();
+        let rest = transactions(&pool, &checking, first.next, 2).await.unwrap();
+        let seen: Vec<i64> = first
+            .transactions
+            .iter()
+            .chain(&rest.transactions)
+            .map(|row| row.id)
+            .collect();
+        assert_eq!(seen, [2, 1, 5]);
+        assert_eq!(rest.next, None);
+    }
+
+    #[tokio::test]
+    async fn undecided_rows_leave_once_categorized_or_undone() {
+        let (_dir, pool) = ledger().await;
+        let undecided = || Filter {
+            undecided: true,
+            ..Filter::default()
+        };
+        sqlx::query("UPDATE transactions SET category_id = 1 WHERE id = 5")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(ids(&pool, undecided()).await, Vec::<i64>::new());
+        sqlx::query(
+            "UPDATE transactions SET category_id = NULL WHERE id = 5;
+             UPDATE import_batches SET undone_at = '2026-02-02T10:00:00.000Z' WHERE id = 7;",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(ids(&pool, undecided()).await, Vec::<i64>::new());
+    }
+
+    #[tokio::test]
+    async fn transfer_legs_arent_uncategorized() {
+        let (_dir, pool) = ledger().await;
+        sqlx::query(
+            "INSERT INTO transfers (from_account_id, to_account_id, from_txn_id, to_txn_id, matched_by)
+               VALUES (1, 2, 2, NULL, 'import')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let uncategorized = Filter {
+            category: Some(CategoryFilter::Uncategorized),
+            ..Filter::default()
+        };
+        assert_eq!(ids(&pool, uncategorized).await, [5]);
+    }
+
+    #[tokio::test]
+    async fn tags_list_by_name() {
+        let (_dir, pool) = ledger().await;
+        assert_eq!(
+            tags(&pool).await.unwrap(),
+            [
+                Tag {
+                    id: 2,
+                    name: "gift \"big\"".to_owned()
+                },
+                Tag {
+                    id: 1,
+                    name: "trip".to_owned()
+                },
+            ]
+        );
+    }
+
+    /// A generated ledger of 50,000 rows over four accounts and five years: 2,000 payees, 40
+    /// categories, a seventh of the rows uncategorized, some undecided, every 13th tagged.
+    async fn fifty_thousand_rows() -> (tempfile::TempDir, SqlitePool) {
+        let (dir, pool) = migrated().await;
+        sqlx::query(
+            r"INSERT INTO accounts (id, name, type, role) VALUES
+                 (1, 'Checking', 'checking', 'budgeted'), (2, 'Card', 'credit_card', 'budgeted'),
+                 (3, 'Savings', 'savings', 'tracking'), (4, 'Cash', 'cash', 'budgeted');
+               INSERT INTO category_groups (id, name) VALUES (1, 'Everything');
+               WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 40)
+                 INSERT INTO categories (id, group_id, name) SELECT i, 1, 'Category ' || i FROM n;
+               WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000)
+                 INSERT INTO payees (id, name) SELECT i, 'Shop number ' || i FROM n;
+               INSERT INTO tags (id, name) VALUES (1, 'trip'), (2, 'gift');
+               INSERT INTO import_batches (id, format, file_name, added, matched, skipped)
+                 VALUES (1, 'actual', 'export.zip', 50000, 0, 0);
+               WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 50000)
+                 INSERT INTO transactions (id, account_id, date, amount_minor, status, payee_id,
+                     raw_description, memo, category_id, source, dedupe_key)
+                 SELECT i, 1 + i % 4, date('2021-01-01', '+' || (i / 30) || ' days'),
+                        -(i * 37 % 100000), 'posted', CASE WHEN i % 5 = 0 THEN NULL ELSE 1 + i % 2000 END,
+                        'POS PURCHASE ' || (i * 7919 % 100000) || ' TERMINAL ' || (i % 977),
+                        CASE WHEN i % 11 = 0 THEN 'note ' || i END,
+                        CASE WHEN i % 7 = 0 THEN NULL ELSE 1 + i % 40 END, 'import', 'k' || i
+                 FROM n;
+               INSERT INTO transaction_tags (transaction_id, tag_id)
+                 SELECT id, 1 + id % 2 FROM transactions WHERE id % 13 = 0;
+               INSERT INTO import_batch_rows (batch_id, transaction_id, outcome, import_ref,
+                   source_category, source_disposition)
+                 SELECT 1, id, 'inserted', 'r' || id, 'Old',
+                        CASE WHEN category_id IS NULL AND id % 3 = 0 THEN 'undecided' ELSE 'mapped' END
+                 FROM transactions;",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        (dir, pool)
+    }
+
+    /// The 50k-row timing check (issue #17): on a generated ledger of 50,000 rows, the first page
+    /// of every filter, and of searches that match much, little and nothing, comes back in under
+    /// 200 ms *(agent)*, even in a debug build.
+    #[tokio::test]
+    async fn fifty_thousand_rows_search_and_filter_in_under_200_ms() {
+        let (_dir, pool) = fifty_thousand_rows().await;
+        let checks = [
+            ("everything", Filter::default()),
+            (
+                "payee text",
+                Filter {
+                    search: search("shop number 1234"),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "common text",
+                Filter {
+                    search: search("terminal"),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "amount",
+                Filter {
+                    search: search("12.50"),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "no match",
+                Filter {
+                    search: search("nothing like it"),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "account and dates",
+                Filter {
+                    account_id: Some(2),
+                    from: day("2023-01-01"),
+                    to: day("2023-06-30"),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "category",
+                Filter {
+                    category: Some(CategoryFilter::Category(9)),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "uncategorized",
+                Filter {
+                    category: Some(CategoryFilter::Uncategorized),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "tag",
+                Filter {
+                    tag_id: Some(2),
+                    ..Filter::default()
+                },
+            ),
+            (
+                "undecided",
+                Filter {
+                    undecided: true,
+                    ..Filter::default()
+                },
+            ),
+            (
+                "all of them",
+                Filter {
+                    search: search("shop"),
+                    account_id: Some(1),
+                    category: Some(CategoryFilter::Uncategorized),
+                    from: day("2021-06-01"),
+                    to: day("2024-12-31"),
+                    tag_id: Some(1),
+                    undecided: true,
+                },
+            ),
+        ];
+        for (name, filter) in checks {
+            let started = std::time::Instant::now();
+            let page = transactions(&pool, &filter, None, 50).await.unwrap();
+            let took = started.elapsed();
+            eprintln!("{name}: {} rows in {took:?}", page.transactions.len());
+            assert!(
+                took < std::time::Duration::from_millis(200),
+                "{name} took {took:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn like_patterns_escape_the_wildcards() {
+        assert_eq!(like_pattern("corner"), "%corner%");
+        assert_eq!(like_pattern(r"50%_\x"), r"%50\%\_\\x%");
     }
 
     #[test]

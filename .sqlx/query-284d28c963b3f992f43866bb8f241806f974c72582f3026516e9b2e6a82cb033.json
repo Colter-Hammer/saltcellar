@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT t.id AS \"id!: i64\", t.date, t.amount_minor, t.status, p.name AS \"payee?\",\n             t.raw_description, t.account_id, a.name AS account, t.category_id, c.name AS \"category?\",\n             EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id)\n               AS \"split!: bool\",\n             (SELECT json_group_array(name) FROM\n               (SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id\n                 WHERE tt.transaction_id = t.id ORDER BY g.name)) AS \"tags!: String\"\n           FROM transactions t\n           JOIN accounts a ON a.id = t.account_id\n           LEFT JOIN payees p ON p.id = t.payee_id\n           LEFT JOIN categories c ON c.id = t.category_id\n           WHERE (?1 IS NULL OR t.id = ?1)\n             AND (?2 IS NULL OR t.date < ?2 OR (t.date = ?2 AND t.id < ?3))\n           ORDER BY t.date DESC, t.id DESC\n           LIMIT ?4",
+  "query": "SELECT t.id AS \"id!: i64\", t.date, t.amount_minor, t.status, p.name AS \"payee?\",\n             t.raw_description, t.account_id, a.name AS account, t.category_id, c.name AS \"category?\",\n             EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id)\n               AS \"split!: bool\",\n             (SELECT json_group_array(name) FROM\n               (SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id\n                 WHERE tt.transaction_id = t.id ORDER BY g.name)) AS \"tags!: String\"\n           FROM transactions t\n           JOIN accounts a ON a.id = t.account_id\n           LEFT JOIN payees p ON p.id = t.payee_id\n           LEFT JOIN categories c ON c.id = t.category_id\n           WHERE (?1 IS NULL OR t.id = ?1)\n             AND (?2 IS NULL OR t.date < ?2 OR (t.date = ?2 AND t.id < ?3))\n             AND (?5 IS NULL\n               OR t.raw_description LIKE ?5 ESCAPE '\\'\n               OR t.memo LIKE ?5 ESCAPE '\\'\n               OR t.payee_id IN (SELECT id FROM payees WHERE name LIKE ?5 ESCAPE '\\')\n               OR abs(t.amount_minor) = ?6)\n             AND (?7 IS NULL OR t.account_id = ?7)\n             AND (?8 IS NULL\n               OR t.category_id = ?8\n               OR t.id IN (SELECT transaction_id FROM transaction_splits WHERE category_id = ?8))\n             AND (NOT ?9 OR (t.category_id IS NULL\n               AND t.id NOT IN (SELECT transaction_id FROM transaction_splits)\n               AND t.id NOT IN (SELECT from_txn_id FROM transfers WHERE from_txn_id IS NOT NULL\n                                UNION ALL\n                                SELECT to_txn_id FROM transfers WHERE to_txn_id IS NOT NULL)))\n             AND (?10 IS NULL OR t.date >= ?10)\n             AND (?11 IS NULL OR t.date <= ?11)\n             AND (?12 IS NULL\n               OR t.id IN (SELECT transaction_id FROM transaction_tags WHERE tag_id = ?12))\n             AND (NOT ?13 OR (t.category_id IS NULL\n               AND t.id NOT IN (SELECT transaction_id FROM transaction_splits)\n               AND t.id IN (SELECT ib.transaction_id FROM import_batch_rows ib\n                              JOIN import_batches b ON b.id = ib.batch_id\n                            WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided')))\n           ORDER BY t.date DESC, t.id DESC\n           LIMIT ?4",
   "describe": {
     "columns": [
       {
@@ -127,7 +127,7 @@
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 13
     },
     "nullable": [
       false,
@@ -144,5 +144,5 @@
       true
     ]
   },
-  "hash": "8ab58bb3e3343f68014f873663a1a1ae7280dbd5b7df0f7acf6be19126c8a54e"
+  "hash": "284d28c963b3f992f43866bb8f241806f974c72582f3026516e9b2e6a82cb033"
 }

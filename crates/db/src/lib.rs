@@ -34,8 +34,8 @@ pub use profile::{
 pub use reset::{UseReset, issue_password_reset, password_reset, use_password_reset};
 pub use sqlx::SqlitePool;
 pub use transactions::{
-    BatchRef, SplitLine, TransactionDetail, TransactionPage, TransactionRow, transaction,
-    transactions,
+    BatchRef, Filter, SplitLine, Tag, TransactionDetail, TransactionPage, TransactionRow, tags,
+    transaction, transactions,
 };
 
 /// The database file's name inside `BUDGET_DATA_DIR`.
