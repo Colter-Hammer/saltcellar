@@ -42,7 +42,7 @@ mod tests {
         let pool = db::connect(&data.path().join(db::FILE_NAME)).await.unwrap();
         db::migrate(&pool).await.unwrap();
         let router = app(
-            api::router(api::AppState::load(pool).await.unwrap()),
+            api::router(api::AppState::load(pool, data.path()).await.unwrap()),
             dist.path(),
         );
         Site {

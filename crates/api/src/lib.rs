@@ -5,6 +5,7 @@ mod categories;
 mod error;
 mod health;
 mod household;
+mod import;
 mod middleware;
 mod profile;
 mod reset;
@@ -13,6 +14,7 @@ mod setup;
 #[cfg(test)]
 mod tests;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use axum::routing::{any, delete, get, patch, post, put};
@@ -51,7 +53,8 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         categories::delete_group,
         categories::add_category,
         categories::change_category,
-        categories::delete_category
+        categories::delete_category,
+        import::upload
     ),
     components(schemas(error::ErrorEnvelope))
 )]
@@ -69,6 +72,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 pub struct AppState {
     pub pool: db::SqlitePool,
     setup: Arc<setup::Setup>,
+    uploads: Arc<import::Uploads>,
     clock: Arc<dyn Fn() -> Timestamp + Send + Sync>,
 }
 
@@ -81,12 +85,12 @@ pub enum LoadError {
 }
 
 impl AppState {
-    /// The state for a migrated database. While setup isn't finished, this start gets a new
-    /// setup code: see [`AppState::setup_code`].
+    /// The state for a migrated database, with the data dir that holds it, where uploads wait too.
+    /// While setup isn't finished, this start gets a new setup code: see [`AppState::setup_code`].
     ///
     /// # Errors
     /// If the database fails, or the OS has no random bytes for the code.
-    pub async fn load(pool: db::SqlitePool) -> Result<AppState, LoadError> {
+    pub async fn load(pool: db::SqlitePool, data_dir: &Path) -> Result<AppState, LoadError> {
         let setup = if db::household(&pool).await?.is_some() {
             setup::Setup::finished()
         } else {
@@ -97,6 +101,7 @@ impl AppState {
         Ok(AppState {
             pool,
             setup: Arc::new(setup),
+            uploads: Arc::new(import::Uploads::new(data_dir)),
             clock: Arc::new(Timestamp::now),
         })
     }
@@ -152,6 +157,7 @@ pub fn router(state: AppState) -> Router {
             patch(categories::change_category).delete(categories::delete_category),
         )
         .route("/category-groups", post(categories::add_group))
+        .route("/imports/actual", post(import::upload))
         .route(
             "/category-groups/{id}",
             patch(categories::change_group).delete(categories::delete_group),

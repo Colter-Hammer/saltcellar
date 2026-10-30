@@ -17,6 +17,7 @@ api = { path = "crates/api" }
 
 argon2 = "0.6.0"
 axum = "0.8.9"
+futures-util = { version = "0.3.34", default-features = false }
 getrandom = "0.4.3"
 http-body-util = "0.1"
 ipnet = "2"

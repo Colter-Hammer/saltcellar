@@ -80,7 +80,10 @@ mod tests {
         use axum::http::{Request, StatusCode, header};
         use tower::ServiceExt;
 
-        let state = api::AppState::load(pool.clone()).await.unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let state = api::AppState::load(pool.clone(), data.path())
+            .await
+            .unwrap();
         let code = state.setup_code().unwrap().to_string();
         let body = format!(
             r#"{{"code":"{code}","currency":"EUR","timezone":"UTC","display_name":"Sam","username":"sam","password":"correct horse battery","password_again":"correct horse battery"}}"#

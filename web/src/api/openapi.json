@@ -521,6 +521,98 @@
         }
       }
     },
+    "/api/v1/imports/actual": {
+      "post": {
+        "tags": [
+          "import"
+        ],
+        "summary": "`POST /api/v1/imports/actual`: reads an Actual export.",
+        "operationId": "uploadActualExport",
+        "requestBody": {
+          "description": "The `.zip` Actual's Settings › Export data saves, as is. At most 100 MB.",
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The export is read; nothing is imported yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActualUpload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do; `earlier_import`: an earlier import from Actual hasn't been undone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`file_too_large`: over 100 MB, or unpacks to more than the app reads.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "`zip_required`: the body isn't sent as `application/zip`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_an_actual_export`, or `export_unreadable`: an Actual export with data the app can't read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/password-reset": {
       "post": {
         "tags": [
@@ -1146,6 +1238,62 @@
   },
   "components": {
     "schemas": {
+      "ActualUpload": {
+        "type": "object",
+        "description": "An uploaded Actual export and what's in it.",
+        "required": [
+          "id",
+          "budget_name",
+          "accounts",
+          "transactions",
+          "categories",
+          "first_date",
+          "last_date"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Live accounts, closed ones included.",
+            "minimum": 0
+          },
+          "budget_name": {
+            "type": "string",
+            "description": "The budget's name in Actual.",
+            "example": "Our budget"
+          },
+          "categories": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Live categories.",
+            "minimum": 0
+          },
+          "first_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The earliest transaction's date, `YYYY-MM-DD`; null when there are none."
+          },
+          "id": {
+            "type": "string",
+            "description": "Names this upload in the importer's next steps."
+          },
+          "last_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The latest transaction's date, `YYYY-MM-DD`; null when there are none."
+          },
+          "transactions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Live transactions in live accounts; a split counts once.",
+            "minimum": 0
+          }
+        }
+      },
       "Category": {
         "type": "object",
         "required": [

@@ -334,7 +334,7 @@ mod tests {
         assert!(error.to_string().contains("readonly"), "{error}");
         export.close().await;
 
-        assert!(std::fs::read(dir.path().join(DB_FILE)).unwrap() == before);
+        assert_eq!(std::fs::read(dir.path().join(DB_FILE)).unwrap(), before);
     }
 
     #[tokio::test]
@@ -346,7 +346,10 @@ mod tests {
             Ok(mut export) => export.summary().await.map(|_| ()),
             Err(error) => Err(error),
         };
-        assert!(matches!(outcome, Err(ReadError::NotAnExport)), "{outcome:?}");
+        assert!(
+            matches!(outcome, Err(ReadError::NotAnExport)),
+            "{outcome:?}"
+        );
     }
 
     #[tokio::test]

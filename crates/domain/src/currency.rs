@@ -107,7 +107,10 @@ mod tests {
     fn knows_each_currencys_decimal_places() {
         for list in [NO_DECIMALS, THREE_DECIMALS] {
             assert!(list.is_sorted_by(|a, b| a < b));
-            assert!(list.iter().all(|code| CURRENCIES.contains(code)), "{list:?}");
+            assert!(
+                list.iter().all(|code| CURRENCIES.contains(code)),
+                "{list:?}"
+            );
         }
         let places = |code: &str| code.parse::<Currency>().unwrap().decimal_places();
         assert_eq!(places("USD"), 2);

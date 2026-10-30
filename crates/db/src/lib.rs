@@ -3,6 +3,7 @@
 mod auth;
 mod categories;
 mod household;
+mod imports;
 mod profile;
 mod reset;
 
@@ -20,6 +21,7 @@ pub use categories::{
     delete_group, set_order, update_category, update_group, use_starter_categories,
 };
 pub use household::{Household, household};
+pub use imports::actual_import_in_place;
 pub use profile::{
     Profile, ProfileChange, end_all_sessions, password_hash, profile, set_password, update_profile,
 };
