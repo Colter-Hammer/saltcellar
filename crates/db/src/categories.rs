@@ -105,7 +105,7 @@ pub async fn category_groups(pool: &SqlitePool) -> Result<Vec<Group>, Error> {
 /// [`CategoryError::NotEmpty`] if there's any group already, which leaves everything as it was;
 /// otherwise only if the database fails.
 pub async fn use_starter_categories(pool: &SqlitePool) -> Result<(), CategoryError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let existing = sqlx::query_scalar!(r#"SELECT count(*) AS "n!: i64" FROM category_groups"#)
         .fetch_one(&mut *tx)
         .await?;
@@ -199,7 +199,7 @@ pub async fn update_group(
 /// [`CategoryError::NotFound`] if there's no such group, [`CategoryError::GroupNotEmpty`] while it
 /// holds any category, hidden ones included; otherwise only if the database fails.
 pub async fn delete_group(pool: &SqlitePool, id: i64) -> Result<(), CategoryError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let held = sqlx::query_scalar!(
         r#"SELECT count(*) AS "n!: i64" FROM categories WHERE group_id = ?"#,
         id
@@ -228,7 +228,7 @@ pub async fn add_category(
     name: &Name,
 ) -> Result<i64, CategoryError> {
     let name = name.as_str();
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let group = sqlx::query_scalar!(
         r#"SELECT id AS "id!: i64" FROM category_groups WHERE id = ?"#,
         group_id
@@ -281,7 +281,7 @@ pub async fn update_category(
 /// [`CategoryError::InUse`] while anything uses it, [`CategoryError::NotFound`] if there's no such
 /// category; otherwise only if the database fails.
 pub async fn delete_category(pool: &SqlitePool, id: i64) -> Result<(), CategoryError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let in_use = sqlx::query_scalar!(
         r#"SELECT (EXISTS (SELECT 1 FROM transactions WHERE category_id = ?1)
                 OR EXISTS (SELECT 1 FROM transaction_splits WHERE category_id = ?1)) AS "in_use!: bool""#,
@@ -307,7 +307,7 @@ pub async fn delete_category(pool: &SqlitePool, id: i64) -> Result<(), CategoryE
 /// [`CategoryError::NameTaken`] if a moved category's name is taken in its new group; either
 /// leaves everything as it was. Otherwise only if the database fails.
 pub async fn set_order(pool: &SqlitePool, order: &[GroupOrder]) -> Result<(), CategoryError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     check_order(&current_order(&mut tx).await?, order)?;
     for (group_order, group) in (0_i64..).zip(order) {
         sqlx::query!(
