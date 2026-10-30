@@ -336,6 +336,7 @@ CREATE INDEX idx_txn_account_date  ON transactions(account_id, date);
 CREATE INDEX idx_txn_category_date ON transactions(category_id, date);
 CREATE INDEX idx_txn_payee         ON transactions(payee_id);
 CREATE INDEX idx_txn_dedupe        ON transactions(account_id, dedupe_key);
+CREATE INDEX idx_txn_date          ON transactions(date);   -- M1: the list newest first (migration 0007) *(agent)*
 
 CREATE TABLE dropped_transactions (         -- [sync] M2. Pending rows the bank dropped; kept 30 days.
   id           INTEGER PRIMARY KEY,

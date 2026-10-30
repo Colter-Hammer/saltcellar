@@ -1473,18 +1473,49 @@
         }
       }
     },
+    "/api/v1/tags": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "`GET /api/v1/tags`: every tag, for the Transactions tag filter.",
+        "operationId": "getTags",
+        "responses": {
+          "200": {
+            "description": "Every tag, by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/transactions": {
       "get": {
         "tags": [
           "transactions"
         ],
-        "summary": "`GET /api/v1/transactions`: a page of transactions, newest first by date then id.",
+        "summary": "`GET /api/v1/transactions`: a page of the transactions the search and filters pick, newest\nfirst by date then id.",
         "operationId": "getTransactions",
         "parameters": [
           {
             "name": "after",
             "in": "query",
-            "description": "The `next_cursor` of the page before; leave it out for the newest rows.",
+            "description": "The `next_cursor` of the page before; leave it out for the newest rows. Pass the same\nsearch and filters with it.",
             "required": false,
             "schema": {
               "type": "string"
@@ -1500,6 +1531,71 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Text in the payee, raw description or memo (ignoring case), or an amount in the household\ncurrency, either way round: `12.50` matches −12.50 and 12.50.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "description": "An account's id.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "A category's id (split rows count in each of their lines' categories), or `uncategorized`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "On or after this day, `YYYY-MM-DD`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "On or before this day, `YYYY-MM-DD`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "A tag's id.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "undecided",
+            "in": "query",
+            "description": "`true` for only the rows still waiting in **From Actual, undecided**.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -1514,7 +1610,7 @@
             }
           },
           "400": {
-            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range.",
+            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag` or `undecided` can't be read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2630,6 +2726,40 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "description": "A tag, as the tag filter offers it.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string",
+            "description": "Without the `#`."
+          }
+        }
+      },
+      "TagList": {
+        "type": "object",
+        "description": "Every tag the household has.",
+        "required": [
+          "tags"
+        ],
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "description": "By name, ignoring case."
           }
         }
       },

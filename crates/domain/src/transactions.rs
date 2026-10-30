@@ -1,10 +1,10 @@
-//! Transactions (docs/spec/m1-ledger-import.md#transactions): where a page of them ends, and the
-//! words for their status and where they came from.
+//! Transactions (docs/spec/m1-ledger-import.md#transactions): where a page of them ends, what a
+//! search looks for, and the words for their status and where they came from.
 
 use std::fmt;
 use std::str::FromStr;
 
-use crate::Date;
+use crate::{Currency, Date};
 
 /// Where a page of transactions ended: the last row's date and id. Lists run newest first, by date
 /// then id, so the next page is every row before this one in that order
@@ -97,6 +97,71 @@ impl Source {
     }
 }
 
+/// What the Transactions search looks for: the text, in payee, raw description and memo, and the
+/// amount it reads as, if it reads as one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Search {
+    /// Trimmed; never empty.
+    pub text: String,
+    /// In minor units, never negative: `12.50` matches −12.50 and 12.50 *(agent)*.
+    pub amount_minor: Option<i64>,
+}
+
+impl Search {
+    /// The search for `text` in a household that counts in `currency`; `None` when it's blank.
+    #[must_use]
+    pub fn new(text: &str, currency: Currency) -> Option<Search> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        Some(Search {
+            text: text.to_owned(),
+            amount_minor: amount_minor(text, currency.decimal_places()),
+        })
+    }
+}
+
+/// `text` as an amount in minor units, ignoring its sign, if it reads as one *(agent)*: digits,
+/// then optionally a `.` or `,` and up to `places` more digits. `12` and `12.5` read as 1200 and
+/// 1250 when `places` is 2. Group separators (`1,234.50`) don't read, as `,` may be the decimal one.
+fn amount_minor(text: &str, places: u8) -> Option<i64> {
+    let unsigned = text.strip_prefix(['-', '+', '−']).unwrap_or(text);
+    let (whole, fraction) = match unsigned.find(['.', ',']) {
+        Some(at) => (&unsigned[..at], &unsigned[at + 1..]),
+        None => (unsigned, ""),
+    };
+    let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
+    if whole.is_empty() || !digits(whole) || !digits(fraction) {
+        return None;
+    }
+    if fraction.len() > usize::from(places) {
+        return None;
+    }
+    let scale = 10_i64.checked_pow(u32::from(places))?;
+    let fraction_scale =
+        10_i64.checked_pow(u32::from(places) - u32::try_from(fraction.len()).ok()?)?;
+    let fraction_minor = if fraction.is_empty() {
+        0
+    } else {
+        fraction.parse::<i64>().ok()?.checked_mul(fraction_scale)?
+    };
+    whole
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(scale)?
+        .checked_add(fraction_minor)
+}
+
+/// The Transactions category filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CategoryFilter {
+    /// No category, not split, and not a transfer leg.
+    Uncategorized,
+    /// In this category, or split with a line in it *(agent)*.
+    Category(i64),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +211,41 @@ mod tests {
             assert_eq!(Source::from_stored(source.as_stored()), Some(source));
         }
         assert_eq!(Source::from_stored("bank"), None);
+    }
+
+    fn search(text: &str, currency: &str) -> Option<Search> {
+        Search::new(text, currency.parse().unwrap())
+    }
+
+    #[test]
+    fn a_blank_search_is_none() {
+        assert_eq!(search("", "USD"), None);
+        assert_eq!(search("   ", "USD"), None);
+    }
+
+    #[test]
+    fn a_search_reads_whole_and_decimal_amounts_in_the_currency() {
+        let amount = |text: &str, currency: &str| search(text, currency).unwrap().amount_minor;
+        assert_eq!(amount("12.50", "USD"), Some(1250));
+        assert_eq!(amount(" 12.50 ", "USD"), Some(1250));
+        assert_eq!(amount("-12.50", "USD"), Some(1250));
+        assert_eq!(amount("+12.5", "USD"), Some(1250));
+        assert_eq!(amount("12,5", "EUR"), Some(1250));
+        assert_eq!(amount("12", "USD"), Some(1200));
+        assert_eq!(amount("12.", "USD"), Some(1200));
+        assert_eq!(amount("0.07", "USD"), Some(7));
+        assert_eq!(amount("1500", "JPY"), Some(1500));
+        assert_eq!(amount("1.234", "KWD"), Some(1234));
+        // Not amounts: only their text is searched.
+        assert_eq!(amount("12.505", "USD"), None);
+        assert_eq!(amount("12.5", "JPY"), None);
+        assert_eq!(amount("1,234.50", "USD"), None);
+        assert_eq!(amount(".50", "USD"), None);
+        assert_eq!(amount("-", "USD"), None);
+        assert_eq!(amount("12a", "USD"), None);
+        assert_eq!(amount("corner", "USD"), None);
+        assert_eq!(amount("99999999999999999999", "USD"), None);
+        assert_eq!(amount("99999999999999999", "USD"), None);
+        assert_eq!(search(" Corner ", "USD").unwrap().text, "Corner");
     }
 }

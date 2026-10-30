@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { TransactionRow } from '@/api/transactions'
-import { categoryLabel, groupByDate, payeeLabel, sourceLabel, statusLabel } from './transactions'
+import {
+  categoryLabel,
+  dateRangeLabel,
+  groupByDate,
+  isFiltered,
+  payeeLabel,
+  readFilter,
+  sourceLabel,
+  statusLabel,
+  withFilter,
+} from './transactions'
 
 function row(id: number, fields: Partial<TransactionRow> = {}): TransactionRow {
   return {
@@ -57,5 +67,61 @@ describe('statusLabel and sourceLabel', () => {
     expect(sourceLabel('provider')).toBe('Bank')
     expect(sourceLabel('import')).toBe('Import')
     expect(sourceLabel('manual')).toBe('Manual')
+  })
+})
+
+describe('readFilter', () => {
+  it('takes the search and filters from the query, skipping blanks and anything else', () => {
+    expect(
+      readFilter({
+        q: 'corner',
+        account: '3',
+        category: 'uncategorized',
+        from: '2026-01-01',
+        to: '',
+        tag: ['2', '5'],
+        undecided: 'true',
+        page: '4',
+      }),
+    ).toEqual({
+      q: 'corner',
+      account: '3',
+      category: 'uncategorized',
+      from: '2026-01-01',
+      tag: '2',
+      undecided: 'true',
+    })
+    expect(readFilter({ q: '  ', account: null, tag: [] })).toEqual({})
+  })
+})
+
+describe('withFilter', () => {
+  it('sets one, or drops it when blank, leaving the others', () => {
+    const filter = { q: 'corner', account: '3' }
+    expect(withFilter(filter, 'tag', '2')).toEqual({ q: 'corner', account: '3', tag: '2' })
+    expect(withFilter(filter, 'account', '4')).toEqual({ q: 'corner', account: '4' })
+    expect(withFilter(filter, 'account', '')).toEqual({ q: 'corner' })
+    expect(withFilter(filter, 'q', undefined)).toEqual({ account: '3' })
+    expect(filter).toEqual({ q: 'corner', account: '3' })
+  })
+})
+
+describe('isFiltered', () => {
+  it('is whether the search or any filter is set', () => {
+    expect(isFiltered({})).toBe(false)
+    expect(isFiltered({ q: 'x' })).toBe(true)
+    expect(isFiltered({ undecided: 'true' })).toBe(true)
+  })
+})
+
+describe('dateRangeLabel', () => {
+  const day = (date: string) => `<${date}>`
+  it('names either end or both, or is null with neither', () => {
+    expect(dateRangeLabel({ from: '2026-01-01', to: '2026-01-31' }, day)).toBe(
+      '<2026-01-01> – <2026-01-31>',
+    )
+    expect(dateRangeLabel({ from: '2026-01-01' }, day)).toBe('From <2026-01-01>')
+    expect(dateRangeLabel({ to: '2026-01-31' }, day)).toBe('Until <2026-01-31>')
+    expect(dateRangeLabel({ q: 'x' }, day)).toBeNull()
   })
 })

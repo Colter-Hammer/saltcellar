@@ -4,30 +4,47 @@
 // the table. On phones the detail covers the list, as a sheet *(agent)*. The open one is in the
 // address, /transactions/{id}, so Back closes it *(agent)*. More rows load on reaching the end,
 // with a Load more button for when that doesn't fire *(agent)*. With none, the first steps.
+// The search and filters live in the address's query, so reloading or sharing it keeps them, and
+// opening or closing a transaction carries them along *(agent)*.
 import { FlexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/vue-table'
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { type TransactionRow, useTransactions } from '@/api/transactions'
 import TransactionDetail from '@/components/TransactionDetail.vue'
+import TransactionFilters from '@/components/TransactionFilters.vue'
 import { formatDate, formatMoney, useFormatting } from '@/lib/format'
-import { categoryLabel, groupByDate, payeeLabel } from '@/lib/transactions'
+import {
+  categoryLabel,
+  groupByDate,
+  isFiltered,
+  payeeLabel,
+  readFilter,
+  type TransactionFilter,
+} from '@/lib/transactions'
 
 const route = useRoute()
 const router = useRouter()
-const pages = useTransactions()
+const filter = computed(() => readFilter(route.query))
+const filtered = computed(() => isFiltered(filter.value))
+const pages = useTransactions(filter)
 const formatting = useFormatting()
 
 const rows = computed(() => pages.data.value?.pages.flatMap((page) => page.transactions) ?? [])
 const days = computed(() => groupByDate(rows.value))
 const empty = computed(() => pages.isSuccess.value && rows.value.length === 0)
 
+/** Filtering replaces the address rather than adding to Back's history *(agent)*. */
+function refilter(changed: TransactionFilter) {
+  void router.replace({ path: route.path, query: changed })
+}
+
 const selected = computed(() => {
   const id = route.params.id
   return typeof id === 'string' && id !== '' ? Number(id) : null
 })
 
-function link(row: TransactionRow): string {
-  return `/transactions/${String(row.id)}`
+function link(row: TransactionRow) {
+  return { path: `/transactions/${String(row.id)}`, query: filter.value }
 }
 
 function money(minor: number): string {
@@ -35,7 +52,7 @@ function money(minor: number): string {
 }
 
 function close() {
-  void router.push('/transactions')
+  void router.push({ path: '/transactions', query: filter.value })
 }
 
 function more() {
@@ -106,7 +123,11 @@ onBeforeUnmount(() => {
       {{ pages.error.value?.message }}
     </p>
 
-    <template v-if="empty">
+    <TransactionFilters v-if="!empty || filtered" :filter="filter" @change="refilter" />
+
+    <p v-if="empty && filtered" class="text-sm text-muted-foreground">No transactions match.</p>
+
+    <template v-else-if="empty">
       <p class="text-sm text-muted-foreground">No transactions yet.</p>
       <div class="flex flex-wrap gap-2">
         <RouterLink to="/import" class="rounded-md bg-primary px-3 py-2 text-primary-foreground">
@@ -119,7 +140,7 @@ onBeforeUnmount(() => {
     </template>
 
     <div
-      v-else-if="rows.length > 0"
+      v-if="rows.length > 0"
       class="lg:grid lg:items-start lg:gap-6"
       :class="selected !== null && 'lg:grid-cols-[1fr_22rem]'"
     >

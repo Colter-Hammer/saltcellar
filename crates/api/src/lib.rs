@@ -51,6 +51,7 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         accounts::get,
         transactions::list,
         transactions::get,
+        transactions::tags,
         categories::list,
         categories::use_starter,
         categories::order,
@@ -158,6 +159,7 @@ pub fn router(state: AppState) -> Router {
         .route("/accounts/{id}", get(accounts::get))
         .route("/transactions", get(transactions::list))
         .route("/transactions/{id}", get(transactions::get))
+        .route("/tags", get(transactions::tags))
         .route(
             "/categories",
             get(categories::list).post(categories::add_category),

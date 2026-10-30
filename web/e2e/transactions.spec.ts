@@ -67,3 +67,45 @@ test('the imported transactions, on a desktop and a phone, and one opened', asyn
   await expect(page.getByRole('complementary')).toHaveCount(0)
   await expect(day).toBeVisible()
 })
+
+test('search and filter the imported transactions, and keep them on reload', async ({ page }) => {
+  await page.goto('/transactions')
+  const table = page.getByRole('table', { name: 'Transactions' })
+  const rows = table.locator('tbody tr')
+  const column = (n: number) => rows.locator(`td:nth-child(${String(n)})`)
+  await expect(rows.first()).toBeVisible()
+
+  // A payee, then an amount: −120.00 is the fallback split.
+  const search = page.getByRole('searchbox', { name: 'Search transactions' })
+  await search.fill('corner grocer')
+  await search.press('Enter')
+  await expect(page).toHaveURL(/\?q=corner(\+|%20)grocer$/)
+  await expect(column(2).first()).toHaveText('Corner Grocer')
+  for (const payee of await column(2).allTextContents()) expect(payee).toContain('Corner Grocer')
+  await search.fill('120')
+  await search.press('Enter')
+  await expect(column(5).filter({ hasText: '-€120.00' })).toHaveCount(1)
+
+  // An account chip and a date range narrow the list.
+  await search.fill('')
+  await search.press('Enter')
+  await page.getByRole('combobox', { name: 'Account' }).selectOption({ label: 'Everyday checking' })
+  await page.getByRole('button', { name: 'Any date' }).click()
+  await page.getByLabel('From', { exact: true }).fill('2025-06-01')
+  await page.getByLabel('To', { exact: true }).fill('2025-06-30')
+  await expect(page.getByRole('button', { name: 'Jun 1, 2025 – Jun 30, 2025' })).toBeVisible()
+  await expect(page).toHaveURL(/account=\d+/)
+  await expect(page).toHaveURL(/from=2025-06-01&to=2025-06-30/)
+  await expect(column(1).first()).toHaveText(/^Jun \d+, 2025$/)
+  for (const account of await column(4).allTextContents()) expect(account).toBe('Everyday checking')
+  const filtered = await rows.allTextContents()
+
+  // Reloading keeps every one.
+  await page.reload()
+  await expect(page.getByRole('combobox', { name: 'Account' })).toHaveValue(/^\d+$/)
+  await expect(page.getByRole('button', { name: 'Jun 1, 2025 – Jun 30, 2025' })).toBeVisible()
+  await expect(rows).toHaveText(filtered)
+
+  await page.getByRole('button', { name: 'Clear all' }).click()
+  await expect(page).toHaveURL(/\/transactions$/)
+})
