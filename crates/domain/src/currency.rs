@@ -4,7 +4,8 @@ use std::str::FromStr;
 /// The household currency: an ISO 4217 code in current use, e.g. `USD`.
 ///
 /// One per install, chosen at setup ([ADR-0006](../../../docs/adr/0006-one-currency-one-timezone.md)).
-/// How many decimal places it has is the frontend's business, through `Intl.NumberFormat`.
+/// The frontend formats amounts through `Intl.NumberFormat`; [`Currency::decimal_places`] agrees
+/// with it, so the server can tell which currencies an import in cents fits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Currency(&'static str);
 
@@ -28,11 +29,34 @@ pub const CURRENCIES: &[&str] = &[
     "VUV", "WST", "XAF", "XCD", "XCG", "XOF", "XPF", "YER", "ZAR", "ZMW", "ZWG",
 ];
 
+/// The listed currencies without 2 decimal places, as `Intl.NumberFormat` (CLDR) formats them:
+/// these have none.
+const NO_DECIMALS: &[&str] = &[
+    "AFN", "ALL", "BIF", "CLP", "COP", "DJF", "GNF", "HUF", "IDR", "IQD", "IRR", "ISK", "JPY",
+    "KMF", "KPW", "KRW", "LAK", "LBP", "MGA", "MMK", "PKR", "PYG", "RWF", "SOS", "SYP", "UGX",
+    "VND", "VUV", "XAF", "XOF", "XPF", "YER",
+];
+
+/// And these have 3.
+const THREE_DECIMALS: &[&str] = &["BHD", "JOD", "KWD", "LYD", "OMR", "TND"];
+
 impl Currency {
     /// The ISO 4217 code, e.g. `USD`.
     #[must_use]
     pub const fn code(self) -> &'static str {
         self.0
+    }
+
+    /// How many minor units make a major one, as a power of ten: 2 for USD (cents), 0 for JPY.
+    #[must_use]
+    pub fn decimal_places(self) -> u8 {
+        if NO_DECIMALS.binary_search(&self.0).is_ok() {
+            0
+        } else if THREE_DECIMALS.binary_search(&self.0).is_ok() {
+            3
+        } else {
+            2
+        }
     }
 }
 
@@ -77,6 +101,19 @@ mod tests {
             assert_eq!(code.parse::<Currency>().unwrap().code(), *code);
         }
         assert_eq!("JPY".parse::<Currency>().unwrap().to_string(), "JPY");
+    }
+
+    #[test]
+    fn knows_each_currencys_decimal_places() {
+        for list in [NO_DECIMALS, THREE_DECIMALS] {
+            assert!(list.is_sorted_by(|a, b| a < b));
+            assert!(list.iter().all(|code| CURRENCIES.contains(code)), "{list:?}");
+        }
+        let places = |code: &str| code.parse::<Currency>().unwrap().decimal_places();
+        assert_eq!(places("USD"), 2);
+        assert_eq!(places("EUR"), 2);
+        assert_eq!(places("JPY"), 0);
+        assert_eq!(places("KWD"), 3);
     }
 
     #[test]
