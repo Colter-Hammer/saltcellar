@@ -7,6 +7,8 @@ export type ActualAccount = components['schemas']['ActualAccount']
 export type ActualCategory = components['schemas']['ActualCategory']
 export type AccountType = components['schemas']['AccountType']
 export type AccountRole = components['schemas']['AccountRole']
+export type ActualCommitRequest = components['schemas']['ActualCommitRequest']
+export type ActualImportDone = components['schemas']['ActualImportDone']
 
 /**
  * `POST /api/v1/imports/actual`: sends an Actual export, the `.zip` itself, and resolves to what's
@@ -31,4 +33,17 @@ export async function uploadActualExport(file: Blob): Promise<ActualUpload> {
  */
 export async function getActualImport(id: string): Promise<ActualImport> {
   return call(client.GET('/api/v1/imports/actual/{id}', { params: { path: { id } } }))
+}
+
+/**
+ * `POST /api/v1/imports/actual/{id}/commit`: imports the upload with the choices of steps 2 and 3,
+ * as one import batch, and resolves to the Done step's summary. Throws an ApiError
+ * `earlier_import` while an earlier import from Actual is in place, `invalid_choices` for choices
+ * that can't go ahead, and `upload_not_found` once the upload is gone.
+ */
+export async function commitActualImport(
+  id: string,
+  body: ActualCommitRequest,
+): Promise<ActualImportDone> {
+  return call(client.POST('/api/v1/imports/actual/{id}/commit', { params: { path: { id } }, body }))
 }

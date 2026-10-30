@@ -1,12 +1,15 @@
 // The importer's steps (docs/spec/m1-ledger-import.md#import-from-actual): what the File step says
 // about an upload, and the choices of the Accounts and Categories steps. The choices live in the
-// browser until the import commits *(agent)*; nothing here talks to the server.
+// browser until the import commits *(agent)*, sent as the commit's request; then what the Done step
+// says. Nothing here talks to the server.
 import type { CategoryGroup, CategoryGroupKind } from '@/api/categories'
 import type {
   AccountRole,
   AccountType,
   ActualCategory,
+  ActualCommitRequest,
   ActualImport,
+  ActualImportDone,
   ActualUpload,
 } from '@/api/imports'
 import { formatDate, type Formatting } from './format'
@@ -231,4 +234,56 @@ export function startingGroup(
     shown.find((group) => sameName(group.name, category.group)) ??
     shown.find((group) => group.kind === kind)
   return group?.id ?? null
+}
+
+// ── Step 4: Done ──
+
+/**
+ * The commit's request: every account's choice, and the Goes to of each category the imported
+ * rows use (any other goes to Decide later on the server too).
+ */
+export function commitRequest(
+  plan: ActualImport,
+  accountChoices: Readonly<Record<string, AccountChoice>>,
+  categoryChoices: Readonly<Record<string, string>>,
+  fileName: string,
+): ActualCommitRequest {
+  const accounts = plan.accounts.flatMap((account) => {
+    const choice = accountChoices[account.id]
+    if (choice === undefined) return []
+    return [
+      {
+        actual_id: account.id,
+        action: choice.action,
+        name: choice.name.trim(),
+        type: choice.type,
+        role: choice.role,
+        balances_only: choice.balancesOnly,
+        same_as: choice.action === 'same' ? choice.sameAs : null,
+      },
+    ]
+  })
+  const categories = usedCategories(plan, accountChoices).map(({ category }) => {
+    const goesTo = categoryChoices[category.id] ?? LATER
+    const id = goesTo.startsWith('category:') ? Number(goesTo.slice('category:'.length)) : null
+    return {
+      actual_id: category.id,
+      goes_to: id === null ? (goesTo === TRANSFER ? 'transfer' : 'later') : 'category',
+      category_id: id,
+    } as const
+  })
+  return { file_name: fileName, accounts, categories }
+}
+
+/** The Done step's lines: what was created, and what happened to the rows. */
+export function describeDone(done: ActualImportDone, locale: string): string[] {
+  const rows = (count: number) => counted(count, ['row', 'rows'], locale)
+  return [
+    `${counted(done.accounts_created, ['account', 'accounts'], locale)} created`,
+    `${rows(done.mapped)} mapped to a category`,
+    `${rows(done.undecided)} undecided`,
+    `${rows(done.transfer)} marked transfer`,
+    `${rows(done.uncategorized)} uncategorized`,
+    counted(done.linked_transfers, ['linked transfer', 'linked transfers'], locale),
+  ]
 }
