@@ -34,6 +34,8 @@ pub enum CategoryError {
     GroupNotEmpty,
     #[error("there are categories already")]
     NotEmpty,
+    #[error("transactions or split lines use the category")]
+    InUse,
     #[error(transparent)]
     Order(#[from] OrderError),
     #[error(transparent)]
@@ -272,16 +274,30 @@ pub async fn update_category(
     found(updated.rows_affected())
 }
 
-/// Deletes a category. Nothing can use one yet: once transactions, split lines and rules can, a
-/// category they use is refused and can only be hidden.
+/// Deletes a category. One that transactions or split lines use is refused and can only be hidden
+/// (rules join the check in milestone 3).
 ///
 /// # Errors
-/// [`CategoryError::NotFound`] if there's no such category; otherwise only if the database fails.
+/// [`CategoryError::InUse`] while anything uses it, [`CategoryError::NotFound`] if there's no such
+/// category; otherwise only if the database fails.
 pub async fn delete_category(pool: &SqlitePool, id: i64) -> Result<(), CategoryError> {
+    let mut tx = pool.begin().await?;
+    let in_use = sqlx::query_scalar!(
+        r#"SELECT (EXISTS (SELECT 1 FROM transactions WHERE category_id = ?1)
+                OR EXISTS (SELECT 1 FROM transaction_splits WHERE category_id = ?1)) AS "in_use!: bool""#,
+        id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if in_use {
+        return Err(CategoryError::InUse);
+    }
     let deleted = sqlx::query!("DELETE FROM categories WHERE id = ?", id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
-    found(deleted.rows_affected())
+    found(deleted.rows_affected())?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Puts every group and category in the given order, moving categories between groups as listed.

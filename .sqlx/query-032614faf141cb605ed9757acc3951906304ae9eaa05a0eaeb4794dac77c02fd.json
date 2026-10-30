@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO payees (name) VALUES (?) ON CONFLICT (name) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "032614faf141cb605ed9757acc3951906304ae9eaa05a0eaeb4794dac77c02fd"
+}
