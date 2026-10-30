@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT sp.category_id AS \"category_id!: i64\", c.name AS category, sp.amount_minor, sp.memo\n           FROM transaction_splits sp JOIN categories c ON c.id = sp.category_id\n           WHERE sp.transaction_id = ? ORDER BY sp.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "category_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transaction_splits",
+            "name": "category_id"
+          }
+        }
+      },
+      {
+        "name": "category",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "categories",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "amount_minor",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transaction_splits",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "memo",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transaction_splits",
+            "name": "memo"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "b15b3a3eb1307a720e24231f0d23f23974b397f73e72f6855de96bfd9c2e5664"
+}

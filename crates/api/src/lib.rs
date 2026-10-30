@@ -14,6 +14,7 @@ mod session;
 mod setup;
 #[cfg(test)]
 mod tests;
+mod transactions;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -48,6 +49,8 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         household::get,
         accounts::list,
         accounts::get,
+        transactions::list,
+        transactions::get,
         categories::list,
         categories::use_starter,
         categories::order,
@@ -153,6 +156,8 @@ pub fn router(state: AppState) -> Router {
         .route("/household", get(household::get))
         .route("/accounts", get(accounts::list))
         .route("/accounts/{id}", get(accounts::get))
+        .route("/transactions", get(transactions::list))
+        .route("/transactions/{id}", get(transactions::get))
         .route(
             "/categories",
             get(categories::list).post(categories::add_category),

@@ -349,6 +349,7 @@ version = "0.1.0"
 dependencies = [
  "domain",
  "jiff",
+ "serde_json",
  "sqlx",
  "tempfile",
  "thiserror",

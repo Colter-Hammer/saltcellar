@@ -1,0 +1,148 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT t.id AS \"id!: i64\", t.date, t.amount_minor, t.status, p.name AS \"payee?\",\n             t.raw_description, t.account_id, a.name AS account, t.category_id, c.name AS \"category?\",\n             EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id)\n               AS \"split!: bool\",\n             (SELECT json_group_array(name) FROM\n               (SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id\n                 WHERE tt.transaction_id = t.id ORDER BY g.name)) AS \"tags!: String\"\n           FROM transactions t\n           JOIN accounts a ON a.id = t.account_id\n           LEFT JOIN payees p ON p.id = t.payee_id\n           LEFT JOIN categories c ON c.id = t.category_id\n           WHERE (?1 IS NULL OR t.id = ?1)\n             AND (?2 IS NULL OR t.date < ?2 OR (t.date = ?2 AND t.id < ?3))\n           ORDER BY t.date DESC, t.id DESC\n           LIMIT ?4",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "date",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "name": "amount_minor",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "payee?",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payees",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "raw_description",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "raw_description"
+          }
+        }
+      },
+      {
+        "name": "account_id",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "account",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "category_id",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "category_id"
+          }
+        }
+      },
+      {
+        "name": "category?",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "categories",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "split!: bool",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "tags!: String",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "8ab58bb3e3343f68014f873663a1a1ae7280dbd5b7df0f7acf6be19126c8a54e"
+}
