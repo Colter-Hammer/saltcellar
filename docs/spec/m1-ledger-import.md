@@ -99,11 +99,15 @@ One row per live Actual account: Actual name, closed or open, row count, Actual 
 
 Accounts created here keep Actual's bank-sync account id (Actual's `accounts.account_id`, when set) as `external_account_id` with no connection, so milestone 2's first sync attaches them as already tracked.
 
+Details *(agent)*: accounts are listed open before closed, on budget before off budget, then in Actual's order. The row count counts a split once and includes starting balances. A name that says nothing about the type gives checking on budget and other off budget. A new account's name must differ, ignoring case, from every other account's; Next waits until it does. A balances-only account brings its balance but none of its rows, so like a skipped one its rows don't count in step 3. The choices of steps 2 and 3 live in the browser until step 4 commits; Back keeps them.
+
 ### Step 3: Categories
 
 One row per live Actual category that any imported row uses, with its group, row count and a **Goes to** picker. Desktop is a table; phone is stacked rows. Many Actual categories may go to one app category.
 
 The picker offers every app category, **Transfer (not a category)** (for card payments and savings moves that Actual recorded as categories), **+ New category…** (name + group, created on the spot) and **Decide later**. Pre-fill: an app category with the same name (case-insensitive), otherwise Decide later. Import is never blocked: an unchosen row means Decide later. Actual's "Starting Balances" category isn't listed; those rows become opening balances.
+
+Details *(agent)*: a split's lines count one row each in their own categories; starting-balance rows count in none. A live Actual category in a deleted group counts as deleted. Hidden app categories and groups aren't offered or pre-filled. When two app categories have the matching name, the one in a group named like the Actual group wins. **+ New category…** starts with the Actual category's name, in the app group named like the Actual group, else the first group of the same kind; it can also make a new group (the start when there is none), named after the Actual group, of its kind.
 
 ### Step 4: Done
 
