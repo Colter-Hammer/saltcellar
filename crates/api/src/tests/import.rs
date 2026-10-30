@@ -674,3 +674,86 @@ async fn choices_that_cant_go_ahead_are_refused() {
         .unwrap();
     assert_eq!(accounts, 0);
 }
+
+// ── Accounts, after the commit ──
+
+#[tokio::test]
+async fn accounts_show_the_imported_balances() {
+    let app = set_up().await;
+    let (status, list) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/accounts")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list, json!({ "accounts": [] }));
+
+    let plan = fake_plan(&app).await;
+    let id = plan["id"].as_str().unwrap().to_owned();
+    let export = read_back(&app, &id).await;
+    // Brokerage comes in balances only.
+    let mut accounts = create_all(&plan);
+    for account in &mut accounts {
+        if account["name"] == "Brokerage" {
+            account["balances_only"] = json!(true);
+        }
+    }
+    let body = json!({ "file_name": "actual-export.zip", "accounts": accounts, "categories": [] });
+    let (status, done) = commit(&app, &id, &body).await;
+    assert_eq!(status, StatusCode::CREATED, "{done}");
+
+    let (status, list) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/accounts")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let listed = list["accounts"].as_array().unwrap();
+    assert_eq!(listed.len(), export.accounts.len());
+    for (account, actual) in listed.iter().zip(&export.accounts) {
+        let name = &actual.name;
+        assert_eq!(account["name"], json!(name));
+        assert_eq!(account["balance_minor"], actual.balance.minor(), "{name}");
+        assert_eq!(account["closed"], actual.closed, "{name}");
+        let role = if actual.off_budget {
+            "tracking"
+        } else {
+            "budgeted"
+        };
+        assert_eq!(account["role"], role, "{name}");
+        if name == "Brokerage" {
+            assert_eq!(account["balances_only"], true);
+            assert_eq!(account["app_balance_minor"], Value::Null);
+            assert_eq!(account["opening_date"], Value::Null);
+            assert_eq!(account["rows"], 0);
+        } else {
+            assert_eq!(account["balances_only"], false, "{name}");
+            assert_eq!(
+                account["app_balance_minor"], account["balance_minor"],
+                "{name}"
+            );
+            assert!(account["opening_date"].is_string(), "{name}");
+        }
+    }
+
+    let first = &listed[0];
+    let (status, one) = send(
+        app.router.clone(),
+        with(
+            &app.cookie,
+            get(&format!("/api/v1/accounts/{}", first["id"])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(&one, first);
+    assert!(one["last_transaction_date"].is_string());
+
+    for missing in ["/api/v1/accounts/999", "/api/v1/accounts/nope"] {
+        let (status, body) = send(app.router.clone(), with(&app.cookie, get(missing))).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{missing}");
+        assert_eq!(body["error"]["code"], "not_found");
+    }
+    let (status, _) = send(app.router.clone(), get("/api/v1/accounts")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

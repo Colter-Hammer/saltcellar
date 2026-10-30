@@ -1,5 +1,6 @@
 //! The HTTP API: JSON under `/api/v1/…` (docs/spec/foundations.md#http-api).
 
+mod accounts;
 mod auth;
 mod categories;
 mod error;
@@ -45,6 +46,8 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         profile::change_password,
         profile::log_out_everywhere,
         household::get,
+        accounts::list,
+        accounts::get,
         categories::list,
         categories::use_starter,
         categories::order,
@@ -148,6 +151,8 @@ pub fn router(state: AppState) -> Router {
         .route("/profile", get(profile::get).put(profile::change))
         .route("/profile/password", post(profile::change_password))
         .route("/household", get(household::get))
+        .route("/accounts", get(accounts::list))
+        .route("/accounts/{id}", get(accounts::get))
         .route(
             "/categories",
             get(categories::list).post(categories::add_category),

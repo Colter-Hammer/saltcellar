@@ -1,0 +1,155 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT a.id AS \"id!: i64\", a.name, a.institution, a.type AS kind, a.role,\n             a.closed AS \"closed: bool\", a.has_transactions AS \"has_transactions: bool\",\n             a.opening_balance_minor, a.opening_date,\n             (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS \"rows!: i64\",\n             (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS \"last: String\",\n             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t\n               WHERE t.account_id = a.id AND t.status = 'posted') AS \"posted!: i64\",\n             (SELECT s.balance_minor FROM balance_snapshots s WHERE s.account_id = a.id\n               ORDER BY s.as_of DESC LIMIT 1) AS \"snapshot: i64\"\n           FROM accounts a WHERE ?1 IS NULL OR a.id = ?1 ORDER BY a.sort_order, a.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "institution",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "institution"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "type"
+          }
+        }
+      },
+      {
+        "name": "role",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "name": "closed: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "closed"
+          }
+        }
+      },
+      {
+        "name": "has_transactions: bool",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "has_transactions"
+          }
+        }
+      },
+      {
+        "name": "opening_balance_minor",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "opening_balance_minor"
+          }
+        }
+      },
+      {
+        "name": "opening_date",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "opening_date"
+          }
+        }
+      },
+      {
+        "name": "rows!: i64",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "last: String",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "posted!: i64",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "snapshot: i64",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "balance_minor"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "2daae2f8c2ec660353514ba5a63190792ae35a65f6c9c761b8d4d04534a2079d"
+}

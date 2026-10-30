@@ -10,6 +10,90 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/accounts": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "`GET /api/v1/accounts`: every account in order, with its balances.",
+        "operationId": "getAccounts",
+        "responses": {
+          "200": {
+            "description": "Every account, closed ones included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{id}": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "`GET /api/v1/accounts/{id}`: one account, with its balances.",
+        "operationId": "getAccount",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The account.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/categories": {
       "get": {
         "tags": [
@@ -1392,6 +1476,98 @@
   },
   "components": {
     "schemas": {
+      "Account": {
+        "type": "object",
+        "description": "An account, its figures and its balances.",
+        "required": [
+          "id",
+          "name",
+          "institution",
+          "type",
+          "role",
+          "closed",
+          "balances_only",
+          "balance_minor",
+          "app_balance_minor",
+          "opening_balance_minor",
+          "opening_date",
+          "rows",
+          "last_transaction_date"
+        ],
+        "properties": {
+          "app_balance_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The app's own balance, its opening balance plus its posted transactions, in minor units;\nnull without an opening balance. Where it differs from `balance_minor`, that's drift."
+          },
+          "balance_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The balance shown, its latest balance snapshot, in minor units; null before it has one."
+          },
+          "balances_only": {
+            "type": "boolean",
+            "description": "Balances only: it holds balance snapshots and no transactions."
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "institution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null when none is known."
+          },
+          "last_transaction_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`YYYY-MM-DD`, the date of its latest transaction; null without one."
+          },
+          "name": {
+            "type": "string"
+          },
+          "opening_balance_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "In minor units; null for a balances-only account."
+          },
+          "opening_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`YYYY-MM-DD`; null for a balances-only account."
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole"
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many transactions it has.",
+            "minimum": 0
+          },
+          "type": {
+            "$ref": "#/components/schemas/AccountType"
+          }
+        }
+      },
       "AccountAction": {
         "type": "string",
         "description": "Create a new account, use one the app has (Same as), or leave the account out.",
@@ -1400,6 +1576,21 @@
           "same",
           "skip"
         ]
+      },
+      "AccountList": {
+        "type": "object",
+        "required": [
+          "accounts"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            },
+            "description": "In order, closed ones included."
+          }
+        }
       },
       "AccountRole": {
         "type": "string",

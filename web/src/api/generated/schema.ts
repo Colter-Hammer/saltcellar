@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/v1/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/accounts`: every account in order, with its balances. */
+        get: operations["getAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/accounts/{id}`: one account, with its balances. */
+        get: operations["getAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -374,11 +408,53 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description An account, its figures and its balances. */
+        Account: {
+            /**
+             * Format: int64
+             * @description The app's own balance, its opening balance plus its posted transactions, in minor units;
+             *     null without an opening balance. Where it differs from `balance_minor`, that's drift.
+             */
+            app_balance_minor: number | null;
+            /**
+             * Format: int64
+             * @description The balance shown, its latest balance snapshot, in minor units; null before it has one.
+             */
+            balance_minor: number | null;
+            /** @description Balances only: it holds balance snapshots and no transactions. */
+            balances_only: boolean;
+            closed: boolean;
+            /** Format: int64 */
+            id: number;
+            /** @description Null when none is known. */
+            institution: string | null;
+            /** @description `YYYY-MM-DD`, the date of its latest transaction; null without one. */
+            last_transaction_date: string | null;
+            name: string;
+            /**
+             * Format: int64
+             * @description In minor units; null for a balances-only account.
+             */
+            opening_balance_minor: number | null;
+            /** @description `YYYY-MM-DD`; null for a balances-only account. */
+            opening_date: string | null;
+            role: components["schemas"]["AccountRole"];
+            /**
+             * Format: int64
+             * @description How many transactions it has.
+             */
+            rows: number;
+            type: components["schemas"]["AccountType"];
+        };
         /**
          * @description Create a new account, use one the app has (Same as), or leave the account out.
          * @enum {string}
          */
         AccountAction: "create" | "same" | "skip";
+        AccountList: {
+            /** @description In order, closed ones included. */
+            accounts: components["schemas"]["Account"][];
+        };
         /**
          * @description Whether an account's activity counts toward budgets, or only its balance over time is shown.
          * @enum {string}
@@ -758,6 +834,76 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every account, closed ones included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountList"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getCategories: {
         parameters: {
             query?: never;
