@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n           SET category_id = ?, categorized_by = 'user', categorization_reason = ?,\n               updated_at = ?, updated_by = ?\n           WHERE id = ? AND category_id IS NULL\n             AND id NOT IN (SELECT transaction_id FROM transaction_splits)\n             AND id IN (SELECT ib.transaction_id FROM import_batch_rows ib\n                          JOIN import_batches b ON b.id = ib.batch_id\n                        WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "b7cd613fe05e7b4c381935dabd78a077815fb561ad1bef8325b2d163a14c8fe9"
+}

@@ -36,6 +36,10 @@ interface FakeServer {
   transactions: Transaction[]
   /** The search and filters `GET /api/v1/transactions` was last asked for. */
   listedWith?: Record<string, string>
+  /** The undecided rows by their Actual category: the transactions' ids. */
+  undecided: { actual_category: string; ids: number[] }[]
+  /** The category each `POST /api/v1/undecided/move` and `PUT …/category` was sent. */
+  decided: { actual_category?: string; id?: number; category_id: number }[]
 }
 
 let server: FakeServer
@@ -66,6 +70,7 @@ async function answer(request: Request): Promise<Response> {
     const found = server.accounts.find((a) => `/api/v1/accounts/${String(a.id)}` === path)
     return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
   }
+  if (path.startsWith('/api/v1/undecided')) return undecided(request, path)
   if (path.startsWith('/api/v1/transactions')) return transactions(request, path)
   if (path === '/api/v1/tags') {
     return Response.json({
@@ -119,8 +124,47 @@ async function answer(request: Request): Promise<Response> {
   )
 }
 
-function transactions(request: Request, path: string): Response {
+async function undecided(request: Request, path: string): Promise<Response> {
   if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+  if (path === '/api/v1/undecided/move') {
+    const body = (await request.json()) as { actual_category: string; category_id: number }
+    server.decided.push(body)
+    server.undecided = server.undecided.filter((g) => g.actual_category !== body.actual_category)
+    return Response.json({ moved: 1 })
+  }
+  return Response.json({
+    groups: server.undecided.map((group) => ({
+      actual_category: group.actual_category,
+      rows: group.ids.length,
+      total_minor: server.transactions
+        .filter((t) => group.ids.includes(t.id))
+        .reduce((sum, t) => sum + t.amount_minor, 0),
+    })),
+  })
+}
+
+async function transactions(request: Request, path: string): Promise<Response> {
+  if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+  const category = /^\/api\/v1\/transactions\/(\d+)\/category$/.exec(path)
+  if (category !== null) {
+    const id = Number(category[1])
+    const { category_id } = (await request.json()) as { category_id: number }
+    const found = server.transactions.find((t) => t.id === id)
+    if (found === undefined) return error(404, 'not_found', 'There are no such undecided rows.')
+    server.decided.push({ id, category_id })
+    Object.assign(found, {
+      category_id,
+      category: 'Groceries',
+      undecided: false,
+      categorization_reason: 'Set by Sam',
+    })
+    server.undecided = server.undecided.map((g) => ({
+      ...g,
+      ids: g.ids.filter((other) => other !== id),
+    }))
+    server.undecided = server.undecided.filter((g) => g.ids.length > 0)
+    return Response.json(found)
+  }
   if (path === '/api/v1/transactions') {
     // The cursor is the index to start at. Of the filters, only the search (in the payee and
     // raw description) and the account narrow the list here; the rest are just recorded.
@@ -130,7 +174,11 @@ function transactions(request: Request, path: string): Response {
     const picked = server.transactions.filter(
       (t) =>
         (q === undefined || `${t.payee ?? ''} ${t.raw_description}`.toLowerCase().includes(q)) &&
-        (filters.account === undefined || String(t.account_id) === filters.account),
+        (filters.account === undefined || String(t.account_id) === filters.account) &&
+        (filters.actual_category === undefined ||
+          server.undecided.some(
+            (g) => g.actual_category === filters.actual_category && g.ids.includes(t.id),
+          )),
     )
     const start = Number(after ?? '0')
     const page = picked.slice(start, start + 2)
@@ -298,6 +346,8 @@ beforeEach(() => {
     groups: [],
     accounts: [],
     transactions: [],
+    undecided: [],
+    decided: [],
   }
   serverUp()
 })
@@ -1168,6 +1218,7 @@ describe('Transactions', () => {
     source: 'import',
     categorization_reason: null,
     import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
+    undecided: false,
     ...fields,
   })
 
@@ -1442,5 +1493,139 @@ describe('Transactions', () => {
     const { wrapper } = await open('/transactions/9')
     expect(wrapper.get('aside [role="alert"]').text()).toBe("There's no such transaction.")
     expect(wrapper.get('aside h2').text()).toBe('Transaction')
+  })
+})
+
+describe('From Actual, undecided', () => {
+  const row = (id: number, payee: string, amount: number): Transaction => ({
+    id,
+    date: '2026-01-05',
+    amount_minor: amount,
+    status: 'posted',
+    payee,
+    raw_description: payee.toUpperCase(),
+    account_id: 1,
+    account: 'Checking',
+    category_id: null,
+    category: null,
+    split: false,
+    split_categories: 0,
+    transfer_account: null,
+    tags: [],
+    memo: null,
+    splits: [],
+    source: 'import',
+    categorization_reason: null,
+    import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
+    undecided: true,
+  })
+
+  beforeEach(() => {
+    server.groups = [
+      {
+        id: 1,
+        name: 'Food',
+        kind: 'expense',
+        hidden: false,
+        categories: [
+          { id: 11, name: 'Groceries', hidden: false },
+          { id: 12, name: 'Secret', hidden: true },
+        ],
+      },
+    ]
+    server.transactions = [row(3, 'Pet Shop', -2000), row(2, 'Bakery', -500), row(1, 'Vet', -7000)]
+    server.undecided = [
+      { actual_category: 'Pets', ids: [3, 1] },
+      { actual_category: 'Treats', ids: [2] },
+    ]
+  })
+
+  const labels = (wrapper: Awaited<ReturnType<typeof open>>['wrapper']) =>
+    wrapper
+      .get('main')
+      .findAll('a')
+      .map((a) => a.text())
+
+  it('is listed under More and in the sidebar while rows wait, and not after', async () => {
+    const { wrapper } = await open('/more')
+    expect(labels(wrapper)).toEqual([
+      'Categories',
+      'Import from Actual',
+      'From Actual, undecided',
+      'Settings',
+    ])
+    expect(links(wrapper, 'Sidebar').map((a) => a.text())).toContain('From Actual, undecided')
+    server.undecided = []
+    const empty = await open('/more')
+    expect(labels(empty.wrapper)).toEqual(['Categories', 'Import from Actual', 'Settings'])
+    expect(links(empty.wrapper, 'Sidebar').map((a) => a.text())).not.toContain(
+      'From Actual, undecided',
+    )
+  })
+
+  it('groups the rows by Actual category with count and total, and opens a group', async () => {
+    const { wrapper } = await open('/undecided')
+    expect(wrapper.get('h1').text()).toBe('From Actual, undecided')
+    const groups = wrapper.findAll('main section')
+    expect(groups.map((g) => g.get('h2').text())).toEqual(['Pets', 'Treats'])
+    expect(groups[0]?.get('p').text()).toBe('2 rows · -€90.00')
+    expect(groups[1]?.get('p').text()).toBe('1 row · -€5.00')
+    expect(groups[0]?.findAll('li')).toHaveLength(0)
+    await groups[0]?.get('button[aria-expanded]').trigger('click')
+    await flushPromises()
+    expect(
+      wrapper
+        .findAll('main section')[0]
+        ?.findAll('li')
+        .map((li) => li.text()),
+    ).toEqual(['Pet ShopJan 5, 2026 · Checking-€20.00', 'VetJan 5, 2026 · Checking-€70.00'])
+    expect(server.listedWith).toMatchObject({ undecided: 'true', actual_category: 'Pets' })
+  })
+
+  it('moves a whole group to a category, and the group leaves', async () => {
+    const { wrapper } = await open('/undecided')
+    const pets = wrapper.findAll('main section')[0]
+    expect(pets?.get('button:not([aria-expanded])').attributes('disabled')).toBeDefined()
+    const picker = pets?.get('select')
+    // Hidden categories aren't offered.
+    expect(picker?.findAll('option').map((o) => o.text())).toEqual(['Move all to…', 'Groceries'])
+    await picker?.setValue('11')
+    await pets?.get('button:not([aria-expanded])').trigger('click')
+    await flushPromises()
+    expect(server.decided).toEqual([{ actual_category: 'Pets', category_id: 11 }])
+    expect(wrapper.findAll('main section').map((g) => g.get('h2').text())).toEqual(['Treats'])
+  })
+
+  it('sets one row from its detail, and it leaves the list', async () => {
+    const { router, wrapper } = await open('/undecided')
+    await wrapper.findAll('main section')[1]?.get('button[aria-expanded]').trigger('click')
+    await flushPromises()
+    await wrapper.get('main li a').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/undecided/2')
+    const form = wrapper.get('aside form')
+    await form.get('select').setValue('11')
+    await form.trigger('submit')
+    await flushPromises()
+    expect(server.decided).toEqual([{ id: 2, category_id: 11 }])
+    // Treats had only that row, so nothing is left in it.
+    expect(wrapper.findAll('main section').map((g) => g.get('h2').text())).toEqual(['Pets'])
+  })
+
+  it('says nothing is left once the last group is decided', async () => {
+    server.undecided = []
+    const { wrapper } = await open('/undecided')
+    expect(wrapper.get('main').text()).toContain('Nothing left to decide.')
+  })
+
+  it("offers the picker in a row's detail only while it is undecided", async () => {
+    server.transactions = [
+      row(3, 'Pet Shop', -2000),
+      { ...row(2, 'Bakery', -500), undecided: false },
+    ]
+    const { wrapper } = await open('/transactions/3')
+    expect(wrapper.find('aside form').exists()).toBe(true)
+    const done = await open('/transactions/2')
+    expect(done.wrapper.find('aside form').exists()).toBe(false)
   })
 })

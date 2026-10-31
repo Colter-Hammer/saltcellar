@@ -1596,6 +1596,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "actual_category",
+            "in": "query",
+            "description": "With `undecided=true`: only the rows that came in under this Actual category; an empty\nvalue is the rows whose export kept none *(agent)*.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1610,7 +1619,7 @@
             }
           },
           "400": {
-            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag` or `undecided` can't be read.",
+            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided` or `actual_category` can't be read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1674,6 +1683,171 @@
           },
           "404": {
             "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}/category": {
+      "put": {
+        "tags": [
+          "undecided"
+        ],
+        "summary": "`PUT /api/v1/transactions/{id}/category`: gives one undecided row its category, as above.",
+        "operationId": "setTransactionCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decide"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction, with its category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction, or it isn't an undecided row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: there's no such category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/undecided": {
+      "get": {
+        "tags": [
+          "undecided"
+        ],
+        "summary": "`GET /api/v1/undecided`: the undecided rows grouped by their Actual category, with each group's\ncount and total.",
+        "operationId": "getUndecided",
+        "responses": {
+          "200": {
+            "description": "The groups.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndecidedList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/undecided/move": {
+      "post": {
+        "tags": [
+          "undecided"
+        ],
+        "summary": "`POST /api/v1/undecided/move`: gives every undecided row of an Actual category the category, in\none database transaction. Each row records `categorized_by = 'user'` and the reason \"Set by\n<display name>\"; they leave the list.",
+        "operationId": "moveUndecided",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveGroup"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The rows have the category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Moved"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no undecided rows are left under that Actual category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: there's no such category.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2424,6 +2598,20 @@
           }
         }
       },
+      "Decide": {
+        "type": "object",
+        "description": "Where to put a group's rows, or one row.",
+        "required": [
+          "category_id"
+        ],
+        "properties": {
+          "category_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "An app category's id."
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "required": [
@@ -2609,6 +2797,39 @@
           }
         }
       },
+      "MoveGroup": {
+        "type": "object",
+        "description": "Where to put every undecided row of one Actual category.",
+        "required": [
+          "actual_category",
+          "category_id"
+        ],
+        "properties": {
+          "actual_category": {
+            "type": "string",
+            "description": "The group, as `GET /api/v1/undecided` names it."
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "An app category's id."
+          }
+        }
+      },
+      "Moved": {
+        "type": "object",
+        "description": "How many rows moved.",
+        "required": [
+          "moved"
+        ],
+        "properties": {
+          "moved": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "NewCategory": {
         "type": "object",
         "required": [
@@ -2775,7 +2996,8 @@
               "splits",
               "source",
               "categorization_reason",
-              "import_batch"
+              "import_batch",
+              "undecided"
             ],
             "properties": {
               "categorization_reason": {
@@ -2811,6 +3033,10 @@
                   "$ref": "#/components/schemas/SplitLine"
                 },
                 "description": "Empty unless it's split."
+              },
+              "undecided": {
+                "type": "boolean",
+                "description": "One of the rows waiting in **From Actual, undecided**: it can be given a category with\n`PUT /api/v1/transactions/{id}/category`."
               }
             }
           }
@@ -2950,6 +3176,47 @@
           "pending",
           "posted"
         ]
+      },
+      "UndecidedGroup": {
+        "type": "object",
+        "description": "The undecided rows that came in under one Actual category.",
+        "required": [
+          "actual_category",
+          "rows",
+          "total_minor"
+        ],
+        "properties": {
+          "actual_category": {
+            "type": "string",
+            "description": "The category's name in Actual; empty when the export kept none."
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "total_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Their amounts summed, in minor units: negative is money out."
+          }
+        }
+      },
+      "UndecidedList": {
+        "type": "object",
+        "description": "The groups of undecided rows.",
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UndecidedGroup"
+            },
+            "description": "By Actual category name, ignoring case; empty once nothing is left to decide."
+          }
+        }
       },
       "UseReset": {
         "type": "object",

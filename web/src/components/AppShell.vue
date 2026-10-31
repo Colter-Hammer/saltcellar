@@ -2,6 +2,7 @@
 // Phone: header + bottom tab bar. From `lg`: sidebar (docs/spec/foundations.md#frontend).
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useUndecided } from '@/api/undecided'
 import LogOutButton from '@/components/LogOutButton.vue'
 import ServerBanner from '@/components/ServerBanner.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
@@ -9,6 +10,8 @@ import { cn } from '@/lib/utils'
 
 const route = useRoute()
 const title = computed(() => route.meta.title)
+const undecided = useUndecided()
+const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) > 0))
 </script>
 
 <template>
@@ -19,7 +22,7 @@ const title = computed(() => route.meta.title)
     >
       <div class="px-2 py-3 font-semibold">Saltcellar</div>
       <RouterLink
-        v-for="item in sidebarItems"
+        v-for="item in sidebar"
         :key="item.to"
         v-slot="{ href, navigate, isActive }"
         :to="item.to"
