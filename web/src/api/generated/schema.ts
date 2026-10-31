@@ -180,6 +180,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/imports`: every import batch, active or undone, latest first. */
+        get: operations["listImportBatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/actual": {
         parameters: {
             query?: never;
@@ -225,6 +242,29 @@ export interface paths {
         put?: never;
         /** `POST /api/v1/imports/actual/{id}/commit`: imports the upload with the importer's choices. */
         post: operations["commitActualImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/imports/{id}/undo`: undoes an active batch in one database transaction: deletes
+         *     the rows it inserted with their split lines, tags and transfers, restores the fields it filled
+         *     on matched rows, deletes the accounts it created that have no rows left and the payees and tags
+         *     left unused, and marks it undone. Categories stay. If any inserted row was edited since, it
+         *     answers `409 rows_edited` and changes nothing until sent again with `confirm: true`.
+         */
+        post: operations["undoImport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -896,6 +936,30 @@ export interface components {
              */
             timezone: string;
         };
+        /** @description One import batch. */
+        ImportBatch: {
+            /**
+             * Format: int64
+             * @description Rows it added.
+             */
+            added: number;
+            file_name: string;
+            /** @description `csv`, `ofx` or `actual`. */
+            format: string;
+            /** Format: int64 */
+            id: number;
+            /** @description When it was imported, as an RFC 3339 time in UTC. */
+            imported_at: string;
+            /** @description The display name of who imported it; absent if that login is gone. */
+            imported_by?: string | null;
+            /**
+             * Format: int64
+             * @description Rows it matched to ones already there.
+             */
+            matched: number;
+            /** @description `active`, or `undone`. */
+            state: string;
+        };
         /** @description The import a transaction came in with. */
         ImportBatchRef: {
             file_name: string;
@@ -903,6 +967,10 @@ export interface components {
             id: number;
             /** @description RFC 3339, UTC. */
             imported_at: string;
+        };
+        /** @description The batches, latest first. */
+        ImportBatches: {
+            batches: components["schemas"]["ImportBatch"][];
         };
         ImportedAccount: {
             /** @description Whether the import created it, rather than adding to one there already. */
@@ -1069,6 +1137,18 @@ export interface components {
         UndecidedList: {
             /** @description By Actual category name, ignoring case; empty once nothing is left to decide. */
             groups: components["schemas"]["UndecidedGroup"][];
+        };
+        /** @description Whether to undo even if rows were edited since. */
+        UndoRequest: {
+            /** @description `true` once the person has been asked about the edited rows. Absent means `false`. */
+            confirm?: boolean;
+        };
+        /** @description What an undo removed. */
+        Undone: {
+            /** Format: int64 */
+            accounts_deleted: number;
+            /** Format: int64 */
+            rows_deleted: number;
         };
         UseReset: {
             /** @description At least 12 characters. */
@@ -1613,6 +1693,35 @@ export interface operations {
             };
         };
     };
+    listImportBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatches"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     uploadActualExport: {
         parameters: {
             query?: never;
@@ -1796,6 +1905,60 @@ export interface operations {
             };
             /** @description `invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    undoImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import batch. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoRequest"];
+            };
+        };
+        responses: {
+            /** @description The batch is undone. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Undone"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such import. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `rows_edited`: rows were edited since and `confirm` wasn't set; or `already_undone`. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

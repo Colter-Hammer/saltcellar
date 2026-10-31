@@ -2,7 +2,14 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
-import { formatDate, formatMoney, localeWeekStart, useFormatting, weekdayName } from './format'
+import {
+  formatDate,
+  formatInstantDay,
+  formatMoney,
+  localeWeekStart,
+  useFormatting,
+  weekdayName,
+} from './format'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -171,5 +178,13 @@ describe('formatDate', () => {
   it('rejects anything but YYYY-MM-DD', () => {
     expect(() => formatDate('2026-3-1')).toThrow('2026-3-1')
     expect(() => formatDate('2026-02-30')).toThrow('2026-02-30')
+  })
+})
+
+describe('formatInstantDay', () => {
+  it('gives the day in the given timezone', () => {
+    const instant = '2026-10-30T02:30:00.000Z'
+    expect(formatInstantDay(instant, 'America/Chicago', { locale: 'en-US' })).toBe('Oct 29, 2026')
+    expect(formatInstantDay(instant, 'Europe/Paris', { locale: 'en-US' })).toBe('Oct 30, 2026')
   })
 })

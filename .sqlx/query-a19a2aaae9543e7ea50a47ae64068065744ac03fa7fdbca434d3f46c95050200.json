@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM tags WHERE id = ?1\n                   AND NOT EXISTS (SELECT 1 FROM transaction_tags WHERE tag_id = ?1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a19a2aaae9543e7ea50a47ae64068065744ac03fa7fdbca434d3f46c95050200"
+}

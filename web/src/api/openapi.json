@@ -615,6 +615,37 @@
         }
       }
     },
+    "/api/v1/imports": {
+      "get": {
+        "tags": [
+          "batches"
+        ],
+        "summary": "`GET /api/v1/imports`: every import batch, active or undone, latest first.",
+        "operationId": "listImportBatches",
+        "responses": {
+          "200": {
+            "description": "The batches.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatches"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/actual": {
       "post": {
         "tags": [
@@ -840,6 +871,79 @@
           },
           "422": {
             "description": "`invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{id}/undo": {
+      "post": {
+        "tags": [
+          "batches"
+        ],
+        "summary": "`POST /api/v1/imports/{id}/undo`: undoes an active batch in one database transaction: deletes\nthe rows it inserted with their split lines, tags and transfers, restores the fields it filled\non matched rows, deletes the accounts it created that have no rows left and the payees and tags\nleft unused, and marks it undone. Categories stay. If any inserted row was edited since, it\nanswers `409 rows_edited` and changes nothing until sent again with `confirm: true`.",
+        "operationId": "undoImport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The import batch.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The batch is undone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Undone"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such import.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`rows_edited`: rows were edited since and `confirm` wasn't set; or `already_undone`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2732,6 +2836,57 @@
           }
         }
       },
+      "ImportBatch": {
+        "type": "object",
+        "description": "One import batch.",
+        "required": [
+          "id",
+          "imported_at",
+          "format",
+          "file_name",
+          "added",
+          "matched",
+          "state"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows it added."
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "description": "`csv`, `ofx` or `actual`."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "imported_at": {
+            "type": "string",
+            "description": "When it was imported, as an RFC 3339 time in UTC."
+          },
+          "imported_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name of who imported it; absent if that login is gone."
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows it matched to ones already there."
+          },
+          "state": {
+            "type": "string",
+            "description": "`active`, or `undone`."
+          }
+        }
+      },
       "ImportBatchRef": {
         "type": "object",
         "description": "The import a transaction came in with.",
@@ -2751,6 +2906,21 @@
           "imported_at": {
             "type": "string",
             "description": "RFC 3339, UTC."
+          }
+        }
+      },
+      "ImportBatches": {
+        "type": "object",
+        "description": "The batches, latest first.",
+        "required": [
+          "batches"
+        ],
+        "properties": {
+          "batches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportBatch"
+            }
           }
         }
       },
@@ -3215,6 +3385,36 @@
               "$ref": "#/components/schemas/UndecidedGroup"
             },
             "description": "By Actual category name, ignoring case; empty once nothing is left to decide."
+          }
+        }
+      },
+      "UndoRequest": {
+        "type": "object",
+        "description": "Whether to undo even if rows were edited since.",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "`true` once the person has been asked about the edited rows. Absent means `false`."
+          }
+        }
+      },
+      "Undone": {
+        "type": "object",
+        "description": "What an undo removed.",
+        "required": [
+          "rows_deleted",
+          "accounts_deleted"
+        ],
+        "properties": {
+          "accounts_deleted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "rows_deleted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

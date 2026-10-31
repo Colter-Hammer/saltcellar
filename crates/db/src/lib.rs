@@ -26,8 +26,8 @@ pub use categories::{
 };
 pub use household::{Household, household};
 pub use imports::{
-    ActualCommit, Committed, CommittedAccount, ImportError, actual_import_in_place,
-    commit_actual_import,
+    ActualCommit, Batch, Committed, CommittedAccount, ImportError, UndoError, Undone,
+    actual_import_in_place, commit_actual_import, import_batches, undo_import,
 };
 pub use profile::{
     Profile, ProfileChange, end_all_sessions, password_hash, profile, set_password, update_profile,

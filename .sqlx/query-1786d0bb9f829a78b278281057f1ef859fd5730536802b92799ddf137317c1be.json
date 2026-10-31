@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT b.id AS \"id!: i64\", b.imported_at, b.format, b.file_name,\n                  u.display_name AS \"imported_by?\", b.added, b.matched, b.undone_at\n           FROM import_batches b LEFT JOIN users u ON u.id = b.imported_by\n           ORDER BY b.imported_at DESC, b.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "imported_at",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "imported_at"
+          }
+        }
+      },
+      {
+        "name": "format",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "format"
+          }
+        }
+      },
+      {
+        "name": "file_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "imported_by?",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "added",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "added"
+          }
+        }
+      },
+      {
+        "name": "matched",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "matched"
+          }
+        }
+      },
+      {
+        "name": "undone_at",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "undone_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "1786d0bb9f829a78b278281057f1ef859fd5730536802b92799ddf137317c1be"
+}

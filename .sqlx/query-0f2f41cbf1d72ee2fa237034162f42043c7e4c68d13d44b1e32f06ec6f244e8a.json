@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM accounts WHERE created_by_batch_id = ?\n           AND NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = accounts.id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0f2f41cbf1d72ee2fa237034162f42043c7e4c68d13d44b1e32f06ec6f244e8a"
+}
