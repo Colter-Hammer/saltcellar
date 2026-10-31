@@ -23,6 +23,10 @@ pub struct TransactionRow {
     pub category: Option<String>,
     /// Whether its amount is split across categories, in its split lines.
     pub split: bool,
+    /// How many different categories its split lines are in; 0 unless it's split.
+    pub split_categories: i64,
+    /// The other account of the transfer it's a leg of; `None` for any other transaction.
+    pub transfer_account: Option<String>,
     /// Its tags' names, in name order.
     pub tags: Vec<String>,
 }
@@ -195,18 +199,27 @@ async fn rows(
         .search
         .as_ref()
         .and_then(|search| search.amount_minor);
-    let category_id = match filter.category {
-        Some(CategoryFilter::Category(id)) => Some(id),
-        _ => None,
-    };
+    let category_id = filter.category.and_then(|category| match category {
+        CategoryFilter::Category(id) => Some(id),
+        CategoryFilter::Uncategorized => None,
+    });
     let uncategorized = filter.category == Some(CategoryFilter::Uncategorized);
-    let from = filter.from.map(|date| date.to_string());
-    let to = filter.to.map(|date| date.to_string());
-    let found = sqlx::query!(
+    let (from, to) = (
+        filter.from.map(|d| d.to_string()),
+        filter.to.map(|d| d.to_string()),
+    );
+    let found = sqlx::query_as!(
+        Found,
         r#"SELECT t.id AS "id!: i64", t.date, t.amount_minor, t.status, p.name AS "payee?",
              t.raw_description, t.account_id, a.name AS account, t.category_id, c.name AS "category?",
              EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id)
                AS "split!: bool",
+             (SELECT COUNT(DISTINCT sp.category_id) FROM transaction_splits sp
+               WHERE sp.transaction_id = t.id) AS "split_categories!: i64",
+             (SELECT oa.name FROM transfers tr
+                JOIN accounts oa ON oa.id = CASE WHEN tr.from_txn_id = t.id
+                                                 THEN tr.to_account_id ELSE tr.from_account_id END
+               WHERE tr.from_txn_id = t.id OR tr.to_txn_id = t.id) AS "transfer_account?",
              (SELECT json_group_array(name) FROM
                (SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id
                  WHERE tt.transaction_id = t.id ORDER BY g.name)) AS "tags!: String"
@@ -257,31 +270,62 @@ async fn rows(
     )
     .fetch_all(pool)
     .await?;
-    found
-        .into_iter()
-        .map(|row| {
-            Ok(TransactionRow {
-                id: row.id,
-                date: row.date.parse().map_err(|_| Error::Unreadable {
-                    what: "a date",
-                    value: row.date.clone(),
-                })?,
-                amount: Money::from_minor(row.amount_minor),
-                status: Status::from_stored(&row.status).ok_or(Error::Unreadable {
-                    what: "a transaction status",
-                    value: row.status.clone(),
-                })?,
-                payee: row.payee,
-                raw_description: row.raw_description,
-                account_id: row.account_id,
-                account: row.account,
-                category_id: row.category_id,
-                category: row.category,
-                split: row.split,
-                tags: read_tags(&row.tags)?,
-            })
+    found.into_iter().map(TransactionRow::try_from).collect()
+}
+
+/// A row as the query reads it.
+struct Found {
+    id: i64,
+    date: String,
+    amount_minor: i64,
+    status: String,
+    payee: Option<String>,
+    raw_description: String,
+    account_id: i64,
+    account: String,
+    category_id: Option<i64>,
+    category: Option<String>,
+    split: bool,
+    split_categories: i64,
+    transfer_account: Option<String>,
+    tags: String,
+}
+
+impl TryFrom<Found> for TransactionRow {
+    type Error = Error;
+
+    fn try_from(row: Found) -> Result<Self, Error> {
+        Ok(TransactionRow {
+            id: row.id,
+            date: read_date(row.date)?,
+            amount: Money::from_minor(row.amount_minor),
+            status: read_status(row.status)?,
+            payee: row.payee,
+            raw_description: row.raw_description,
+            account_id: row.account_id,
+            account: row.account,
+            category_id: row.category_id,
+            category: row.category,
+            split: row.split,
+            split_categories: row.split_categories,
+            transfer_account: row.transfer_account,
+            tags: read_tags(&row.tags)?,
         })
-        .collect()
+    }
+}
+
+fn read_date(text: String) -> Result<Date, Error> {
+    text.parse().map_err(|_| Error::Unreadable {
+        what: "a date",
+        value: text,
+    })
+}
+
+fn read_status(text: String) -> Result<Status, Error> {
+    Status::from_stored(&text).ok_or(Error::Unreadable {
+        what: "a transaction status",
+        value: text,
+    })
 }
 
 /// A `LIKE … ESCAPE '\'` pattern for text containing `text`: its `%`, `_` and `\` match only
@@ -418,6 +462,8 @@ mod tests {
                 category_id: None,
                 category: None,
                 split: true,
+                split_categories: 2,
+                transfer_account: None,
                 tags: vec!["gift \"big\"".to_owned(), "trip".to_owned()],
             }
         );

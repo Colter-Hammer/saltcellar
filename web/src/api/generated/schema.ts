@@ -645,13 +645,13 @@ export interface components {
             batch_id: number;
             /**
              * Format: int64
-             * @description Transfers linked between two imported accounts (none yet: each leg comes in marked
-             *     transfer).
+             * @description Transfers linked between two imported accounts; their legs are among the rows marked
+             *     transfer.
              */
             linked_transfers: number;
             /**
              * Format: int64
-             * @description Rows that took the category theirs goes to.
+             * @description Rows that took the category theirs goes to, split rows among them.
              */
             mapped: number;
             /**
@@ -666,7 +666,8 @@ export interface components {
             uncategorized: number;
             /**
              * Format: int64
-             * @description Rows on Decide later, splits among them: they wait in From Actual, undecided.
+             * @description Rows on Decide later, and splits with a line that has no category to go to: they wait in
+             *     From Actual, undecided.
              */
             undecided: number;
         };
@@ -945,9 +946,16 @@ export interface components {
             raw_description: string;
             /** @description Split across categories: its lines are in its detail. */
             split: boolean;
+            /**
+             * Format: int32
+             * @description How many different categories its split lines are in; 0 unless it's split.
+             */
+            split_categories: number;
             status: components["schemas"]["TransactionStatus"];
             /** @description Its tags' names, in name order. */
             tags: string[];
+            /** @description The other account of the transfer it's a leg of; null for any other transaction. */
+            transfer_account: string | null;
         };
         /**
          * @description Where it came from: the bank (through the sync provider), a file, or entered by hand.

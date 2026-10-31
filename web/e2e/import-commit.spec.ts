@@ -26,7 +26,7 @@ test('the fake export is imported and summed up', async ({ page }) => {
   )
   const summary = done.getByRole('list', { name: 'Summary' })
   await expect(summary).toContainText('5 accounts created')
-  await expect(summary).toContainText('0 linked transfers')
+  await expect(summary).toContainText('3 linked transfers')
   // Step 2's rows less each account's starting balance, which became its opening balance.
   const perAccount = done.getByRole('table', { name: 'Rows imported per account' })
   await expect(perAccount.getByRole('rowheader')).toHaveText([

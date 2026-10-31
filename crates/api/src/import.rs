@@ -434,16 +434,17 @@ pub struct ActualImportDone {
     accounts_created: u64,
     /// Each account the import created or added rows to, with its rows, in the export's order.
     accounts: Vec<ImportedAccount>,
-    /// Rows that took the category theirs goes to.
+    /// Rows that took the category theirs goes to, split rows among them.
     mapped: u64,
-    /// Rows on Decide later, splits among them: they wait in From Actual, undecided.
+    /// Rows on Decide later, and splits with a line that has no category to go to: they wait in
+    /// From Actual, undecided.
     undecided: u64,
     /// Rows marked transfer: those whose category goes to Transfer, and transfer legs.
     transfer: u64,
     /// Rows with no category in Actual.
     uncategorized: u64,
-    /// Transfers linked between two imported accounts (none yet: each leg comes in marked
-    /// transfer).
+    /// Transfers linked between two imported accounts; their legs are among the rows marked
+    /// transfer.
     linked_transfers: u64,
 }
 
@@ -548,7 +549,7 @@ pub async fn commit(
             undecided: counts.undecided,
             transfer: counts.transfer,
             uncategorized: counts.uncategorized,
-            linked_transfers: 0,
+            linked_transfers: plan.transfers.len() as u64,
         }),
     ))
 }

@@ -76,6 +76,11 @@ pub struct TransactionRow {
     category: Option<String>,
     /// Split across categories: its lines are in its detail.
     split: bool,
+    /// How many different categories its split lines are in; 0 unless it's split.
+    split_categories: u32,
+    /// The other account of the transfer it's a leg of; null for any other transaction.
+    #[schema(required = true)]
+    transfer_account: Option<String>,
     /// Its tags' names, in name order.
     tags: Vec<String>,
 }
@@ -94,6 +99,8 @@ impl From<db::TransactionRow> for TransactionRow {
             category_id: row.category_id,
             category: row.category,
             split: row.split,
+            split_categories: u32::try_from(row.split_categories).unwrap_or_default(),
+            transfer_account: row.transfer_account,
             tags: row.tags,
         }
     }

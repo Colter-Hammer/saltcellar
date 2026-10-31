@@ -4,7 +4,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::{Currency, Date};
+use crate::{Currency, Date, Money};
 
 /// Where a page of transactions ended: the last row's date and id. Lists run newest first, by date
 /// then id, so the next page is every row before this one in that order
@@ -162,9 +162,29 @@ pub enum CategoryFilter {
     Category(i64),
 }
 
+/// Whether a split's lines add up to the transaction's amount: the invariant every split keeps.
+/// A split with no lines isn't one, and amounts too big to add don't add up.
+#[must_use]
+pub fn lines_add_up(total: Money, lines: impl IntoIterator<Item = Money>) -> bool {
+    let mut lines = lines.into_iter().peekable();
+    lines.peek().is_some() && Money::checked_sum(lines) == Some(total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_lines_must_add_up_to_the_amount() {
+        let m = Money::from_minor;
+        assert!(lines_add_up(m(-3_005), [m(-2_000), m(-1_005)]));
+        assert!(lines_add_up(m(-3_005), [m(-2_000), m(-1_005), m(0)]));
+        assert!(lines_add_up(m(500), [m(900), m(-400)]));
+        assert!(!lines_add_up(m(-3_005), [m(-2_000), m(-1_000)]));
+        assert!(!lines_add_up(m(-3_005), [m(-3_005), m(-3_005)]));
+        assert!(!lines_add_up(m(0), []));
+        assert!(!lines_add_up(m(-1), [m(i64::MAX), m(i64::MAX)]));
+    }
 
     #[test]
     fn a_cursor_reads_back_what_it_writes() {

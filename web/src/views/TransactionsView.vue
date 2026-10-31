@@ -15,6 +15,7 @@ import TransactionFilters from '@/components/TransactionFilters.vue'
 import { formatDate, formatMoney, useFormatting } from '@/lib/format'
 import {
   categoryLabel,
+  isUncategorized,
   groupByDate,
   isFiltered,
   payeeLabel,
@@ -167,9 +168,7 @@ onBeforeUnmount(() => {
                   </span>
                   <span
                     class="truncate text-xs"
-                    :class="
-                      row.category === null && !row.split ? 'font-medium' : 'text-muted-foreground'
-                    "
+                    :class="isUncategorized(row) ? 'font-medium' : 'text-muted-foreground'"
                     >{{ categoryLabel(row) }}</span
                   >
                 </span>

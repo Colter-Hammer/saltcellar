@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET categorized_by = 'transfer' WHERE id IN (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1b4680e392a94655cda744607642c3fc010af14b78d46ce71410bf3a23ab2392"
+}
