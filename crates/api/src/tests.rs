@@ -1158,3 +1158,4 @@ fn the_openapi_document_describes_health_and_the_error_envelope() {
 #[path = "tests/categories.rs"]
 mod categories;
 mod import;
+mod undo;

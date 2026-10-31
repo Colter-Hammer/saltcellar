@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(*) AS \"edited!: i64\" FROM transactions t\n           JOIN import_batch_rows ib ON ib.transaction_id = t.id\n           WHERE ib.batch_id = ? AND ib.outcome = 'inserted'\n             AND (t.categorized_by = 'user' OR t.updated_by IS NOT NULL\n                  OR t.updated_at <> t.created_at)",
+  "describe": {
+    "columns": [
+      {
+        "name": "edited!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a69c522a2042e3d690970a8d683b11d765aa8fa98e4a400c3f02f4ef14ae0322"
+}

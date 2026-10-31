@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
 import type { Account } from './api/accounts'
+import type { ImportBatch } from './api/imports'
 import type { Transaction } from './api/transactions'
 import { call, client } from './api/client'
 import { createAppRouter } from './router'
@@ -40,6 +41,12 @@ interface FakeServer {
   undecided: { actual_category: string; ids: number[] }[]
   /** The category each `POST /api/v1/undecided/move` and `PUT …/category` was sent. */
   decided: { actual_category?: string; id?: number; category_id: number }[]
+  /** The import batches, as `GET /api/v1/imports` lists them. */
+  batches: ImportBatch[]
+  /** How many rows of the batches were edited since: Undo asks first while it's not 0. */
+  edited: number
+  /** What each `POST /api/v1/imports/{id}/undo` was sent. */
+  undone: { id: number; confirm: boolean }[]
 }
 
 let server: FakeServer
@@ -71,6 +78,9 @@ async function answer(request: Request): Promise<Response> {
     return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
   }
   if (path.startsWith('/api/v1/undecided')) return undecided(request, path)
+  if (path.startsWith('/api/v1/imports') && !path.startsWith('/api/v1/imports/actual')) {
+    return imports(request, path)
+  }
   if (path.startsWith('/api/v1/transactions')) return transactions(request, path)
   if (path === '/api/v1/tags') {
     return Response.json({
@@ -122,6 +132,21 @@ async function answer(request: Request): Promise<Response> {
     { error: { code: 'not_found', message: "There's nothing at this address." } },
     { status: 404 },
   )
+}
+
+async function imports(request: Request, path: string): Promise<Response> {
+  if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+  if (path === '/api/v1/imports') return Response.json({ batches: server.batches })
+  const id = Number(/\/imports\/(\d+)\/undo$/.exec(path)?.[1])
+  const batch = server.batches.find((b) => b.id === id)
+  if (batch === undefined) return error(404, 'not_found', "There's no such import.")
+  const { confirm } = (await request.json()) as { confirm: boolean }
+  server.undone.push({ id, confirm })
+  if (server.edited > 0 && !confirm) {
+    return error(409, 'rows_edited', `${String(server.edited)} of its rows were edited.`)
+  }
+  batch.state = 'undone'
+  return Response.json({ rows_deleted: 3, accounts_deleted: 1 })
 }
 
 async function undecided(request: Request, path: string): Promise<Response> {
@@ -348,6 +373,9 @@ beforeEach(() => {
     transactions: [],
     undecided: [],
     decided: [],
+    batches: [],
+    edited: 0,
+    undone: [],
   }
   serverUp()
 })
@@ -812,17 +840,94 @@ describe('logging out', () => {
 })
 
 describe('Settings', () => {
-  it('lists Profile and Categories, and opens Profile', async () => {
+  it('lists Profile, Categories and Imports, and opens Profile', async () => {
     const { router, wrapper } = await open('/settings')
     const links = wrapper.get('main').findAll('a')
     expect(links.map((a) => [a.text(), a.attributes('href')])).toEqual([
       ['Profile', '/settings/profile'],
       ['Categories', '/categories'],
+      ['Imports', '/settings/imports'],
     ])
     await links[0]?.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/settings/profile')
     expect(wrapper.get('h1').text()).toBe('Profile')
+  })
+})
+
+describe('Settings › Imports', () => {
+  const batch = (id: number, state: string): ImportBatch => ({
+    id,
+    imported_at: '2026-10-30T02:30:00.000Z',
+    format: 'actual',
+    file_name: 'export.zip',
+    imported_by: 'Sam',
+    added: 80,
+    matched: 0,
+    state,
+  })
+  const buttons = (wrapper: Wrapper) =>
+    wrapper
+      .get('main')
+      .findAll('button')
+      .map((b) => b.text())
+
+  it('says so when nothing has been imported', async () => {
+    const { wrapper } = await open('/settings/imports')
+    expect(wrapper.get('h1').text()).toBe('Imports')
+    expect(wrapper.get('main').text()).toContain('Nothing has been imported yet.')
+  })
+
+  it('lists the batches with day, format, file, who and counts, and undoes an active one', async () => {
+    server.batches = [batch(2, 'active'), batch(1, 'undone')]
+    const { wrapper } = await open('/settings/imports')
+    const items = wrapper.findAll('main li')
+    expect(items[0]?.text()).toBe(
+      'Oct 30, 2026Actual · export.zipBy Sam · 80 added, 0 matched Active Undo',
+    )
+    expect(items[1]?.text()).toContain('Undone')
+    expect(buttons(wrapper)).toEqual(['Undo'])
+    await wrapper.get('main button').trigger('click')
+    await flushPromises()
+    expect(server.undone).toEqual([{ id: 2, confirm: false }])
+    expect(buttons(wrapper)).toEqual([])
+    expect(wrapper.findAll('main li').map((li) => li.text().includes('Undone'))).toEqual([
+      true,
+      true,
+    ])
+  })
+
+  it('asks first when rows were edited, and cancelling changes nothing', async () => {
+    server.batches = [batch(2, 'active')]
+    server.edited = 3
+    const { wrapper } = await open('/settings/imports')
+    await wrapper.get('main button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe('3 of its rows were edited.')
+    expect(buttons(wrapper)).toEqual(['Undo anyway', 'Cancel'])
+    await wrapper.findAll('main button')[1]?.trigger('click')
+    expect(buttons(wrapper)).toEqual(['Undo'])
+    expect(server.batches[0]?.state).toBe('active')
+
+    await wrapper.get('main button').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('main button')[0]?.trigger('click')
+    await flushPromises()
+    expect(server.undone).toEqual([
+      { id: 2, confirm: false },
+      { id: 2, confirm: false },
+      { id: 2, confirm: true },
+    ])
+    expect(server.batches[0]?.state).toBe('undone')
+  })
+
+  it('shows what else goes wrong', async () => {
+    server.batches = [batch(2, 'active')]
+    const { wrapper } = await open('/settings/imports')
+    server.batches = []
+    await wrapper.get('main button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe("There's no such import.")
   })
 })
 
