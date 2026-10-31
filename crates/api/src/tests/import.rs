@@ -43,7 +43,7 @@ fn uploads(app: &App) -> Vec<PathBuf> {
 }
 
 /// Every table's row count, to show an upload writes nothing to the database.
-async fn row_counts(app: &App) -> Vec<(String, i64)> {
+pub(super) async fn row_counts(app: &App) -> Vec<(String, i64)> {
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     )
@@ -253,7 +253,7 @@ async fn plan(app: &App, id: &str) -> (StatusCode, Value) {
 }
 
 /// Uploads the fake export and reads its accounts and categories back.
-async fn fake_plan(app: &App) -> Value {
+pub(super) async fn fake_plan(app: &App) -> Value {
     let (status, upload) = upload(app, fixture("actual-export.zip")).await;
     assert_eq!(status, StatusCode::CREATED, "{upload}");
     let id = upload["id"].as_str().unwrap();
@@ -264,7 +264,7 @@ async fn fake_plan(app: &App) -> Value {
 }
 
 /// The fake export's ids for its accounts (kind 1) and categories (kind 3).
-fn fake_id(kind: u32, n: u32) -> String {
+pub(super) fn fake_id(kind: u32, n: u32) -> String {
     format!("{kind:08x}-0000-4000-8000-{n:012x}")
 }
 
@@ -461,7 +461,7 @@ async fn read_back(app: &App, id: &str) -> domain::actual::Export {
 }
 
 /// Every account on Create new as step 2 starts it.
-fn create_all(plan: &Value) -> Vec<Value> {
+pub(super) fn create_all(plan: &Value) -> Vec<Value> {
     plan["accounts"]
         .as_array()
         .unwrap()
@@ -480,7 +480,7 @@ fn create_all(plan: &Value) -> Vec<Value> {
         .collect()
 }
 
-async fn commit(app: &App, id: &str, body: &Value) -> (StatusCode, Value) {
+pub(super) async fn commit(app: &App, id: &str, body: &Value) -> (StatusCode, Value) {
     send(
         app.router.clone(),
         with(&app.cookie, post(&format!("{UPLOAD}/{id}/commit"), body)),
@@ -769,7 +769,7 @@ async fn accounts_show_the_imported_balances() {
 // ── Transactions, after the commit ──
 
 /// The fake export committed, with Groceries mapped; Groceries's id and the row count.
-async fn imported(app: &App) -> (i64, usize) {
+pub(super) async fn imported(app: &App) -> (i64, usize) {
     let category = groceries(app).await;
     let plan = fake_plan(app).await;
     let id = plan["id"].as_str().unwrap().to_owned();
@@ -790,7 +790,7 @@ async fn imported(app: &App) -> (i64, usize) {
     (category, usize::try_from(total).unwrap())
 }
 
-async fn get_json(app: &App, path: &str) -> (StatusCode, Value) {
+pub(super) async fn get_json(app: &App, path: &str) -> (StatusCode, Value) {
     send(app.router.clone(), with(&app.cookie, get(path))).await
 }
 
@@ -1104,7 +1104,7 @@ async fn no_amount_is_counted_twice_in_the_category_amounts_view() {
 // ── Transactions search and filters, on the imported fake export ──
 
 /// The ids `query` lists, all on one page, newest first.
-async fn listed(app: &App, query: &str) -> Vec<i64> {
+pub(super) async fn listed(app: &App, query: &str) -> Vec<i64> {
     let (status, body) = get_json(app, &format!("/api/v1/transactions?limit=200&{query}")).await;
     assert_eq!(status, StatusCode::OK, "{query}: {body}");
     assert_eq!(body["next_cursor"], Value::Null, "{query}");
@@ -1311,7 +1311,7 @@ async fn the_tags_list_by_name() {
 
 // ── From Actual, undecided, on the imported fake export ──
 
-fn put(uri: &str, body: &Value) -> Request<Body> {
+pub(super) fn put(uri: &str, body: &Value) -> Request<Body> {
     Request::put(uri)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_string()))

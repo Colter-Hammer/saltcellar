@@ -2,6 +2,7 @@
 
 mod accounts;
 mod auth;
+mod batches;
 mod categories;
 mod error;
 mod health;
@@ -67,7 +68,9 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         categories::delete_category,
         import::upload,
         import::get,
-        import::commit
+        import::commit,
+        batches::list,
+        batches::undo
     ),
     components(schemas(error::ErrorEnvelope))
 )]
@@ -178,6 +181,8 @@ pub fn router(state: AppState) -> Router {
             patch(categories::change_category).delete(categories::delete_category),
         )
         .route("/category-groups", post(categories::add_group))
+        .route("/imports", get(batches::list))
+        .route("/imports/{id}/undo", post(batches::undo))
         .route("/imports/actual", post(import::upload))
         .route("/imports/actual/{id}", get(import::get))
         .route("/imports/actual/{id}/commit", post(import::commit))

@@ -154,15 +154,17 @@ impl Writer<'_> {
             Target::New(new) => {
                 let id = sqlx::query_scalar!(
                     r#"INSERT INTO accounts
-                         (name, type, role, has_transactions, closed, sort_order, external_account_id)
-                       VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM accounts), ?)
+                         (name, type, role, has_transactions, closed, sort_order, external_account_id,
+                          created_by_batch_id)
+                       VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM accounts), ?, ?)
                        RETURNING id AS "id!: i64""#,
                     new.name,
                     new.kind.as_str(),
                     new.role.as_str(),
                     !new.balances_only,
                     new.closed,
-                    new.bank_id
+                    new.bank_id,
+                    self.batch_id
                 )
                 .fetch_one(&mut *self.tx)
                 .await?;
@@ -430,6 +432,12 @@ impl Writer<'_> {
         Ok(id)
     }
 }
+
+mod undo;
+pub use undo::{Batch, UndoError, Undone, import_batches, undo_import};
+#[cfg(test)]
+#[path = "imports/undo_tests.rs"]
+mod undo_tests;
 
 #[cfg(test)]
 mod tests;

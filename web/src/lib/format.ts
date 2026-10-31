@@ -117,3 +117,14 @@ export function formatDate(date: string, formatting: Pick<Formatting, 'locale'> 
     timeZone: 'UTC',
   }).format(instant)
 }
+
+/** The day of an RFC 3339 instant in `timeZone` (an IANA name), in the locale's medium style. */
+export function formatInstantDay(
+  instant: string,
+  timeZone: string,
+  formatting: Pick<Formatting, 'locale'> = DEFAULT,
+): string {
+  return new Intl.DateTimeFormat(formatting.locale, { dateStyle: 'medium', timeZone }).format(
+    new Date(instant),
+  )
+}

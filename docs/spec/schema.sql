@@ -99,6 +99,7 @@ CREATE TABLE accounts (                     -- M1
   in_net_worth        INTEGER NOT NULL DEFAULT 1, -- for the post-v1 net worth report
   closed              INTEGER NOT NULL DEFAULT 0,
   sort_order          INTEGER NOT NULL DEFAULT 0,
+  created_by_batch_id INTEGER,              -- M1: the Actual import batch that created it; undoing the batch deletes it if empty
   connection_id       INTEGER REFERENCES connections(id),
   external_account_id TEXT,                 -- provider account id. The Actual import sets it (with connection_id NULL)
                                             -- from Actual's own bank-sync id, so a later sync attaches the account

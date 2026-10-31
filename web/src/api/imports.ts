@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { call, client } from './client'
 import type { components } from './generated/schema'
 
@@ -46,4 +47,30 @@ export async function commitActualImport(
   body: ActualCommitRequest,
 ): Promise<ActualImportDone> {
   return call(client.POST('/api/v1/imports/actual/{id}/commit', { params: { path: { id } }, body }))
+}
+
+export type ImportBatch = components['schemas']['ImportBatch']
+
+/** `GET /api/v1/imports`: every import batch, active or undone, latest first. */
+export function useImportBatches() {
+  return useQuery({
+    queryKey: ['import-batches'],
+    queryFn: () => call(client.GET('/api/v1/imports')),
+  })
+}
+
+/**
+ * `POST /api/v1/imports/{id}/undo`: undoes a batch. Without `confirm`, an ApiError `rows_edited`
+ * says rows were edited since and nothing was changed; asking again with `confirm` goes ahead.
+ * Afterwards everything the import wrote is gone, so every screen reloads.
+ */
+export function useUndoImport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, confirm }: { id: number; confirm: boolean }) =>
+      call(
+        client.POST('/api/v1/imports/{id}/undo', { params: { path: { id } }, body: { confirm } }),
+      ),
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
 }

@@ -6,6 +6,7 @@ import type { Tab } from '@/lib/nav'
 import AccountsView from '@/views/AccountsView.vue'
 import AccountView from '@/views/AccountView.vue'
 import CategoriesView from '@/views/CategoriesView.vue'
+import ImportsView from '@/views/ImportsView.vue'
 import ImportView from '@/views/ImportView.vue'
 import LoginView from '@/views/LoginView.vue'
 import MoreView from '@/views/MoreView.vue'
@@ -67,6 +68,11 @@ export function createAppRouter(history: RouterHistory): Router {
         path: '/settings/profile',
         component: ProfileView,
         meta: { title: 'Profile', tab: 'more' },
+      },
+      {
+        path: '/settings/imports',
+        component: ImportsView,
+        meta: { title: 'Imports', tab: 'more' },
       },
       { path: '/setup', component: SetupView, meta: { title: 'Set up Saltcellar', bare: true } },
       { path: '/login', component: LoginView, meta: { title: 'Log in', bare: true } },

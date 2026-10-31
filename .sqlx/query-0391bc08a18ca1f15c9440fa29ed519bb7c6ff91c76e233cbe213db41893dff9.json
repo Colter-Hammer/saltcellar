@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT undone_at FROM import_batches WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "undone_at",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "undone_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "0391bc08a18ca1f15c9440fa29ed519bb7c6ff91c76e233cbe213db41893dff9"
+}
