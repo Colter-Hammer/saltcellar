@@ -1,9 +1,13 @@
 <script setup lang="ts">
 // A transaction in full (docs/spec/m1-ledger-import.md#transactions): what the list shows, plus
 // what the bank sent, the split lines, memo, status, source, how it got its category and the
-// import it came in with. Read-only in milestone 1.
-import { computed } from 'vue'
+// import it came in with. Read-only in milestone 1, except that a From Actual, undecided row gets
+// a category picker (docs/spec/m1-ledger-import.md#from-actual-undecided).
+import { computed, ref } from 'vue'
+import { ApiError } from '@/api/client'
 import { useTransaction } from '@/api/transactions'
+import { useDecide } from '@/api/undecided'
+import CategoryPicker from '@/components/CategoryPicker.vue'
 import { formatDate, formatMoney, useFormatting } from '@/lib/format'
 import { categoryLabel, payeeLabel, sourceLabel, statusLabel } from '@/lib/transactions'
 
@@ -13,6 +17,20 @@ defineEmits<{ close: [] }>()
 const query = useTransaction(() => props.id)
 const formatting = useFormatting()
 const transaction = computed(() => query.data.value)
+
+const decide = useDecide()
+const chosen = ref('')
+const failure = ref('')
+
+async function setCategory() {
+  failure.value = ''
+  try {
+    await decide.one.mutateAsync({ id: props.id, categoryId: Number(chosen.value) })
+    chosen.value = ''
+  } catch (error) {
+    failure.value = error instanceof ApiError ? error.message : 'Something went wrong.'
+  }
+}
 
 function money(minor: number, signed = false): string {
   return formatMoney(minor, formatting.value, { signed })
@@ -85,6 +103,22 @@ const batch = computed(() => {
         <dt class="text-muted-foreground">Import</dt>
         <dd>{{ batch }}</dd>
       </dl>
+      <form
+        v-if="transaction.undecided"
+        aria-label="Set the category"
+        class="flex flex-wrap items-center gap-2"
+        @submit.prevent="setCategory"
+      >
+        <CategoryPicker v-model="chosen" label="Category" placeholder="Choose a category…" />
+        <button
+          type="submit"
+          class="rounded-md bg-primary px-3 py-1 text-primary-foreground disabled:opacity-50"
+          :disabled="chosen === '' || decide.one.isPending.value"
+        >
+          Set category
+        </button>
+        <p v-if="failure" role="alert" class="w-full text-destructive">{{ failure }}</p>
+      </form>
     </template>
   </div>
 </template>

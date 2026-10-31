@@ -8,6 +8,7 @@ mod imports;
 mod profile;
 mod reset;
 mod transactions;
+mod undecided;
 
 use std::path::Path;
 use std::time::Duration;
@@ -36,6 +37,9 @@ pub use sqlx::SqlitePool;
 pub use transactions::{
     BatchRef, Filter, SplitLine, Tag, TransactionDetail, TransactionPage, TransactionRow, tags,
     transaction, transactions,
+};
+pub use undecided::{
+    DecideError, Decision, UndecidedGroup, decide_group, decide_row, undecided_groups,
 };
 
 /// The database file's name inside `BUDGET_DATA_DIR`.

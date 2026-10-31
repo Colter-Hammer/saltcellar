@@ -15,6 +15,7 @@ import ResetPasswordView from '@/views/ResetPasswordView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import SetupView from '@/views/SetupView.vue'
 import TransactionsView from '@/views/TransactionsView.vue'
+import UndecidedView from '@/views/UndecidedView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -54,6 +55,12 @@ export function createAppRouter(history: RouterHistory): Router {
         path: '/import',
         component: ImportView,
         meta: { title: 'Import from Actual', tab: 'more' },
+      },
+      {
+        // The open row's detail, if any, is in the address.
+        path: '/undecided/:id(\\d+)?',
+        component: UndecidedView,
+        meta: { title: 'From Actual, undecided', tab: 'more' },
       },
       { path: '/settings', component: SettingsView, meta: { title: 'Settings', tab: 'more' } },
       {

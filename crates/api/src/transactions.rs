@@ -143,6 +143,9 @@ pub struct PageQuery {
     /// `true` for only the rows still waiting in **From Actual, undecided**.
     #[param(value_type = Option<bool>)]
     undecided: Option<String>,
+    /// With `undecided=true`: only the rows that came in under this Actual category; an empty
+    /// value is the rows whose export kept none *(agent)*.
+    actual_category: Option<String>,
 }
 
 /// A filter parameter that can't be read.
@@ -179,6 +182,9 @@ impl PageQuery {
             Some("uncategorized") => Some(CategoryFilter::Uncategorized),
             Some(text) => read_id(Some(text))?.map(CategoryFilter::Category),
         };
+        if self.actual_category.is_some() && self.undecided.as_deref() != Some("true") {
+            return Err(invalid_filter());
+        }
         let undecided = match self.undecided.as_deref() {
             None | Some("false") => false,
             Some("true") => true,
@@ -192,6 +198,7 @@ impl PageQuery {
             to: read_day(self.to.as_deref())?,
             tag_id: read_id(self.tag.as_deref())?,
             undecided,
+            actual_category: self.actual_category.clone(),
         };
         if let Some(text) = self.q.as_deref().filter(|text| !text.trim().is_empty()) {
             // Behind the setup gate, so the household exists unless the database lost it.
@@ -213,7 +220,7 @@ impl PageQuery {
     params(PageQuery),
     responses(
         (status = 200, description = "A page of transactions.", body = TransactionPage),
-        (status = 400, description = "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag` or `undecided` can't be read.", body = ErrorEnvelope),
+        (status = 400, description = "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided` or `actual_category` can't be read.", body = ErrorEnvelope),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
     ),
 )]
@@ -321,6 +328,9 @@ pub struct Transaction {
     /// The import it came in with; null if it came in with none.
     #[schema(required = true)]
     import_batch: Option<ImportBatchRef>,
+    /// One of the rows waiting in **From Actual, undecided**: it can be given a category with
+    /// `PUT /api/v1/transactions/{id}/category`.
+    undecided: bool,
 }
 
 impl From<db::TransactionDetail> for Transaction {
@@ -345,6 +355,7 @@ impl From<db::TransactionDetail> for Transaction {
                 file_name: batch.file_name,
                 imported_at: batch.imported_at.to_string(),
             }),
+            undecided: detail.undecided,
         }
     }
 }

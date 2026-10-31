@@ -458,6 +458,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transactions/{id}/category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** `PUT /api/v1/transactions/{id}/category`: gives one undecided row its category, as above. */
+        put: operations["setTransactionCategory"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/undecided": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/undecided`: the undecided rows grouped by their Actual category, with each group's
+         *     count and total.
+         */
+        get: operations["getUndecided"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/undecided/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/undecided/move`: gives every undecided row of an Actual category the category, in
+         *     one database transaction. Each row records `categorized_by = 'user'` and the reason "Set by
+         *     <display name>"; they leave the list.
+         */
+        post: operations["moveUndecided"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -778,6 +836,14 @@ export interface components {
             /** Format: int64 */
             id: number;
         };
+        /** @description Where to put a group's rows, or one row. */
+        Decide: {
+            /**
+             * Format: int64
+             * @description An app category's id.
+             */
+            category_id: number;
+        };
         ErrorBody: {
             /** @description What went wrong, for code to branch on: `snake_case`, stable. */
             code: string;
@@ -852,6 +918,21 @@ export interface components {
             /** @description As typed: case and surrounding spaces don't matter. */
             username: string;
         };
+        /** @description Where to put every undecided row of one Actual category. */
+        MoveGroup: {
+            /** @description The group, as `GET /api/v1/undecided` names it. */
+            actual_category: string;
+            /**
+             * Format: int64
+             * @description An app category's id.
+             */
+            category_id: number;
+        };
+        /** @description How many rows moved. */
+        Moved: {
+            /** Format: int32 */
+            moved: number;
+        };
         NewCategory: {
             /** Format: int64 */
             group_id: number;
@@ -913,6 +994,11 @@ export interface components {
             source: components["schemas"]["TransactionSource"];
             /** @description Empty unless it's split. */
             splits: components["schemas"]["SplitLine"][];
+            /**
+             * @description One of the rows waiting in **From Actual, undecided**: it can be given a category with
+             *     `PUT /api/v1/transactions/{id}/category`.
+             */
+            undecided: boolean;
         };
         /** @description A page of transactions, newest first. */
         TransactionPage: {
@@ -967,6 +1053,23 @@ export interface components {
          * @enum {string}
          */
         TransactionStatus: "pending" | "posted";
+        /** @description The undecided rows that came in under one Actual category. */
+        UndecidedGroup: {
+            /** @description The category's name in Actual; empty when the export kept none. */
+            actual_category: string;
+            /** Format: int32 */
+            rows: number;
+            /**
+             * Format: int64
+             * @description Their amounts summed, in minor units: negative is money out.
+             */
+            total_minor: number;
+        };
+        /** @description The groups of undecided rows. */
+        UndecidedList: {
+            /** @description By Actual category name, ignoring case; empty once nothing is left to decide. */
+            groups: components["schemas"]["UndecidedGroup"][];
+        };
         UseReset: {
             /** @description At least 12 characters. */
             password: string;
@@ -2310,6 +2413,11 @@ export interface operations {
                 tag?: number;
                 /** @description `true` for only the rows still waiting in **From Actual, undecided**. */
                 undecided?: boolean;
+                /**
+                 * @description With `undecided=true`: only the rows that came in under this Actual category; an empty
+                 *     value is the rows whose export kept none *(agent)*.
+                 */
+                actual_category?: string;
             };
             header?: never;
             path?: never;
@@ -2326,7 +2434,7 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionPage"];
                 };
             };
-            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag` or `undecided` can't be read. */
+            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided` or `actual_category` can't be read. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2378,6 +2486,140 @@ export interface operations {
             };
             /** @description `not_found`: there's no such transaction. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setTransactionCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Decide"];
+            };
+        };
+        responses: {
+            /** @description The transaction, with its category. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction, or it isn't an undecided row. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: there's no such category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getUndecided: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The groups. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndecidedList"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    moveUndecided: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveGroup"];
+            };
+        };
+        responses: {
+            /** @description The rows have the category. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Moved"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: no undecided rows are left under that Actual category. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: there's no such category. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

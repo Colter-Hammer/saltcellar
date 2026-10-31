@@ -1,5 +1,13 @@
 // Navigation grows with the milestones: only screens that exist are listed (docs/spec/foundations.md#frontend).
-import { ArrowDownToLine, FolderTree, Landmark, List, Menu, Settings } from '@lucide/vue'
+import {
+  ArrowDownToLine,
+  FolderTree,
+  Landmark,
+  List,
+  ListChecks,
+  Menu,
+  Settings,
+} from '@lucide/vue'
 import type { Component } from 'vue'
 
 export type Tab = 'transactions' | 'accounts' | 'more'
@@ -18,10 +26,16 @@ export const tabs: readonly (NavItem & { tab: Tab })[] = [
 ]
 
 /** What More lists on phones; the desktop sidebar shows them directly. */
-export const moreItems: readonly NavItem[] = [
-  { to: '/categories', label: 'Categories', icon: FolderTree },
-  { to: '/import', label: 'Import from Actual', icon: ArrowDownToLine },
-  { to: '/settings', label: 'Settings', icon: Settings },
-]
+export function moreItems(undecided: boolean): readonly NavItem[] {
+  return [
+    { to: '/categories', label: 'Categories', icon: FolderTree },
+    { to: '/import', label: 'Import from Actual', icon: ArrowDownToLine },
+    // Only while some imported rows still wait for a category.
+    ...(undecided ? [{ to: '/undecided', label: 'From Actual, undecided', icon: ListChecks }] : []),
+    { to: '/settings', label: 'Settings', icon: Settings },
+  ]
+}
 
-export const sidebarItems: readonly NavItem[] = [...tabs.slice(0, 2), ...moreItems]
+export function sidebarItems(undecided: boolean): readonly NavItem[] {
+  return [...tabs.slice(0, 2), ...moreItems(undecided)]
+}

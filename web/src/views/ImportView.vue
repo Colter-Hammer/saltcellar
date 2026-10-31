@@ -5,6 +5,7 @@
 // import commits *(agent)*, so Back keeps them; nothing is imported until Import on step 3
 // commits them all in one go, and step 4 sums up what came in.
 import { computed, ref } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
 import { RouterLink } from 'vue-router'
 import { useCategories } from '@/api/categories'
 import {
@@ -123,6 +124,7 @@ async function toCategories() {
 
 // ── Step 4: Done ──
 
+const queryClient = useQueryClient()
 const done = ref<ActualImportDone | null>(null)
 const committing = ref(false)
 const doneLines = computed(() => done.value && describeDone(done.value, formatting.value.locale))
@@ -138,6 +140,8 @@ async function commit() {
       commitRequest(plan.value, accountChoices.value, categoryChoices.value, fileName.value),
     )
     step.value = 4
+    // More lists From Actual, undecided from now on, if any rows wait there.
+    void queryClient.invalidateQueries({ queryKey: ['undecided'] })
   } catch (failure) {
     error.value = failure instanceof Error ? failure.message : String(failure)
   } finally {
@@ -345,13 +349,7 @@ async function commit() {
         Actual's rules weren't copied, since payee history covers them.
       </p>
       <div class="flex flex-wrap justify-end gap-2">
-        <!-- The undecided list arrives in a later version; until then this leads to Transactions
-             too *(agent)*. -->
-        <RouterLink
-          v-if="done.undecided > 0"
-          to="/transactions"
-          class="rounded-md border px-3 py-2"
-        >
+        <RouterLink v-if="done.undecided > 0" to="/undecided" class="rounded-md border px-3 py-2">
           Decide on undecided rows
         </RouterLink>
         <RouterLink

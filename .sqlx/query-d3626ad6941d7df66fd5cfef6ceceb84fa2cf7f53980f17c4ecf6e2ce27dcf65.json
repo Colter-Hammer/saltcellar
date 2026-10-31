@@ -1,0 +1,35 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT u.actual_category AS \"actual_category!: String\",\n                  count(*) AS \"rows!: i64\",\n                  coalesce(sum(t.amount_minor), 0) AS \"total!: i64\"\n           FROM transactions t\n           JOIN (SELECT ib.transaction_id AS id, min(coalesce(ib.source_category, '')) AS actual_category\n                 FROM import_batch_rows ib JOIN import_batches b ON b.id = ib.batch_id\n                 WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided'\n                 GROUP BY ib.transaction_id) u ON u.id = t.id\n           WHERE t.category_id IS NULL\n             AND t.id NOT IN (SELECT transaction_id FROM transaction_splits)\n           GROUP BY u.actual_category\n           ORDER BY lower(u.actual_category), u.actual_category",
+  "describe": {
+    "columns": [
+      {
+        "name": "actual_category!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "rows!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "total!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "d3626ad6941d7df66fd5cfef6ceceb84fa2cf7f53980f17c4ecf6e2ce27dcf65"
+}

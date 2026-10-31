@@ -55,6 +55,8 @@ pub struct Filter {
     /// Only rows from an Actual import whose category was mapped to "Decide later" and that still
     /// have none: the **From Actual, undecided** rows.
     pub undecided: bool,
+    /// With `undecided`: only those that came in under this Actual category (empty: none kept).
+    pub actual_category: Option<String>,
 }
 
 /// Up to `limit` of the transactions `filter` lets through, newest first by date then id, starting
@@ -111,6 +113,8 @@ pub struct TransactionDetail {
     pub categorization_reason: Option<String>,
     /// The first import it came in with; `None` if it came from none.
     pub batch: Option<BatchRef>,
+    /// Whether it's one of the **From Actual, undecided** rows, which can be given a category.
+    pub undecided: bool,
 }
 
 /// Transaction `id` in full; `None` if there's no such transaction.
@@ -164,6 +168,13 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
         })
     })
     .transpose()?;
+    let only_undecided = Filter {
+        undecided: true,
+        ..Filter::default()
+    };
+    let undecided = !rows(pool, Some(id), &only_undecided, None, 1)
+        .await?
+        .is_empty();
     Ok(Some(TransactionDetail {
         row,
         memo: more.memo,
@@ -174,6 +185,7 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
         })?,
         categorization_reason: more.categorization_reason,
         batch,
+        undecided,
     }))
 }
 
@@ -251,7 +263,8 @@ async fn rows(
                AND t.id NOT IN (SELECT transaction_id FROM transaction_splits)
                AND t.id IN (SELECT ib.transaction_id FROM import_batch_rows ib
                               JOIN import_batches b ON b.id = ib.batch_id
-                            WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided')))
+                            WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided'
+                              AND (?14 IS NULL OR coalesce(ib.source_category, '') = ?14))))
            ORDER BY t.date DESC, t.id DESC
            LIMIT ?4"#,
         only,
@@ -266,7 +279,8 @@ async fn rows(
         from,
         to,
         filter.tag_id,
-        filter.undecided
+        filter.undecided,
+        filter.actual_category
     )
     .fetch_all(pool)
     .await?;
@@ -639,6 +653,7 @@ mod tests {
             to: day("2026-01-05"),
             tag_id: Some(2),
             undecided: false,
+            actual_category: None,
         };
         assert_eq!(ids(&pool, everything).await, [3]);
         let none = Filter {
@@ -843,6 +858,7 @@ mod tests {
                     to: day("2024-12-31"),
                     tag_id: Some(1),
                     undecided: true,
+                    actual_category: None,
                 },
             ),
         ];

@@ -15,6 +15,7 @@ mod setup;
 #[cfg(test)]
 mod tests;
 mod transactions;
+mod undecided;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -52,6 +53,9 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         transactions::list,
         transactions::get,
         transactions::tags,
+        undecided::list,
+        undecided::move_group,
+        undecided::set_category,
         categories::list,
         categories::use_starter,
         categories::order,
@@ -159,6 +163,9 @@ pub fn router(state: AppState) -> Router {
         .route("/accounts/{id}", get(accounts::get))
         .route("/transactions", get(transactions::list))
         .route("/transactions/{id}", get(transactions::get))
+        .route("/transactions/{id}/category", put(undecided::set_category))
+        .route("/undecided", get(undecided::list))
+        .route("/undecided/move", post(undecided::move_group))
         .route("/tags", get(transactions::tags))
         .route(
             "/categories",

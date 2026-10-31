@@ -1308,3 +1308,163 @@ async fn the_tags_list_by_name() {
     let (status, _) = send(app.router.clone(), get("/api/v1/tags")).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+// ── From Actual, undecided, on the imported fake export ──
+
+fn put(uri: &str, body: &Value) -> Request<Body> {
+    Request::put(uri)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+/// `body` posted to the move route, logged in.
+async fn move_all(app: &App, actual_category: &str, category_id: i64) -> (StatusCode, Value) {
+    let body = json!({ "actual_category": actual_category, "category_id": category_id });
+    send(
+        app.router.clone(),
+        with(&app.cookie, post("/api/v1/undecided/move", &body)),
+    )
+    .await
+}
+
+/// The groups `GET /api/v1/undecided` lists.
+async fn undecided_groups(app: &App) -> Vec<Value> {
+    let (status, body) = get_json(app, "/api/v1/undecided").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["groups"].as_array().unwrap().clone()
+}
+
+/// The ids of the undecided rows under an Actual category.
+async fn in_group(app: &App, name: &str) -> Vec<i64> {
+    let encoded = name.replace(' ', "%20");
+    listed(app, &format!("undecided=true&actual_category={encoded}")).await
+}
+
+#[tokio::test]
+async fn undecided_rows_are_grouped_by_their_actual_category_with_count_and_total() {
+    let app = set_up().await;
+    assert_eq!(undecided_groups(&app).await, Vec::<Value>::new());
+    imported(&app).await;
+    let groups = undecided_groups(&app).await;
+    assert_ne!(groups.len(), 0);
+    let expected: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT ib.source_category, count(*), sum(t.amount_minor)
+         FROM import_batch_rows ib JOIN transactions t ON t.id = ib.transaction_id
+         WHERE ib.source_disposition = 'undecided'
+         GROUP BY ib.source_category ORDER BY lower(ib.source_category)",
+    )
+    .fetch_all(&app.pool)
+    .await
+    .unwrap();
+    let shown: Vec<(String, i64, i64)> = groups
+        .iter()
+        .map(|group| {
+            (
+                group["actual_category"].as_str().unwrap().to_owned(),
+                group["rows"].as_i64().unwrap(),
+                group["total_minor"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(shown, expected);
+    // A group's rows are the list filtered by it; the filter needs undecided=true.
+    let rows = in_group(&app, &shown[0].0).await;
+    assert_eq!(i64::try_from(rows.len()).unwrap(), shown[0].1);
+    let (status, _) = get_json(&app, "/api/v1/transactions?actual_category=x").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = send(app.router.clone(), get("/api/v1/undecided")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn moving_a_group_sets_every_row_as_the_user_and_the_group_leaves() {
+    let app = set_up().await;
+    let (category, _) = imported(&app).await;
+    let before = undecided_groups(&app).await;
+    let group = before[0].clone();
+    let name = group["actual_category"].as_str().unwrap();
+    let ids = in_group(&app, name).await;
+    let (status, body) = move_all(&app, name, category).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["moved"], group["rows"]);
+    let display: String = sqlx::query_scalar("SELECT display_name FROM users LIMIT 1")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    for id in &ids {
+        let (by, reason, got): (String, String, i64) = sqlx::query_as(
+            "SELECT categorized_by, categorization_reason, category_id FROM transactions WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+        assert_eq!((by.as_str(), got), ("user", category));
+        assert_eq!(reason, format!("Set by {display}"));
+    }
+    let after = undecided_groups(&app).await;
+    assert_eq!(after.len(), before.len() - 1);
+    assert!(
+        after
+            .iter()
+            .all(|other| other["actual_category"] != group["actual_category"])
+    );
+    // Nothing is left under it to move again.
+    let (status, _) = move_all(&app, name, category).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn moving_to_a_category_that_does_not_exist_changes_nothing() {
+    let app = set_up().await;
+    imported(&app).await;
+    let before = undecided_groups(&app).await;
+    let name = before[0]["actual_category"].as_str().unwrap();
+    let (status, body) = move_all(&app, name, 99999).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(undecided_groups(&app).await, before);
+}
+
+#[tokio::test]
+async fn one_row_set_here_keeps_categorized_by_user_and_leaves_the_list() {
+    let app = set_up().await;
+    let (category, _) = imported(&app).await;
+    let ids = listed(&app, "undecided=true").await;
+    let id = ids[0];
+    let set = |id: i64, category_id: i64| {
+        let uri = format!("/api/v1/transactions/{id}/category");
+        put(&uri, &json!({ "category_id": category_id }))
+    };
+    let (status, body) = send(app.router.clone(), with(&app.cookie, set(id, category))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["category_id"], category);
+    assert!(
+        body["categorization_reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("Set by ")
+    );
+    let by: String = sqlx::query_scalar("SELECT categorized_by FROM transactions WHERE id = ?")
+        .bind(id)
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(by, "user");
+    let rest = listed(&app, "undecided=true").await;
+    assert_eq!(rest.len(), ids.len() - 1);
+    assert!(!rest.contains(&id));
+    // It isn't undecided any more, so it can't be set here again; nor can a row that never was.
+    let (status, _) = send(app.router.clone(), with(&app.cookie, set(id, category))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = send(
+        app.router.clone(),
+        with(&app.cookie, set(999_999, category)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = send(app.router.clone(), with(&app.cookie, set(rest[0], 99999))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = send(app.router.clone(), set(rest[0], category)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

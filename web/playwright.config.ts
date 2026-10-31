@@ -44,6 +44,7 @@ export default defineConfig({
         'import-commit.spec.ts',
         'accounts.spec.ts',
         'transactions.spec.ts',
+        'undecided.spec.ts',
       ],
       dependencies: ['categories'],
       use: { ...devices['Pixel 7'], storageState: STORAGE_STATE },
@@ -57,6 +58,7 @@ export default defineConfig({
         'import-commit.spec.ts',
         'accounts.spec.ts',
         'transactions.spec.ts',
+        'undecided.spec.ts',
       ],
       dependencies: ['categories'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
@@ -81,6 +83,14 @@ export default defineConfig({
       name: 'transactions',
       testMatch: 'transactions.spec.ts',
       dependencies: ['import-commit'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Last, From Actual, undecided: it sets categories on the imported rows, which the specs above
+    // read.
+    {
+      name: 'undecided',
+      testMatch: 'undecided.spec.ts',
+      dependencies: ['accounts', 'transactions'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],
