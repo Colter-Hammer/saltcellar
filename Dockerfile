@@ -3,7 +3,7 @@
 # Base images stay in step with .nvmrc and rust-toolchain.toml.
 
 # --- The frontend: web/dist ---
-FROM node:24.22.1-trixie-slim AS web
+FROM node:24.22.2-trixie-slim AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
