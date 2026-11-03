@@ -2,7 +2,7 @@
 
 Every rule in the repo beside the check that enforces it. The spec's [coding standards](spec/foundations.md#coding-standards) say what the rules are; this table says how each one is checked and where. A change that adds a check adds its row here. How to run them: [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`); **check** = `just check`, which is what CI runs; **CI** = a job in `.github/workflows/`, each a required check on `main` except `e2e`, which the pre-push hook gates instead.
+Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`); **check** = `just check`, which is what CI runs; **CI** = a job in `.github/workflows/`, each a required check on `main`.
 
 ## Merge gate
 
@@ -64,7 +64,8 @@ The frontend is `web/`. Its checks run with `npm --prefix web run <script>`; `ju
 | Every Vitest test passes. | `vitest run` | check, CI `web-test` |
 | Line coverage of `domain` is at or above its floor, and floors only go up: lowering or removing one fails. | `scripts/coverage.py rust` with `coverage-floors.txt` (`cargo llvm-cov nextest`) | check, CI `coverage` |
 | Line coverage of the frontend's logic (the TypeScript modules in `web/src/`, tests and `main.ts` aside) is at or above the `web` floor, which only goes up the same way. | `scripts/coverage.py web` with `coverage-floors.txt` (Vitest coverage, v8) | check, CI `web-coverage` |
-| The app image builds, runs as the non-root user and reports healthy; Playwright's tests pass against it on a fresh data dir, in a phone and a desktop layout, after a setup test claims the install with the code from its log. Fake data only. | `Dockerfile`, `web/playwright.config.ts`, `web/e2e/`; `just e2e` (compose) | hook: pre-push (when the checked-out commit is pushed; the working tree must be clean); check, CI `e2e` (`docker run`, image layers in the Actions cache; runs on every PR but isn't required) |
+| The app image builds, runs as the non-root user and reports healthy; Playwright's tests pass against it on a fresh data dir, in a phone and a desktop layout, after a setup test claims the install with the code from its log. Fake data only. | `Dockerfile`, `web/playwright.config.ts`, `web/e2e/`; `just e2e` (compose) | hook: pre-push (when the checked-out commit is pushed; the working tree must be clean); check, CI `e2e` (`docker run`, image layers in the Actions cache) |
+| Each milestone's main flow has one Playwright smoke test, from the setup wizard on, on a second fresh install of its own. Fake data only. | `web/e2e/smoke/` (the `smoke` project in `web/playwright.config.ts`) | hook: pre-push; check, CI `e2e` |
 
 ## Hygiene
 

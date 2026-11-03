@@ -120,15 +120,21 @@ web-coverage:
 web-build:
     npm --prefix web run build
 
-# Playwright against the app image: compose builds it from source and starts it on a fresh volume, at http://localhost:E2E_PORT (8180).
+# Playwright against the app image: compose builds it from source and starts it on a fresh volume, at http://localhost:E2E_PORT (8180),
+# and a second one for the milestone smoke tests at E2E_SMOKE_PORT (8181).
 # The setup test reads the setup code from its log; the profile test runs `budget reset-password` in it.
 e2e:
     #!/usr/bin/env bash
     set -euo pipefail
-    export BUDGET_IMAGE=saltcellar:e2e BUDGET_PORT="${E2E_PORT:-8180}"
-    compose=(docker compose -p saltcellar-e2e)
-    trap '"${compose[@]}" down -v >/dev/null 2>&1' EXIT
-    "${compose[@]}" down -v >/dev/null 2>&1
-    "${compose[@]}" up -d --build --wait
+    export BUDGET_IMAGE=saltcellar:e2e
+    port="${E2E_PORT:-8180}" smoke_port="${E2E_SMOKE_PORT:-8181}"
+    app=(docker compose -p saltcellar-e2e) smoke=(docker compose -p saltcellar-e2e-smoke)
+    trap '"${app[@]}" down -v >/dev/null 2>&1; "${smoke[@]}" down -v >/dev/null 2>&1' EXIT
+    "${app[@]}" down -v >/dev/null 2>&1
+    "${smoke[@]}" down -v >/dev/null 2>&1
+    BUDGET_PORT="$port" "${app[@]}" up -d --build --wait
+    BUDGET_PORT="$smoke_port" "${smoke[@]}" up -d --no-build --wait
     [ "$(docker image inspect -f '{{{{.Config.User}}' "$BUDGET_IMAGE")" = nonroot ] || { echo "e2e: the image must run as nonroot" >&2; exit 1; }
-    E2E_BASE_URL="http://localhost:$BUDGET_PORT" E2E_APP_LOGS="docker compose -p saltcellar-e2e logs --no-color budget" E2E_APP_EXEC="docker compose -p saltcellar-e2e exec -T budget budget" npm --prefix web run e2e
+    E2E_BASE_URL="http://localhost:$port" E2E_APP_LOGS="docker compose -p saltcellar-e2e logs --no-color budget" E2E_APP_EXEC="docker compose -p saltcellar-e2e exec -T budget budget" \
+    E2E_SMOKE_BASE_URL="http://localhost:$smoke_port" E2E_SMOKE_APP_LOGS="docker compose -p saltcellar-e2e-smoke logs --no-color budget" \
+    npm --prefix web run e2e

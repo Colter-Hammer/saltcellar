@@ -2,15 +2,8 @@
 // setup code read from the app's log. It runs once, before the phone and desktop projects, and
 // leaves its login's cookie in STORAGE_STATE for them.
 import { expect, test, type Page } from '@playwright/test'
-import { appLog } from './app.js'
+import { appLog, setupCode } from './app.js'
 import { PASSWORD, STORAGE_STATE, USERNAME } from './login-state.js'
-
-function setupCode(): string {
-  const codes = [...appLog().matchAll(/Setup code: ([A-Z0-9]{4}-[A-Z0-9]{4})/g)]
-  const code = codes.at(-1)?.[1]
-  if (code === undefined) throw new Error('no setup code in the app’s log')
-  return code
-}
 
 test.use({ locale: 'en-US', timezoneId: 'Asia/Tokyo' })
 
@@ -37,7 +30,7 @@ test('a fresh install is claimed with the setup code from the log', async ({ pag
   await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByText("That isn't the setup code.")).toBeVisible()
 
-  const code = setupCode()
+  const code = setupCode(appLog())
   await page.getByLabel('Setup code').fill(code)
   await page.getByRole('button', { name: 'Continue' }).click()
 

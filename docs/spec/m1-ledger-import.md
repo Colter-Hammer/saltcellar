@@ -2,7 +2,7 @@
 
 **Goal:** the app runs locally, has a household and a login, and shows the owner's full history from their old budgeting tool (Actual Budget) correctly: every account, every transaction, every balance.
 
-**Done when:** the owner imports their real Actual export on their PC and every account's balance matches Actual, with row counts matching; the Playwright smoke test (setup → log in → import the fake export → see transactions and balances) passes in CI; every check in [Foundations › Coding standards](foundations.md#coding-standards) is green and required.
+**Done when:** the owner imports their real Actual export on their PC and every account's balance matches Actual, with row counts matching; the Playwright smoke test (setup → log in → import the fake export → see transactions and balances) passes in CI; every check in [Foundations › Coding standards](foundations.md#coding-standards) is green and required. The smoke test runs in CI's `e2e` job beside the other Playwright tests, on a second fresh container of its own *(agent)*.
 
 **Not in this milestone:** bank sync, CSV/QFX files, manual entry (milestone 2); categorization, Review, editing categories on transactions, transfer detection, History re-check (milestone 3); Overview, budgets (milestone 4). No Overview: the importer is reached from Accounts and More.
 
