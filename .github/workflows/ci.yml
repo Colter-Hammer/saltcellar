@@ -219,8 +219,9 @@ jobs:
       - uses: ./.github/actions/web
       - run: npm --prefix web run build
 
-  # Playwright against the app image, started on a fresh data dir. The image's layers are cached in
-  # the Actions cache, so a change rebuilds only the stages it touches.
+  # Playwright against the app image, started on a fresh data dir, and on a second one for the
+  # milestone smoke tests. The image's layers are cached in the Actions cache, so a change rebuilds
+  # only the stages it touches.
   e2e:
     runs-on: ubuntu-24.04
     steps:
@@ -239,13 +240,16 @@ jobs:
         run: |
           [ "$(docker image inspect -f '{{.Config.User}}' saltcellar:e2e)" = nonroot ] || { echo "::error::the image must run as nonroot"; exit 1; }
           docker run -d --name app -p 127.0.0.1:8080:8080 saltcellar:e2e
-          for _ in $(seq 60); do
-            [ "$(docker inspect -f '{{.State.Health.Status}}' app)" = healthy ] && exit 0
-            sleep 1
+          docker run -d --name smoke -p 127.0.0.1:8081:8080 saltcellar:e2e
+          for container in app smoke; do
+            for _ in $(seq 60); do
+              [ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy ] && continue 2
+              sleep 1
+            done
+            docker logs "$container"
+            echo "::error::$container didn't report healthy within 60s"
+            exit 1
           done
-          docker logs app
-          echo "::error::the app didn't report healthy within 60s"
-          exit 1
       - uses: ./.github/actions/web
       - run: npm --prefix web exec -- playwright install --with-deps --only-shell chromium
       - run: npm --prefix web run e2e
@@ -253,9 +257,13 @@ jobs:
           E2E_BASE_URL: http://localhost:8080
           E2E_APP_LOGS: docker logs app
           E2E_APP_EXEC: docker exec app budget
-      - name: The app's log
+          E2E_SMOKE_BASE_URL: http://localhost:8081
+          E2E_SMOKE_APP_LOGS: docker logs smoke
+      - name: The app's logs
         if: failure()
-        run: docker logs app
+        run: |
+          docker logs app
+          docker logs smoke
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:

@@ -1,7 +1,9 @@
 // End-to-end tests (docs/standards.md#tests), run against the app image: `just e2e` starts it with
 // compose, CI with `docker run`. Both pass its address in E2E_BASE_URL, a command that prints its
 // log in E2E_APP_LOGS, where the setup test finds the setup code, and a command that runs `budget`
-// in it in E2E_APP_EXEC, for the reset link.
+// in it in E2E_APP_EXEC, for the reset link. The milestone smoke tests in e2e/smoke/ claim a fresh
+// install of their own, at E2E_SMOKE_BASE_URL with its log in E2E_SMOKE_APP_LOGS, so they run
+// beside the rest without sharing its state.
 import { defineConfig, devices } from '@playwright/test'
 import { STORAGE_STATE } from './e2e/login-state.js'
 
@@ -16,6 +18,15 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
+    // Each milestone's main flow, from the setup wizard on, on an install of its own.
+    {
+      name: 'smoke',
+      testMatch: 'smoke/*.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.E2E_SMOKE_BASE_URL ?? 'http://localhost:8081',
+      },
+    },
     // The fresh install is claimed first, through the setup wizard, on a phone.
     { name: 'setup', testMatch: 'setup.spec.ts', use: { ...devices['Pixel 7'] } },
     // Then the reset link and the profile, on their own: they end sessions, the shared one among
@@ -46,6 +57,7 @@ export default defineConfig({
         'transactions.spec.ts',
         'undecided.spec.ts',
         'imports.spec.ts',
+        'smoke/**',
       ],
       dependencies: ['categories'],
       use: { ...devices['Pixel 7'], storageState: STORAGE_STATE },
@@ -61,6 +73,7 @@ export default defineConfig({
         'transactions.spec.ts',
         'undecided.spec.ts',
         'imports.spec.ts',
+        'smoke/**',
       ],
       dependencies: ['categories'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
