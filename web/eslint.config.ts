@@ -71,6 +71,11 @@ export default defineConfig(
     rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
   { files: ['src/**/*.{ts,vue}'], rules: restrictImports(apiInternals) },
+  // The spec names the one amount component `Money` (docs/spec/visual-system.md#money).
+  {
+    files: ['src/**/*.vue'],
+    rules: { 'vue/multi-word-component-names': ['error', { ignores: ['Money'] }] },
+  },
   { files: ['src/components/**'], rules: restrictImports(apiInternals, upwards('views')) },
   { files: ['src/lib/**'], rules: restrictImports(apiInternals, upwards('views', 'components')) },
   { files: ['src/api/**'], rules: restrictImports(upwards('views', 'components')) },

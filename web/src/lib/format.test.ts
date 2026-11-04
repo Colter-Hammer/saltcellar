@@ -10,6 +10,7 @@ import {
   useFormatting,
   weekdayName,
 } from './format'
+import { localeOptions } from './locales'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -129,19 +130,22 @@ describe('formatMoney', () => {
     expect(formatMoney(123456, { currency: 'USD', locale: 'en-US' })).toBe('$1,234.56')
   })
 
-  it('shows money leaving as negative', () => {
-    expect(formatMoney(-5, { currency: 'USD', locale: 'en-US' })).toBe('-$0.05')
+  it('shows money leaving with a real minus sign, never a hyphen', () => {
+    expect(formatMoney(-4210, { currency: 'USD', locale: 'en-US' })).toBe('\u2212$42.10')
+    expect(formatMoney(-5, { currency: 'USD', locale: 'en-US' })).toBe('\u2212$0.05')
   })
 
   it('marks money in with a plus when signed, and zero with neither', () => {
     const usd = { currency: 'USD', locale: 'en-US' }
     expect(formatMoney(4000, usd, { signed: true })).toBe('+$40.00')
-    expect(formatMoney(-1250, usd, { signed: true })).toBe('-$12.50')
+    expect(formatMoney(-1250, usd, { signed: true })).toBe('\u2212$12.50')
     expect(formatMoney(0, usd, { signed: true })).toBe('$0.00')
   })
 
   it('knows currencies without minor units', () => {
     expect(formatMoney(1500, { currency: 'JPY', locale: 'en-US' })).toBe('¥1,500')
+    expect(formatMoney(-1500, { currency: 'JPY', locale: 'en-US' })).toBe('\u2212¥1,500')
+    expect(formatMoney(1500, { currency: 'JPY', locale: 'en-US' }, { whole: true })).toBe('¥1,500')
   })
 
   it('knows currencies with three decimal places', () => {
@@ -149,7 +153,38 @@ describe('formatMoney', () => {
   })
 
   it('uses the locale for separators and symbol placement', () => {
-    expect(formatMoney(123456, { currency: 'EUR', locale: 'de-DE' })).toBe('1.234,56\u00a0€')
+    const de = { currency: 'EUR', locale: 'de-DE' }
+    expect(formatMoney(123456, de)).toBe('1.234,56\u00a0€')
+    expect(formatMoney(-123456, de)).toBe('\u22121.234,56\u00a0€')
+    expect(formatMoney(120000, de, { signed: true })).toBe('+1.200,00\u00a0€')
+    expect(formatMoney(123456, de, { whole: true })).toBe('1.235\u00a0€')
+  })
+
+  it('rounds to whole units, half away from zero, when whole', () => {
+    const usd = { currency: 'USD', locale: 'en-US' }
+    expect(formatMoney(123450, usd, { whole: true })).toBe('$1,235')
+    expect(formatMoney(123449, usd, { whole: true })).toBe('$1,234')
+    expect(formatMoney(-123450, usd, { whole: true })).toBe('\u2212$1,235')
+    expect(formatMoney(-123449, usd, { whole: true })).toBe('\u2212$1,234')
+    expect(formatMoney(120000, usd, { whole: true, signed: true })).toBe('+$1,200')
+  })
+
+  it('shows no sign on an amount that rounds to zero', () => {
+    const usd = { currency: 'USD', locale: 'en-US' }
+    expect(formatMoney(-40, usd, { whole: true })).toBe('$0')
+    expect(formatMoney(-40, usd, { whole: true, signed: true })).toBe('$0')
+  })
+
+  it('never uses parentheses or a hyphen, in any locale the profile offers', () => {
+    for (const { value: locale } of localeOptions('en-US')) {
+      for (const currency of ['USD', 'EUR', 'JPY']) {
+        for (const options of [{}, { signed: true }, { whole: true }]) {
+          const shown = formatMoney(-123456, { currency, locale }, options)
+          expect(shown, `${locale} ${currency}`).not.toMatch(/[()-]/)
+          expect(shown, `${locale} ${currency}`).toContain('\u2212')
+        }
+      }
+    }
   })
 
   it('is exact past the point where floats lose cents', () => {

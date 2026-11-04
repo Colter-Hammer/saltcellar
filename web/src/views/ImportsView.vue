@@ -68,11 +68,11 @@ async function run(batch: ImportBatch, confirm: boolean) {
           <span class="tabular-nums">{{ batch.matched }}</span> matched
         </p>
 
-        <p v-if="batch.state === 'undone'" class="text-sm">Undone</p>
+        <p v-if="batch.state === 'undone'" class="">Undone</p>
         <div v-else class="flex flex-col items-start gap-2">
-          <p class="text-sm">Active</p>
+          <p class="">Active</p>
           <template v-if="asking?.id === batch.id">
-            <p role="alert" class="text-sm">{{ asking.message }}</p>
+            <p role="alert" class="">{{ asking.message }}</p>
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"

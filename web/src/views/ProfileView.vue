@@ -15,7 +15,8 @@ import {
 } from '@/api/profile'
 import FormField from '@/components/FormField.vue'
 import SearchSelect from '@/components/SearchSelect.vue'
-import { formatDate, formatMoney, localeWeekStart, useFormatting, weekdayName } from '@/lib/format'
+import Money from '@/components/Money.vue'
+import { formatDate, localeWeekStart, useFormatting, weekdayName } from '@/lib/format'
 import { localeLabel, localeOptions } from '@/lib/locales'
 import { MODES, useAppearance } from '@/theme/appearance'
 import { PALETTES, paletteOrDefault } from '@/theme/palettes'
@@ -72,7 +73,6 @@ const localeDay = computed(() =>
 
 /** What the app shows with the saved profile: it changes once the profile is saved. */
 const example = computed(() => ({
-  amount: formatMoney(-123456, formatting.value),
   date: formatDate('2026-03-01', formatting.value),
   weekStart: weekdayName(formatting.value.weekStart, 'en'),
 }))
@@ -196,14 +196,14 @@ async function leaveEverywhere() {
           </p>
         </div>
         <p data-testid="format-example" class="text-sm text-muted-foreground">
-          Amounts look like <span class="text-foreground">{{ example.amount }}</span> and dates like
+          Amounts look like <Money :minor="-123456" class="text-foreground" /> and dates like
           <span class="text-foreground">{{ example.date }}</span
           >; weeks start on {{ example.weekStart }}.
         </p>
         <p v-if="profileErrors.form" role="alert" class="text-sm text-destructive">
           {{ profileErrors.form }}
         </p>
-        <p v-if="profileSaved" role="status" class="text-sm">Saved.</p>
+        <p v-if="profileSaved" role="status" class="">Saved.</p>
         <button
           type="submit"
           class="self-start rounded-md bg-primary px-3 py-2 text-primary-foreground"
@@ -257,7 +257,7 @@ async function leaveEverywhere() {
           <label
             v-for="option in MODES"
             :key="option.value"
-            class="cursor-pointer rounded-sm px-3 py-1.5 text-sm has-checked:bg-primary has-checked:text-primary-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring"
+            class="inline-flex cursor-pointer items-center rounded-sm px-3 py-1.5 has-checked:bg-primary has-checked:text-primary-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring"
           >
             <input
               type="radio"
@@ -310,7 +310,7 @@ async function leaveEverywhere() {
         <p v-if="passwordErrors.form" role="alert" class="text-sm text-destructive">
           {{ passwordErrors.form }}
         </p>
-        <p v-if="passwordChanged" role="status" class="text-sm">Password changed.</p>
+        <p v-if="passwordChanged" role="status" class="">Password changed.</p>
         <button type="submit" class="self-start rounded-md border px-3 py-2">
           Change password
         </button>

@@ -1,11 +1,30 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
 @import './tokens.css';
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  /* Body text is text-base on a phone and text-sm from lg; inputs stay at least 16px on a phone so
+     iOS doesn't zoom (docs/spec/visual-system.md#type). */
   body {
-    @apply bg-background font-sans text-foreground;
+    @apply bg-background font-sans text-base text-foreground lg:text-sm;
+  }
+  input,
+  select,
+  textarea {
+    @apply max-lg:text-base;
+  }
+  /* Touch targets are at least 44px on a phone (docs/spec/visual-system.md#density-and-spacing).
+     An inline link in running text keeps its line height: min-height doesn't apply to it. */
+  a,
+  button,
+  select,
+  textarea,
+  input:not([type='checkbox'], [type='radio'], [type='hidden']),
+  [role='option'],
+  [role='menuitem'] {
+    @apply max-lg:min-h-row-touch;
   }
 }

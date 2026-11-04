@@ -76,7 +76,7 @@ test('steps 2 and 3: what happens to each account and category', async ({
   const cells = (table: Locator, name: string) => row(table, name).getByRole('cell')
   await expect(cells(accounts, 'Everyday checking').nth(0)).toHaveText('43 rows ·')
   await expect(cells(accounts, 'Everyday checking').nth(1)).toHaveText('€21,458.01')
-  await expect(cells(accounts, 'Rewards card').nth(1)).toHaveText('-€1,363.35')
+  await expect(cells(accounts, 'Rewards card').nth(1)).toHaveText('−€1,363.35')
   await expect(cells(accounts, 'Old checking').nth(1)).toHaveText('€0.00')
   await expect(page.getByLabel('Name for Rewards card')).toHaveValue('Rewards card')
   await expect(shown(page, 'Type for Rewards card')).toHaveText('Credit card')

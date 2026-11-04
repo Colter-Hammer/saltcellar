@@ -31,10 +31,10 @@ onMounted(() => {
         required
         @keydown.escape="emit('cancel')"
       />
-      <button type="submit" class="rounded-md bg-primary px-2 py-1 text-sm text-primary-foreground">
+      <button type="submit" class="rounded-md bg-primary px-2 py-1 text-primary-foreground">
         {{ action }}
       </button>
-      <button type="button" class="rounded-md border px-2 py-1 text-sm" @click="emit('cancel')">
+      <button type="button" class="rounded-md border px-2 py-1" @click="emit('cancel')">
         Cancel
       </button>
     </div>

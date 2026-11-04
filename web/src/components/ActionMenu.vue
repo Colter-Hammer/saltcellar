@@ -27,14 +27,14 @@ defineProps<{
 }>()
 
 const item =
-  'cursor-pointer rounded px-2 py-1.5 text-sm outline-none data-[disabled]:cursor-default data-[disabled]:text-muted-foreground data-[highlighted]:bg-accent'
+  'flex cursor-pointer items-center rounded px-2 py-1.5 text-sm outline-none data-[disabled]:cursor-default data-[disabled]:text-muted-foreground data-[highlighted]:bg-accent'
 </script>
 
 <template>
   <DropdownMenuRoot :modal="false">
     <DropdownMenuTrigger
       :aria-label="label"
-      class="rounded-md p-1.5 text-muted-foreground hover:bg-accent"
+      class="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent max-lg:min-w-row-touch"
     >
       <Ellipsis class="size-4" aria-hidden="true" />
     </DropdownMenuTrigger>

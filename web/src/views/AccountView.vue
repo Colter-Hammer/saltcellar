@@ -6,7 +6,8 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAccount } from '@/api/accounts'
 import { roleLabel, transactionsLink, typeLabel } from '@/lib/accounts'
-import { formatDate, formatMoney, useFormatting } from '@/lib/format'
+import Money from '@/components/Money.vue'
+import { formatDate, useFormatting } from '@/lib/format'
 
 const route = useRoute()
 const query = useAccount(() => Number(route.params.id))
@@ -26,18 +27,17 @@ const about = computed(() => {
 const opening = computed(() => {
   const balance = account.value?.opening_balance_minor ?? null
   const date = account.value?.opening_date ?? null
-  if (balance === null || date === null) return '—'
-  return `${money(balance)} on ${formatDate(date, formatting.value)}`
+  if (balance === null || date === null) return null
+  return { balance, date: formatDate(date, formatting.value) }
 })
-
-function money(minor: number | null): string {
-  return minor === null ? '—' : formatMoney(minor, formatting.value)
-}
 </script>
 
 <template>
   <div class="flex flex-col gap-4 p-4 lg:px-6">
-    <RouterLink to="/accounts" class="self-start text-sm text-muted-foreground hover:underline">
+    <RouterLink
+      to="/accounts"
+      class="inline-flex items-center self-start text-sm text-muted-foreground hover:underline"
+    >
       ← All accounts
     </RouterLink>
 
@@ -53,17 +53,28 @@ function money(minor: number | null): string {
 
       <dl
         aria-label="Figures"
-        class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-xl border p-4 text-sm lg:max-w-md"
+        class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-xl border p-4 lg:max-w-md"
       >
         <dt class="text-muted-foreground">Balance</dt>
-        <dd class="text-right tabular-nums">{{ money(account.balance_minor) }}</dd>
+        <dd class="text-right">
+          <Money v-if="account.balance_minor !== null" :minor="account.balance_minor" />
+          <template v-else>—</template>
+        </dd>
         <template v-if="!account.balances_only">
           <!-- The app's own balance: opening plus transactions. Equal in milestone 1; where they
                differ, that's drift, which milestone 2 surfaces. -->
           <dt class="text-muted-foreground">App's balance</dt>
-          <dd class="text-right tabular-nums">{{ money(account.app_balance_minor) }}</dd>
+          <dd class="text-right">
+            <Money v-if="account.app_balance_minor !== null" :minor="account.app_balance_minor" />
+            <template v-else>—</template>
+          </dd>
           <dt class="text-muted-foreground">Opening balance</dt>
-          <dd class="text-right tabular-nums">{{ opening }}</dd>
+          <dd class="text-right">
+            <template v-if="opening">
+              <Money :minor="opening.balance" /> on {{ opening.date }}
+            </template>
+            <template v-else>—</template>
+          </dd>
           <dt class="text-muted-foreground">Transactions</dt>
           <dd class="text-right tabular-nums">
             {{ new Intl.NumberFormat(formatting.locale).format(account.rows) }}
@@ -74,7 +85,11 @@ function money(minor: number | null): string {
       <p v-if="account.balances_only" class="text-sm text-muted-foreground">
         Balances only: it holds balances, not transactions.
       </p>
-      <RouterLink v-if="link" :to="link" class="self-start rounded-md border px-3 py-2">
+      <RouterLink
+        v-if="link"
+        :to="link"
+        class="inline-flex items-center self-start rounded-md border px-3 py-2"
+      >
         See transactions
       </RouterLink>
     </section>

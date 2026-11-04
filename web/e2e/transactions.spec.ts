@@ -2,6 +2,7 @@
 // row reachable by scrolling the desktop table, one opened beside it, and the phone's days with a
 // row opened as a sheet.
 import { expect, test } from '@playwright/test'
+import { smallTargets } from './look.js'
 
 test.use({ locale: 'en-US' })
 
@@ -32,7 +33,13 @@ test('the imported transactions, on a desktop and a phone, and one opened', asyn
   await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0)
   // Money in carries a plus, money out a minus.
   await expect(rows.filter({ hasText: /\+€/ }).first()).toBeVisible()
-  await expect(rows.filter({ hasText: /-€/ }).first()).toBeVisible()
+  await expect(rows.filter({ hasText: /−€/ }).first()).toBeVisible()
+  // Money in is in the money-in color; the table's rows are the dense ones.
+  await expect(
+    rows.filter({ hasText: /\+€/ }).first().locator('td').nth(4).locator('span'),
+  ).toHaveClass(/text-money-in/)
+  const row = await rows.first().boundingBox()
+  expect(row?.height).toBe(36)
 
   // Open the newest: its detail beside the table.
   await rows.first().getByRole('link').click()
@@ -61,6 +68,7 @@ test('the imported transactions, on a desktop and a phone, and one opened', asyn
   await page.goto('/transactions')
   const day = page.getByRole('region').first()
   await expect(day.getByRole('heading')).toHaveText(/^\w{3} \d+, \d{4}$/)
+  expect(await smallTargets(page)).toEqual([])
   await day.getByRole('link').first().click()
   await expect(page.getByRole('complementary')).toBeVisible()
   await page.getByRole('button', { name: 'Close' }).click()
@@ -84,7 +92,7 @@ test('search and filter the imported transactions, and keep them on reload', asy
   for (const payee of await column(2).allTextContents()) expect(payee).toContain('Corner Grocer')
   await search.fill('120')
   await search.press('Enter')
-  await expect(column(5).filter({ hasText: '-€120.00' })).toHaveCount(1)
+  await expect(column(5).filter({ hasText: '−€120.00' })).toHaveCount(1)
 
   // An account chip and a date range narrow the list.
   await search.fill('')

@@ -5,7 +5,8 @@ import { computed, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { type UndecidedGroup, useDecide, useUndecidedRows } from '@/api/undecided'
 import CategoryPicker from '@/components/CategoryPicker.vue'
-import { formatDate, formatMoney, useFormatting } from '@/lib/format'
+import Money from '@/components/Money.vue'
+import { formatDate, useFormatting } from '@/lib/format'
 import { payeeLabel } from '@/lib/transactions'
 
 const props = defineProps<{ group: UndecidedGroup; selected: number | null }>()
@@ -47,9 +48,7 @@ const rows = computed(() => pages.data.value?.pages.flatMap((page) => page.trans
       <h2 class="font-medium">{{ name }}</h2>
       <p class="text-sm text-muted-foreground">
         {{ group.rows }} {{ rowWord }} ·
-        <span class="tabular-nums">{{
-          formatMoney(group.total_minor, formatting, { signed: true })
-        }}</span>
+        <Money :minor="group.total_minor" />
       </p>
     </div>
 
@@ -70,12 +69,7 @@ const rows = computed(() => pages.data.value?.pages.flatMap((page) => page.trans
     </div>
     <p v-if="failure" role="alert" class="text-sm text-destructive">{{ failure }}</p>
 
-    <button
-      type="button"
-      class="self-start text-sm underline"
-      :aria-expanded="open"
-      @click="open = !open"
-    >
+    <button type="button" class="self-start underline" :aria-expanded="open" @click="open = !open">
       {{ open ? 'Hide rows' : 'Show rows' }}
     </button>
     <template v-if="open">
@@ -96,16 +90,14 @@ const rows = computed(() => pages.data.value?.pages.flatMap((page) => page.trans
                 {{ formatDate(row.date, formatting) }} · {{ row.account }}
               </span>
             </span>
-            <span class="shrink-0 tabular-nums">
-              {{ formatMoney(row.amount_minor, formatting, { signed: true }) }}
-            </span>
+            <Money :minor="row.amount_minor" signed class="shrink-0" />
           </RouterLink>
         </li>
       </ul>
       <button
         v-if="pages.hasNextPage.value"
         type="button"
-        class="self-start rounded-md border px-3 py-1 text-sm"
+        class="self-start rounded-md border px-3 py-1"
         :disabled="pages.isFetchingNextPage.value"
         @click="pages.fetchNextPage()"
       >

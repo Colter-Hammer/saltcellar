@@ -65,7 +65,8 @@
 }
 
 @theme inline {
-  --font-sans: system-ui, sans-serif;
+  /* The only place the font is named. Inter is bundled from @fontsource-variable/inter. */
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
   --spacing: 0.25rem;
   --spacing-row-touch: var(--row-touch);
   --spacing-row-dense: var(--row-dense);

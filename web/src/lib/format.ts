@@ -72,29 +72,49 @@ export function weekdayName(day: number, locale: string): string {
   return new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(instant)
 }
 
+/** The minus sign amounts show, U+2212, never a hyphen (docs/spec/visual-system.md#money). */
+const MINUS = '\u2212'
+
 /**
- * An amount in integer minor units, in the currency's decimal places and the locale's style.
- * `signed` marks money in with a plus, as a transaction's amount shows *(agent)*.
+ * An amount in integer minor units, in the currency's decimal places and the locale's style, with
+ * a real minus sign and never in parentheses. `signed` marks money in with a plus, as a
+ * transaction's amount shows *(agent)*. `whole` rounds to whole units, half away from zero, for
+ * headline figures.
  */
 export function formatMoney(
   minor: number,
   formatting: Pick<Formatting, 'currency' | 'locale'> = DEFAULT,
-  { signed = false }: { signed?: boolean } = {},
+  { signed = false, whole = false }: { signed?: boolean; whole?: boolean } = {},
 ): string {
-  const format = new Intl.NumberFormat(formatting.locale, {
+  const options: Intl.NumberFormatOptions = {
     style: 'currency',
     currency: formatting.currency,
-    signDisplay: signed ? 'exceptZero' : 'auto',
+    // `standard`, never `accounting`: no locale's standard style uses parentheses. `negative`
+    // so an amount that rounds to zero shows no sign.
+    currencySign: 'standard',
+    signDisplay: signed ? 'exceptZero' : 'negative',
+  }
+  const places =
+    new Intl.NumberFormat(formatting.locale, options).resolvedOptions().maximumFractionDigits ?? 0
+  const format = new Intl.NumberFormat(formatting.locale, {
+    ...options,
+    ...(whole && {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      roundingMode: 'halfExpand',
+    }),
   })
-  const places = format.resolvedOptions().maximumFractionDigits ?? 0
   // A decimal string, never a float, so large amounts keep their last digit.
   const digits = Math.abs(minor)
     .toString()
     .padStart(places + 1, '0')
-  const whole = digits.slice(0, digits.length - places)
+  const units = digits.slice(0, digits.length - places)
   const fraction = digits.slice(digits.length - places)
-  const decimal = `${minor < 0 ? '-' : ''}${whole}${places ? `.${fraction}` : ''}`
-  return format.format(decimal as Intl.StringNumericLiteral)
+  const decimal = `${minor < 0 ? '-' : ''}${units}${places ? `.${fraction}` : ''}`
+  return format
+    .formatToParts(decimal as Intl.StringNumericLiteral)
+    .map((part) => (part.type === 'minusSign' ? MINUS : part.value))
+    .join('')
 }
 
 const PLAIN_DATE = /^(\d{4})-(\d{2})-(\d{2})$/

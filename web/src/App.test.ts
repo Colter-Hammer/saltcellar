@@ -971,7 +971,7 @@ describe('Settings › Profile', () => {
     expect(wrapper.get<HTMLSelectElement>('#week_start').element.value).toBe('')
     expect(wrapper.get('#week_start option').text()).toBe('Sunday, from the locale')
     expect(example(wrapper)).toBe(
-      'Amounts look like -€1,234.56 and dates like Mar 1, 2026; weeks start on Sunday.',
+      'Amounts look like −€1,234.56 and dates like Mar 1, 2026; weeks start on Sunday.',
     )
   })
 
@@ -984,7 +984,7 @@ describe('Settings › Profile', () => {
     expect(server.locale).toBe('de-DE')
     expect(wrapper.get('[role="status"]').text()).toBe('Saved.')
     expect(example(wrapper)).toBe(
-      'Amounts look like -1.234,56\u00a0€ and dates like 01.03.2026; weeks start on Monday.',
+      'Amounts look like −1.234,56\u00a0€ and dates like 01.03.2026; weeks start on Monday.',
     )
   })
 
@@ -1007,7 +1007,7 @@ describe('Settings › Profile', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect([server.locale, server.weekStart]).toEqual([null, null])
-    expect(example(wrapper)).toContain('-€1,234.56')
+    expect(example(wrapper)).toContain('−€1,234.56')
   })
 
   it('shows what the server refuses on its field', async () => {
@@ -1464,7 +1464,7 @@ describe('Transactions', () => {
     expect(days.map((d) => [d.get('h2').text(), d.findAll('li').map((li) => li.text())])).toEqual([
       [
         'Jan 5, 2026',
-        ['Corner Market Groceries-€12.50Checking', 'REFUND 0042 Uncategorized+€40.00Checking'],
+        ['Corner Market Groceries−€12.50Checking', 'REFUND 0042 Uncategorized+€40.00Checking'],
       ],
     ])
   })
@@ -1483,17 +1483,17 @@ describe('Transactions', () => {
     const cells = () =>
       table.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text()))
     expect(cells()).toEqual([
-      ['Jan 5, 2026', 'Corner Market', 'Groceries', 'Checking', '-€12.50', 'trip'],
+      ['Jan 5, 2026', 'Corner Market', 'Groceries', 'Checking', '−€12.50', 'trip'],
       ['Jan 5, 2026', 'REFUND 0042', 'Uncategorized', 'Checking', '+€40.00', ''],
     ])
     const more = wrapper.findAll('main button').find((b) => b.text() === 'Load more')
     await more?.trigger('click')
     await flushPromises()
     expect(cells().map((row) => [row[1], row[2], row[4]])).toEqual([
-      ['Corner Market', 'Groceries', '-€12.50'],
+      ['Corner Market', 'Groceries', '−€12.50'],
       ['REFUND 0042', 'Uncategorized', '+€40.00'],
-      ['Corner Market', 'Uncategorized', '-€120.00'],
-      ['Corner Market', 'Split · 2 categories', '-€12.50'],
+      ['Corner Market', 'Uncategorized', '−€120.00'],
+      ['Corner Market', 'Split · 2 categories', '−€12.50'],
     ])
     expect(wrapper.findAll('main button').map((b) => b.text())).not.toContain('Load more')
     expect(wrapper.findAll('main section').map((d) => d.get('h2').text())).toEqual([
@@ -1510,7 +1510,7 @@ describe('Transactions', () => {
     expect(router.currentRoute.value.path).toBe('/transactions/5')
     const detail = wrapper.get('aside')
     expect(detail.get('h2').text()).toBe('Corner Market')
-    expect(detail.text()).toContain('-€12.50')
+    expect(detail.text()).toContain('−€12.50')
     const pairs = detail.findAll('dt').map((dt, i) => [dt.text(), detail.findAll('dd')[i]?.text()])
     expect(pairs).toEqual([
       ['Date', 'Jan 5, 2026'],
@@ -1542,7 +1542,7 @@ describe('Transactions', () => {
         .get('ul[aria-label="Split lines"]')
         .findAll('li')
         .map((li) => li.text()),
-    ).toEqual(['Groceries · food-€8.00', 'Dining out -€4.50'])
+    ).toEqual(['Groceries · food−€8.00', 'Dining out −€4.50'])
     const text = detail.text()
     expect(text).toContain('Pending')
     expect(text).toContain('Bank')
@@ -1774,8 +1774,8 @@ describe('From Actual, undecided', () => {
     expect(wrapper.get('h1').text()).toBe('From Actual, undecided')
     const groups = wrapper.findAll('main section')
     expect(groups.map((g) => g.get('h2').text())).toEqual(['Pets', 'Treats'])
-    expect(groups[0]?.get('p').text()).toBe('2 rows · -€90.00')
-    expect(groups[1]?.get('p').text()).toBe('1 row · -€5.00')
+    expect(groups[0]?.get('p').text()).toBe('2 rows · −€90.00')
+    expect(groups[1]?.get('p').text()).toBe('1 row · −€5.00')
     expect(groups[0]?.findAll('li')).toHaveLength(0)
     await groups[0]?.get('button[aria-expanded]').trigger('click')
     await flushPromises()
@@ -1784,7 +1784,7 @@ describe('From Actual, undecided', () => {
         .findAll('main section')[0]
         ?.findAll('li')
         .map((li) => li.text()),
-    ).toEqual(['Pet ShopJan 5, 2026 · Checking-€20.00', 'VetJan 5, 2026 · Checking-€70.00'])
+    ).toEqual(['Pet ShopJan 5, 2026 · Checking−€20.00', 'VetJan 5, 2026 · Checking−€70.00'])
     expect(server.listedWith).toMatchObject({ undecided: 'true', actual_category: 'Pets' })
   })
 

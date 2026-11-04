@@ -3,7 +3,8 @@
 // of the step's table on desktop; stacked on a phone.
 import { computed } from 'vue'
 import type { ActualAccount, ActualImport } from '@/api/imports'
-import { formatMoney, type Formatting } from '@/lib/format'
+import Money from '@/components/Money.vue'
+import type { Formatting } from '@/lib/format'
 import { ACCOUNT_ROLES, ACCOUNT_TYPES } from '@/lib/accounts'
 import type { AccountChoice } from '@/lib/import'
 
@@ -57,9 +58,9 @@ function chosen(event: Event): string {
     </td>
     <td
       role="cell"
-      class="py-2 pr-3 tabular-nums max-lg:inline max-lg:p-0 max-lg:text-sm max-lg:text-muted-foreground lg:text-right"
+      class="py-2 pr-3 max-lg:inline max-lg:p-0 max-lg:text-sm max-lg:text-muted-foreground lg:text-right"
     >
-      {{ formatMoney(account.balance_minor, formatting) }}
+      <Money :minor="account.balance_minor" />
     </td>
     <td role="cell" class="py-2 max-lg:mt-2 max-lg:block max-lg:p-0">
       <label :for="`${id}-action`" class="sr-only">What happens to {{ account.name }}</label>
@@ -118,7 +119,7 @@ function chosen(event: Event): string {
             </option>
           </select>
         </div>
-        <div class="flex items-center gap-2 sm:pt-6">
+        <div class="flex items-center gap-2 max-lg:min-h-row-touch sm:pt-6">
           <input
             :id="`${id}-balances-only`"
             type="checkbox"
