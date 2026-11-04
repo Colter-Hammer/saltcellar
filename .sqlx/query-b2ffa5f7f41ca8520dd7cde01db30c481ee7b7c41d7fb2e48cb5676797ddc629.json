@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connections\n         SET status = ?, paused_at = CASE WHEN ? = 'ok' THEN NULL ELSE COALESCE(paused_at, ?) END\n         WHERE status != ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "b2ffa5f7f41ca8520dd7cde01db30c481ee7b7c41d7fb2e48cb5676797ddc629"
+}

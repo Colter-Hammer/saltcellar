@@ -44,6 +44,16 @@ One connection per household: the SimpleFIN access URL. **Settings › Bank conn
 
 **Replace setup token…** claims a new token onto the same connection (after a revoke, a lapse or a leak). Accounts re-match by provider account id; any that don't come in through the prompt with **This is the same as…**. Disconnecting deletes the secret and stops syncing; accounts and rows stay, and become manual accounts *(agent)*.
 
+Details of the claim *(agent)*:
+
+- **Setup token forms:** base64 (standard or URL-safe, padded or not) of the claim URL, or the claim URL itself. A claim URL with a login in it is refused, since the real ones never carry one.
+- **Claim request:** one `POST` with an empty body, a 30 s timeout, redirects not followed, `User-Agent: saltcellar/<version>`. The answer must be an access URL (`user:pass@host`) on a host the claim policy allows, else it is refused.
+- **Errors:** a token that isn't one is a 422 `validation_failed` on `setup_token`; a 403 from the Bridge (a token is good once) is 422 `token_refused`; no answer, another status or an answer that isn't an access URL is 502 `bridge_unavailable`; no `BUDGET_SECRET_KEY` is 409 `secret_key_missing`. None of the messages carry the token, the access URL or the HTTP library's own text.
+- **Sealing:** XChaCha20-Poly1305 with a fresh random 24-byte nonce per value, stored as one version byte, the nonce, then the ciphertext and tag, with the purpose bound in as associated data (so a value sealed for another purpose, the kept raw responses later, can't be opened as an access URL).
+- **The key check** runs at startup: a connection whose secret `BUDGET_SECRET_KEY` can't open (missing or different key) is marked `key_mismatch` and the app starts; start again with the right key and it goes back to `ok`. Pasting a new token under the current key also clears it. An unreadable `BUDGET_SECRET_KEY` (not 32 bytes of base64) stops startup, naming the variable without echoing it.
+- **Replace** claims onto the same `connections` row: the secret is swapped, the status and pause cleared, and the accounts stay linked. **Disconnect** deletes the row and the secret and sets `connection_id` to NULL on its accounts (they keep their provider account ids, so connecting again re-attaches them); it asks first and does nothing when there is no connection.
+- **The accounts table** was rebuilt by migration `0011` to give `connection_id` its foreign key, outside sqlx's transaction with foreign keys off for the rebuild, as SQLite's documentation prescribes.
+
 `BUDGET_SECRET_KEY` is required to claim a token; without it the claim screen says so and does nothing. If a connection exists and the key is missing or wrong, the app still starts, sync shows **Sync paused** with "The secret key changed. Paste a new setup token." and nothing else is affected *(agent)*. Losing the key costs a new setup token, never data.
 
 ### The request
@@ -215,5 +225,7 @@ Actual may itself have been syncing from SimpleFIN, so its accounts and rows can
 | Variable | Default | Meaning |
 |---|---|---|
 | `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the connection's access URL and kept raw responses. Required to claim a setup token. Keep a copy outside the data dir; backups don't include it. |
+
+| `BUDGET_SIMPLEFIN_CLAIM_HOSTS` | none | Development only *(agent)*. A comma-separated list of `host[:port]`. When set, a setup token may point only at these hosts, over `http://` as well as `https://`, so the [fake SimpleFIN server](../../fixtures/simplefin-fake/README.md) works. Unset (production), any `https://` claim URL is accepted. |
 
 Settings keys: `sync.time` (`"06:13"`), `sync.keep_raw_responses` (`false`).

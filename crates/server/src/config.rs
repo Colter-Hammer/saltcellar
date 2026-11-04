@@ -4,6 +4,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use api::{BankConfig, ClaimPolicy, SecretKey};
 use axum::http::HeaderName;
 use ipnet::IpNet;
 
@@ -14,6 +15,7 @@ pub struct Config {
     pub base_url: Option<String>,
     pub auth: Auth,
     pub backup_dir: PathBuf,
+    pub bank: BankConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,12 +114,32 @@ impl Config {
         let backup_dir =
             get("BUDGET_BACKUP_DIR").map_or_else(|| data_dir.join("backups"), PathBuf::from);
 
+        // The key is never echoed back, not even in the message about it.
+        let secret_key = match get("BUDGET_SECRET_KEY") {
+            None => None,
+            Some(value) => Some(SecretKey::from_base64(&value).map_err(|error| ConfigError {
+                name: "BUDGET_SECRET_KEY",
+                problem: error.to_string(),
+            })?),
+        };
+        // A dev setting: only these hosts, over http too, so a fake Bridge on localhost works.
+        let claim_policy = ClaimPolicy::only_hosts(
+            get("BUDGET_SIMPLEFIN_CLAIM_HOSTS")
+                .iter()
+                .flat_map(|value| value.split(','))
+                .map(str::to_owned),
+        );
+
         Ok(Config {
             data_dir,
             listen,
             base_url,
             auth,
             backup_dir,
+            bank: BankConfig {
+                secret_key,
+                claim_policy,
+            },
         })
     }
 }
@@ -160,6 +182,7 @@ mod tests {
                 base_url: None,
                 auth: Auth::Builtin,
                 backup_dir: PathBuf::from("/data/backups"),
+                bank: BankConfig::default(),
             }
         );
     }
@@ -182,6 +205,11 @@ mod tests {
             ("BUDGET_TRUSTED_PROXY", "172.18.0.0/16"),
             ("BUDGET_AUTH_HEADER", "X-Forwarded-User"),
             ("BUDGET_BACKUP_DIR", "/backups"),
+            ("BUDGET_SECRET_KEY", KEY),
+            (
+                "BUDGET_SIMPLEFIN_CLAIM_HOSTS",
+                "127.0.0.1:8190, Fake.example.test",
+            ),
         ])
         .unwrap();
         assert_eq!(c.data_dir, PathBuf::from("/srv/budget"));
@@ -195,6 +223,37 @@ mod tests {
             }
         );
         assert_eq!(c.backup_dir, PathBuf::from("/backups"));
+        assert_eq!(
+            c.bank.secret_key,
+            Some(SecretKey::from_base64(KEY).unwrap())
+        );
+        assert_eq!(
+            c.bank.claim_policy.hosts(),
+            ["127.0.0.1:8190", "fake.example.test"]
+        );
+    }
+
+    /// 32 bytes of base64, made up for the tests.
+    const KEY: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=";
+
+    #[test]
+    fn a_bad_secret_key_is_named_and_never_echoed() {
+        for bad in [
+            "not base64!",
+            "c2hvcnQ=",
+            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        ] {
+            let error = config(&[("BUDGET_SECRET_KEY", bad)]).unwrap_err();
+            assert_eq!(error.name, "BUDGET_SECRET_KEY", "{bad}");
+            assert!(!error.to_string().contains(bad), "{error}");
+        }
+        assert_eq!(
+            config(&[("BUDGET_SECRET_KEY", "")])
+                .unwrap()
+                .bank
+                .secret_key,
+            None
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@
 mod accounts;
 mod auth;
 mod categories;
+mod connection;
 mod household;
 mod imports;
 mod profile;
@@ -27,6 +28,10 @@ pub use auth::{
 pub use categories::{
     Category, CategoryError, Group, add_category, add_group, category_groups, delete_category,
     delete_group, set_order, update_category, update_group, use_starter_categories,
+};
+pub use connection::{
+    Connection, ConnectionStatus, connection, connection_secret, disconnect, save_connection,
+    set_connection_status,
 };
 pub use household::{Household, household};
 pub use imports::{
@@ -188,6 +193,7 @@ mod tests {
                 "balance_snapshots",
                 "categories",
                 "category_groups",
+                "connections",
                 "household",
                 "import_batch_rows",
                 "import_batches",
@@ -205,6 +211,113 @@ mod tests {
                 "users"
             ]
         );
+    }
+
+    /// Every migration before the connection's (0011) applied, then the rest: the accounts
+    /// rebuild keeps every row and what hangs off it, and the key now holds.
+    #[tokio::test]
+    async fn the_accounts_rebuild_keeps_rows_and_what_points_at_them() {
+        /// An account's id, name, in-net-worth, closed, order, provider id, opening balance and
+        /// batch: the columns that carry over.
+        type Carried = (
+            i64,
+            String,
+            i64,
+            i64,
+            i64,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+        );
+        let (_dir, pool) = fresh().await;
+        let before = sqlx::migrate::Migrator {
+            migrations: std::borrow::Cow::Owned(
+                MIGRATOR
+                    .migrations
+                    .iter()
+                    .filter(|m| m.version < 11)
+                    .cloned()
+                    .collect(),
+            ),
+            ..sqlx::migrate::Migrator::DEFAULT
+        };
+        before.run(&pool).await.unwrap();
+        for sql in [
+            "INSERT INTO accounts (id, name, institution, type, role, has_transactions, in_net_worth,
+               closed, sort_order, external_account_id, opening_balance_minor, opening_date,
+               balance_includes_pending, created_by_batch_id)
+             VALUES (7, 'Demo Checking', 'Demo Bank', 'checking', 'budgeted', 1, 0, 1, 3, 'ACT-demo-1',
+               10000, '2026-09-30', 0, 5)",
+            "INSERT INTO accounts (id, name, type, role) VALUES (8, 'Demo Cash', 'cash', 'tracking')",
+            "INSERT INTO transactions (account_id, date, amount_minor, raw_description, source, dedupe_key)
+             VALUES (7, '2026-10-20', -500, 'DEMO CAFE', 'import', 'k')",
+            "INSERT INTO balance_snapshots (account_id, as_of, balance_minor, source)
+             VALUES (7, '2026-10-20', 9500, 'manual')",
+        ] {
+            sqlx::query(sql).execute(&pool).await.unwrap();
+        }
+
+        migrate(&pool).await.unwrap();
+
+        let accounts: Vec<Carried> = sqlx::query_as(
+            "SELECT id, name, in_net_worth, closed, sort_order, external_account_id,
+                        opening_balance_minor, created_by_batch_id FROM accounts ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            accounts,
+            [
+                (
+                    7,
+                    "Demo Checking".to_owned(),
+                    0,
+                    1,
+                    3,
+                    Some("ACT-demo-1".to_owned()),
+                    Some(10000),
+                    Some(5)
+                ),
+                (8, "Demo Cash".to_owned(), 1, 0, 0, None, None, None),
+            ]
+        );
+        let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let snapshots: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM balance_snapshots")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            (rows, snapshots),
+            (1, 1),
+            "what pointed at accounts survived the rebuild"
+        );
+        let broken: Vec<(String,)> =
+            sqlx::query_as("SELECT \"table\" FROM pragma_foreign_key_check")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(broken.is_empty(), "{broken:?}");
+        let fks: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(fks, 1, "foreign keys are back on");
+        let uniques: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_index_list('accounts') WHERE \"unique\" = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(uniques, 2, "name, and (connection_id, external_account_id)");
+        let view_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM v_category_lines")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(view_rows >= 0, "the views over accounts still work");
     }
 
     #[tokio::test]

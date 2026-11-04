@@ -2,6 +2,7 @@
 
 mod accounts;
 mod auth;
+mod bank;
 mod batches;
 mod categories;
 mod error;
@@ -29,6 +30,7 @@ use utoipa::OpenApi;
 
 pub use error::ApiError;
 pub use reset::{IssueResetError, ResetLink, issue_password_reset};
+pub use simplefin::{ClaimPolicy, SecretKey};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -56,6 +58,9 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         accounts::update_balance,
         accounts::change,
         accounts::order,
+        bank::get,
+        bank::claim,
+        bank::disconnect,
         transactions::list,
         transactions::get,
         transactions::tags,
@@ -88,10 +93,20 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     Doc::openapi()
 }
 
+/// What the bank connection needs from the environment.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BankConfig {
+    /// `BUDGET_SECRET_KEY`, if set. Without it no setup token is claimed.
+    pub secret_key: Option<SecretKey>,
+    /// Where claim URLs may point: any `https://` one unless the dev setting narrows it.
+    pub claim_policy: ClaimPolicy,
+}
+
 /// What every handler can reach.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: db::SqlitePool,
+    bank: Arc<BankConfig>,
     setup: Arc<setup::Setup>,
     uploads: Arc<import::Uploads>,
     clock: Arc<dyn Fn() -> Timestamp + Send + Sync>,
@@ -121,10 +136,50 @@ impl AppState {
         };
         Ok(AppState {
             pool,
+            bank: Arc::new(BankConfig::default()),
             setup: Arc::new(setup),
             uploads: Arc::new(import::Uploads::new(data_dir)),
             clock: Arc::new(Timestamp::now),
         })
+    }
+
+    /// The same state with the bank connection's environment. A connection whose secret
+    /// `bank.secret_key` can't open is marked `key_mismatch` (shown as paused; the app still
+    /// starts); one marked so whose secret opens again goes back to `ok`.
+    ///
+    /// # Errors
+    /// If the database fails.
+    pub async fn with_bank(self, bank: BankConfig) -> Result<AppState, LoadError> {
+        let state = AppState {
+            bank: Arc::new(bank),
+            ..self
+        };
+        state.check_connection_key().await?;
+        Ok(state)
+    }
+
+    async fn check_connection_key(&self) -> Result<(), db::Error> {
+        let Some((_, sealed)) = db::connection_secret(&self.pool).await? else {
+            return Ok(());
+        };
+        let opens = self
+            .bank
+            .secret_key
+            .as_ref()
+            .is_some_and(|key| simplefin::open(key, &sealed).is_ok());
+        let marked = db::connection(&self.pool)
+            .await?
+            .is_some_and(|c| c.status == db::ConnectionStatus::KeyMismatch);
+        if !opens {
+            tracing::warn!(
+                "BUDGET_SECRET_KEY can't open the bank connection's secret; sync is paused"
+            );
+            db::set_connection_status(&self.pool, db::ConnectionStatus::KeyMismatch, self.now())
+                .await?;
+        } else if marked {
+            db::set_connection_status(&self.pool, db::ConnectionStatus::Ok, self.now()).await?;
+        }
+        Ok(())
     }
 
     /// The same state, telling the time by `clock`, so tests can move it on.
@@ -187,6 +242,10 @@ pub fn router(state: AppState) -> Router {
         .route("/accounts/order", put(accounts::order))
         .route("/accounts/{id}", get(accounts::get).patch(accounts::change))
         .route("/accounts/{id}/balance", post(accounts::update_balance))
+        .route(
+            "/bank-connection",
+            get(bank::get).put(bank::claim).delete(bank::disconnect),
+        )
         .route("/transactions", get(transactions::list))
         .route("/transactions/{id}", get(transactions::get))
         .route("/transactions/{id}/category", put(undecided::set_category))

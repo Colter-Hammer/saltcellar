@@ -32,12 +32,20 @@ impl App {
 
 /// A fresh install, waiting for setup.
 async fn app() -> App {
+    app_with_bank(crate::BankConfig::default()).await
+}
+
+/// A fresh install, waiting for setup, with the bank connection's environment `bank`.
+async fn app_with_bank(bank: crate::BankConfig) -> App {
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect(&dir.path().join(db::FILE_NAME)).await.unwrap();
     db::migrate(&pool).await.unwrap();
     let now = Arc::new(Mutex::new("2026-10-28T09:00:00Z".parse().unwrap()));
     let clock = Arc::clone(&now);
     let state = crate::AppState::load(pool.clone(), dir.path())
+        .await
+        .unwrap()
+        .with_bank(bank)
         .await
         .unwrap()
         .with_clock(move || *clock.lock().unwrap());
@@ -54,7 +62,12 @@ async fn app() -> App {
 
 /// An install whose setup is finished, by `sam` with the password `correct horse battery`.
 async fn set_up() -> App {
-    let mut app = app().await;
+    set_up_with_bank(crate::BankConfig::default()).await
+}
+
+/// [`set_up`], with the bank connection's environment `bank`.
+async fn set_up_with_bank(bank: crate::BankConfig) -> App {
+    let mut app = app_with_bank(bank).await;
     let (status, headers, _) = send_full(app.router.clone(), finish(&app, &json!({}))).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     app.cookie = session_cookie(&headers).unwrap();
@@ -1207,6 +1220,7 @@ fn the_openapi_document_describes_health_and_the_error_envelope() {
 }
 
 mod accounts;
+mod bank;
 #[path = "tests/categories.rs"]
 mod categories;
 mod import;
