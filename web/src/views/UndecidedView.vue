@@ -33,7 +33,10 @@ function close() {
 
     <template v-else-if="undecided.isSuccess.value && groups.length === 0">
       <p class="text-sm text-muted-foreground">Nothing left to decide.</p>
-      <RouterLink to="/transactions" class="self-start rounded-md border px-3 py-2">
+      <RouterLink
+        to="/transactions"
+        class="inline-flex items-center self-start rounded-md border px-3 py-2"
+      >
         See transactions
       </RouterLink>
     </template>

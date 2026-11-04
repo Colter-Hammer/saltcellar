@@ -85,7 +85,7 @@ const describedBy = computed(
             v-for="option in shown"
             :key="option.value"
             :value="option.value"
-            class="cursor-pointer rounded px-2 py-1.5 text-sm data-[highlighted]:bg-accent"
+            class="flex cursor-pointer items-center rounded px-2 py-1.5 data-[highlighted]:bg-accent"
           >
             {{ option.label }}
           </ComboboxItem>

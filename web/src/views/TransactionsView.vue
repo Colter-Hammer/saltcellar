@@ -12,7 +12,8 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { type TransactionRow, useTransactions } from '@/api/transactions'
 import TransactionDetail from '@/components/TransactionDetail.vue'
 import TransactionFilters from '@/components/TransactionFilters.vue'
-import { formatDate, formatMoney, useFormatting } from '@/lib/format'
+import Money from '@/components/Money.vue'
+import { formatDate, useFormatting } from '@/lib/format'
 import {
   categoryLabel,
   isUncategorized,
@@ -48,10 +49,6 @@ function link(row: TransactionRow) {
   return { path: `/transactions/${String(row.id)}`, query: filter.value }
 }
 
-function money(minor: number): string {
-  return formatMoney(minor, formatting.value, { signed: true })
-}
-
 function close() {
   void router.push({ path: '/transactions', query: filter.value })
 }
@@ -78,7 +75,11 @@ const columns: ColumnDef<typeof features, TransactionRow>[] = [
   },
   { id: 'category', header: 'Category', cell: ({ row }) => categoryLabel(row.original) },
   { id: 'account', header: 'Account', cell: ({ row }) => row.original.account },
-  { id: 'amount', header: 'Amount', cell: ({ row }) => money(row.original.amount_minor) },
+  {
+    id: 'amount',
+    header: 'Amount',
+    cell: ({ row }) => h(Money, { minor: row.original.amount_minor, signed: true }),
+  },
   { id: 'tags', header: 'Tags', cell: ({ row }) => row.original.tags.join(', ') },
 ]
 const table = useTable({
@@ -131,10 +132,13 @@ onBeforeUnmount(() => {
     <template v-else-if="empty">
       <p class="text-sm text-muted-foreground">No transactions yet.</p>
       <div class="flex flex-wrap gap-2">
-        <RouterLink to="/import" class="rounded-md bg-primary px-3 py-2 text-primary-foreground">
+        <RouterLink
+          to="/import"
+          class="inline-flex items-center rounded-md bg-primary px-3 py-2 text-primary-foreground"
+        >
           Import from Actual
         </RouterLink>
-        <RouterLink to="/categories" class="rounded-md border px-3 py-2">
+        <RouterLink to="/categories" class="inline-flex items-center rounded-md border px-3 py-2">
           Set up categories
         </RouterLink>
       </div>
@@ -173,7 +177,7 @@ onBeforeUnmount(() => {
                   >
                 </span>
                 <span class="flex shrink-0 flex-col text-right">
-                  <span class="tabular-nums">{{ money(row.amount_minor) }}</span>
+                  <Money :minor="row.amount_minor" signed />
                   <span class="text-xs text-muted-foreground">{{ row.account }}</span>
                 </span>
               </RouterLink>
@@ -182,7 +186,7 @@ onBeforeUnmount(() => {
         </section>
 
         <!-- Desktops: the table. -->
-        <table aria-label="Transactions" class="w-full text-sm max-lg:hidden">
+        <table aria-label="Transactions" class="w-full max-lg:hidden">
           <thead class="text-left text-muted-foreground">
             <tr v-for="group in table.getHeaderGroups()" :key="group.id" class="border-b">
               <th
@@ -200,15 +204,16 @@ onBeforeUnmount(() => {
             <tr
               v-for="row in table.getRowModel().rows"
               :key="row.id"
+              class="h-row-dense"
               :class="Number(row.id) === selected && 'bg-muted'"
               :aria-current="Number(row.id) === selected ? 'true' : undefined"
             >
               <td
                 v-for="cell in row.getAllCells()"
                 :key="cell.id"
-                class="py-2 pr-3"
+                class="py-1 pr-3"
                 :class="{
-                  'text-right tabular-nums': cell.column.id === 'amount',
+                  'text-right': cell.column.id === 'amount',
                   'text-muted-foreground': cell.column.id === 'date' || cell.column.id === 'tags',
                 }"
               >
@@ -222,7 +227,7 @@ onBeforeUnmount(() => {
           <button
             v-if="pages.hasNextPage.value"
             type="button"
-            class="rounded-md border px-3 py-2 text-sm"
+            class="rounded-md border px-3 py-2"
             :disabled="pages.isFetchingNextPage.value"
             @click="more"
           >

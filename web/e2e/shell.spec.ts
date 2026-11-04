@@ -1,5 +1,6 @@
 // The app shell loads from the server and its navigation reaches every milestone 1 screen.
 import { expect, test, type Page } from '@playwright/test'
+import { smallTargets } from './look.js'
 
 const heading = (page: Page) => page.getByRole('heading', { level: 1 })
 
@@ -17,6 +18,23 @@ test('Accounts offers the import on a fresh install', async ({ page }) => {
   await expect(page.getByRole('main')).toContainText('No accounts yet.')
   await page.getByRole('main').getByRole('link', { name: 'Import from Actual' }).click()
   await expect(heading(page)).toHaveText('Import from Actual')
+})
+
+test('the text is Inter, from the app itself', async ({ page, baseURL }) => {
+  const fonts: string[] = []
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fonts.push(request.url())
+  })
+  await page.goto('/')
+  await expect(heading(page)).toHaveText('Transactions')
+  await page.evaluate(() => document.fonts.ready)
+
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toMatch(
+    /^"Inter Variable"/,
+  )
+  expect(await page.evaluate(() => document.fonts.check('16px "Inter Variable"'))).toBe(true)
+  expect(fonts.length).toBeGreaterThan(0)
+  for (const font of fonts) expect(new URL(font).origin).toBe(new URL(baseURL ?? '').origin)
 })
 
 test('a reload deep in the app lands back on that screen', async ({ page }) => {
@@ -45,6 +63,24 @@ test.describe('phone', () => {
 
     await tabs.getByRole('link', { name: 'Transactions' }).click()
     await expect(heading(page)).toHaveText('Transactions')
+  })
+
+  test('every tappable row and button is at least 44px tall', async ({ page }) => {
+    for (const [path, title] of [
+      ['/transactions', 'Transactions'],
+      ['/accounts', 'Accounts'],
+      ['/more', 'More'],
+      ['/categories', 'Categories'],
+      ['/import', 'Import from Actual'],
+      ['/settings', 'Settings'],
+      ['/settings/profile', 'Profile'],
+      ['/settings/imports', 'Imports'],
+    ] as const) {
+      await page.goto(path)
+      await expect(heading(page)).toHaveText(title)
+      await page.waitForLoadState('networkidle')
+      expect(await smallTargets(page), path).toEqual([])
+    }
   })
 })
 

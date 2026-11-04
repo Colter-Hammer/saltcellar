@@ -8,7 +8,8 @@ import { ApiError } from '@/api/client'
 import { useTransaction } from '@/api/transactions'
 import { useDecide } from '@/api/undecided'
 import CategoryPicker from '@/components/CategoryPicker.vue'
-import { formatDate, formatMoney, useFormatting } from '@/lib/format'
+import Money from '@/components/Money.vue'
+import { formatDate, useFormatting } from '@/lib/format'
 import { categoryLabel, payeeLabel, sourceLabel, statusLabel } from '@/lib/transactions'
 
 const props = defineProps<{ id: number }>()
@@ -32,10 +33,6 @@ async function setCategory() {
   }
 }
 
-function money(minor: number, signed = false): string {
-  return formatMoney(minor, formatting.value, { signed })
-}
-
 /** The import it came in with, like "export.zip, Feb 1, 2026". */
 const batch = computed(() => {
   const found = transaction.value?.import_batch
@@ -48,7 +45,7 @@ const batch = computed(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 text-sm">
+  <div class="flex flex-col gap-4">
     <div class="flex items-start gap-2">
       <h2 id="transaction-payee" class="min-w-0 flex-1 text-lg font-medium break-words">
         {{ transaction ? payeeLabel(transaction) : 'Transaction' }}
@@ -67,7 +64,7 @@ const batch = computed(() => {
     </p>
 
     <template v-if="transaction">
-      <p class="text-2xl tabular-nums">{{ money(transaction.amount_minor, true) }}</p>
+      <p class="text-2xl"><Money :minor="transaction.amount_minor" signed /></p>
       <dl aria-label="Details" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
         <dt class="text-muted-foreground">Date</dt>
         <dd>{{ formatDate(transaction.date, formatting) }}</dd>
@@ -85,7 +82,7 @@ const batch = computed(() => {
                 {{ line.category }}
                 <span v-if="line.memo" class="text-muted-foreground">· {{ line.memo }}</span>
               </span>
-              <span class="tabular-nums">{{ money(line.amount_minor) }}</span>
+              <Money :minor="line.amount_minor" signed />
             </li>
           </ul>
           <template v-else>{{ categoryLabel(transaction) }}</template>

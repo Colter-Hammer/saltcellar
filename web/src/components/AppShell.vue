@@ -36,7 +36,7 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
           :aria-current="isActive ? 'page' : undefined"
           :class="
             cn(
-              'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent',
+              'flex items-center gap-2 rounded-md px-2 py-1.5  hover:bg-accent',
               isActive && 'bg-accent font-medium',
             )
           "
@@ -47,7 +47,7 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
         </a>
       </RouterLink>
       <!-- The sidebar has no More, so Log out sits at its foot *(agent)*. -->
-      <LogOutButton class="mt-auto rounded-md px-2 py-1.5 text-sm hover:bg-accent" />
+      <LogOutButton class="mt-auto rounded-md px-2 py-1.5 hover:bg-accent" />
     </nav>
 
     <div class="flex min-w-0 flex-1 flex-col">

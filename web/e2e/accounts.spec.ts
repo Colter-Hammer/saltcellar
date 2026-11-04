@@ -30,7 +30,7 @@ test('the imported accounts, on a desktop and a phone, and one opened', async ({
     '€21,458.01',
     'Dec 15, 2025',
   ])
-  await expect(cells('Rewards card').nth(3)).toHaveText('-€1,363.35')
+  await expect(cells('Rewards card').nth(3)).toHaveText('−€1,363.35')
   await expect(cells('Rainy day savings').nth(3)).toHaveText('€4,000.00')
   await expect(cells('Brokerage')).toHaveText([
     '—',
@@ -62,7 +62,7 @@ test('the imported accounts, on a desktop and a phone, and one opened', async ({
   const group = (name: string) => page.getByRole('region', { name })
   await expect(group('Budgeted').getByRole('listitem')).toHaveText([
     /Everyday checking\s*Checking\s*€21,458\.01/,
-    /Rewards card\s*Credit card\s*-€1,363\.35/,
+    /Rewards card\s*Credit card\s*−€1,363\.35/,
     /Rainy day savings\s*Savings\s*€4,000\.00/,
   ])
   await expect(group('Tracking').getByRole('listitem')).toHaveText([

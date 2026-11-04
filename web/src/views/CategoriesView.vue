@@ -369,13 +369,10 @@ function endDrag() {
             <option value="expense">Spending</option>
             <option value="income">Income</option>
           </select>
-          <button
-            type="submit"
-            class="rounded-md bg-primary px-2 py-1 text-sm text-primary-foreground"
-          >
+          <button type="submit" class="rounded-md bg-primary px-2 py-1 text-primary-foreground">
             Add
           </button>
-          <button type="button" class="rounded-md border px-2 py-1 text-sm" @click="editing = null">
+          <button type="button" class="rounded-md border px-2 py-1" @click="editing = null">
             Cancel
           </button>
         </div>
@@ -411,7 +408,7 @@ function endDrag() {
             </span>
             <button
               type="button"
-              class="rounded-md border px-2 py-1 text-sm"
+              class="rounded-md border px-2 py-1"
               :aria-label="`Unhide ${group.name}`"
               @click="attempt(() => edits.changeGroup(group.id, { hidden: false }))"
             >
@@ -429,7 +426,7 @@ function endDrag() {
             </span>
             <button
               type="button"
-              class="rounded-md border px-2 py-1 text-sm"
+              class="rounded-md border px-2 py-1"
               :aria-label="`Unhide ${category.name}`"
               @click="attempt(() => edits.changeCategory(category.id, { hidden: false }))"
             >

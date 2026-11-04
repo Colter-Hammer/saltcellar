@@ -84,7 +84,7 @@ Every palette passes WCAG AA in both modes, checked by a test, not by eye *(agen
 ## Type
 
 - **Inter** (variable), bundled with the app from `@fontsource-variable/inter`, no external CDN. One font for every palette, set by the single `--font-sans` token. A font choice in Settings is not v1.
-- Sizes are Tailwind's scale. Body text `text-sm` on desktop, `text-base` on phone; inputs at least 16px on phone so iOS doesn't zoom *(agent)*.
+- Sizes are Tailwind's scale. Body text `text-sm` on desktop, `text-base` on phone, set once on `body`; inputs at least 16px on phone so iOS doesn't zoom *(agent)*. Form labels, legends, hints and errors stay `text-sm` on a phone too *(agent)*.
 - **Numbers lead.** Money and counts use tabular figures. Amounts in rows are `font-medium` beside `font-normal` labels; headline figures (Overview cards, budget totals) are `text-3xl font-semibold` with a `text-xs` muted label above *(agent)*.
 
 ## Money
@@ -96,14 +96,16 @@ Every amount goes through `formatMoney` and shows through one `Money` component 
 - **Out:** `−$42.10`, plain foreground, with a real minus sign (U+2212), never a hyphen.
 - **In:** `+$1,200.00`, `--money-in`.
 - **Never parentheses**, whatever the locale's accounting style.
-- Balances and totals that aren't a transaction's amount carry no plus sign; a negative one still gets the real minus.
+- Balances and totals that aren't a transaction's amount carry no plus sign; a negative one still gets the real minus. A group's total in From Actual, undecided is a total; a split line is part of a transaction's amount and is signed *(agent)*.
+- The plus is the word that goes with `--money-in`'s color, so money in never relies on color alone *(agent)*.
 
 ## Density and spacing
 
 One fixed density in v1, no toggle, all from spacing tokens so a toggle can come later *(agent: `--row-touch` 2.75rem, `--row-dense` 2.25rem, `--page-x` 1rem phone / 1.5rem desktop)*.
 
 - **Phone is roomy:** touch targets at least 44px, one row per transaction.
-- **Desktop tables are tighter:** dense rows from the `lg` breakpoint.
+- **Desktop tables are tighter:** dense rows from the `lg` breakpoint (Transactions and Accounts *(agent)*).
+- The phone's 44px is one base rule in `web/src/styles/main.css` on links, buttons, fields, options and menu items *(agent)*; an inline link in running text keeps its line height.
 
 ## Shape, shadow and motion
 

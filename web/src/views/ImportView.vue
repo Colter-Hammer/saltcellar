@@ -178,7 +178,7 @@ async function commit() {
           type="file"
           accept=".zip,application/zip"
           aria-describedby="actual-export-hint"
-          class="rounded-md border p-2 text-sm"
+          class="rounded-md border p-2"
           :disabled="reading"
           @change="choose"
         />
@@ -192,7 +192,7 @@ async function commit() {
       <section
         v-if="upload && summary"
         aria-label="The export"
-        class="flex flex-col gap-1 rounded-xl border p-4 text-sm"
+        class="flex flex-col gap-1 rounded-xl border p-4"
       >
         <h2 class="font-medium">{{ upload.budget_name }}</h2>
         <p>{{ summary.counts }}</p>
@@ -224,7 +224,7 @@ async function commit() {
           one the app has already, or skip it and its rows.
         </p>
       </div>
-      <table role="table" class="w-full text-sm max-lg:block">
+      <table role="table" class="w-full max-lg:block">
         <thead class="text-left text-muted-foreground max-lg:hidden">
           <tr class="border-b">
             <th scope="col" class="py-2 pr-3 font-medium">Actual account</th>
@@ -272,10 +272,10 @@ async function commit() {
           come in uncategorized and wait in From Actual, undecided.
         </p>
       </div>
-      <p v-if="categoryRows.length === 0" class="rounded-xl border border-dashed p-4 text-sm">
+      <p v-if="categoryRows.length === 0" class="rounded-xl border border-dashed p-4">
         No imported row has a category.
       </p>
-      <table v-else role="table" class="w-full text-sm max-lg:block">
+      <table v-else role="table" class="w-full max-lg:block">
         <thead class="text-left text-muted-foreground max-lg:hidden">
           <tr class="border-b">
             <th scope="col" class="py-2 pr-3 font-medium">Actual category</th>
@@ -326,10 +326,10 @@ async function commit() {
       class="flex flex-col gap-4"
     >
       <h2 id="done-heading" class="font-medium">Imported</h2>
-      <ul aria-label="Summary" class="flex flex-col gap-1 rounded-xl border p-4 text-sm">
+      <ul aria-label="Summary" class="flex flex-col gap-1 rounded-xl border p-4">
         <li v-for="line in doneLines" :key="line">{{ line }}</li>
       </ul>
-      <table role="table" aria-label="Rows imported per account" class="w-full text-sm">
+      <table role="table" aria-label="Rows imported per account" class="w-full">
         <thead class="text-left text-muted-foreground">
           <tr class="border-b">
             <th scope="col" class="py-2 pr-3 font-medium">Account</th>
@@ -349,12 +349,16 @@ async function commit() {
         Actual's rules weren't copied, since payee history covers them.
       </p>
       <div class="flex flex-wrap justify-end gap-2">
-        <RouterLink v-if="done.undecided > 0" to="/undecided" class="rounded-md border px-3 py-2">
+        <RouterLink
+          v-if="done.undecided > 0"
+          to="/undecided"
+          class="inline-flex items-center rounded-md border px-3 py-2"
+        >
           Decide on undecided rows
         </RouterLink>
         <RouterLink
           to="/transactions"
-          class="rounded-md bg-primary px-3 py-2 text-primary-foreground"
+          class="inline-flex items-center rounded-md bg-primary px-3 py-2 text-primary-foreground"
         >
           See transactions
         </RouterLink>

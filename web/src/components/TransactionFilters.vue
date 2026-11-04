@@ -76,7 +76,7 @@ function clear() {
   emit('change', {})
 }
 
-const chip = 'rounded-full border px-3 py-1 text-sm'
+const chip = 'rounded-full border px-3 py-1 '
 const on = 'border-primary bg-primary/10 font-medium'
 </script>
 

@@ -112,7 +112,7 @@ test('set up, log in, import the fake export and see its rows and balances', asy
       .getByRole('cell')
       .nth(3)
   await expect(balance('Everyday checking')).toHaveText('$21,458.01')
-  await expect(balance('Rewards card')).toHaveText('-$1,363.35')
+  await expect(balance('Rewards card')).toHaveText('−$1,363.35')
   await expect(balance('Rainy day savings')).toHaveText('$4,000.00')
   await expect(balance('Old checking')).toHaveText('$0.00')
 })

@@ -124,12 +124,12 @@ async function create() {
     <div class="flex gap-2">
       <button
         type="submit"
-        class="rounded-md bg-primary px-2 py-1 text-sm text-primary-foreground disabled:opacity-50"
+        class="rounded-md bg-primary px-2 py-1 text-primary-foreground disabled:opacity-50"
         :disabled="saving"
       >
         Create
       </button>
-      <button type="button" class="rounded-md border px-2 py-1 text-sm" @click="emit('cancel')">
+      <button type="button" class="rounded-md border px-2 py-1" @click="emit('cancel')">
         Cancel
       </button>
     </div>
