@@ -17,10 +17,15 @@ ignore = []
 
 [licenses]
 # Permissive licences compatible with AGPL-3.0, only those in use (an unused one warns).
-# Adding one is a reviewed change: ISC, BSD-2-Clause and MPL-2.0 would also be fine.
+# Adding one is a reviewed change: BSD-2-Clause and MPL-2.0 would also be fine. ISC came with
+# `ring` and `rustls-webpki`, which TLS to the SimpleFIN Bridge needs (the `simplefin` crate's ureq);
+# CDLA-Permissive-2.0 is `webpki-roots`' licence for Mozilla's list of root certificates, built in
+# so the app doesn't depend on the host's certificate store.
 allow = [
   "Apache-2.0",
   "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
   "MIT",
   "Unicode-3.0",
   "Zlib",
@@ -37,6 +42,8 @@ wildcards = "deny"
 allow-wildcard-paths = true
 # Each skip names the crates still on the older version; drop it when they move.
 skip = [
+  { crate = "base64@0.22", reason = "sqlx-core is on 0.22; ureq and the simplefin crate are on 0.23" },
+  { crate = "getrandom@0.2", reason = "ring (under rustls, under ureq) is on 0.2; everything else is on 0.4" },
   { crate = "hashbrown@0.16", reason = "sqlx-core and hashlink are on 0.16; indexmap is on 0.17" },
   { crate = "syn@2", reason = "sqlx-macros and tracing-attributes are on syn 2; the rest are on 3" },
 ]

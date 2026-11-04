@@ -19,16 +19,20 @@ jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+simplefin.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "fs", "io-util"] }
 tracing.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 futures-util.workspace = true
+simplefin-fake.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
 tower.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

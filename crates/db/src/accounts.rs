@@ -517,10 +517,12 @@ mod tests {
         ] {
             assert!(insert(bad).await.is_err(), "{bad}");
         }
-        // No connections table yet, so any connection id goes for now.
-        insert("INSERT INTO accounts (name, type, role, connection_id) VALUES ('E', 'other', 'tracking', 7)")
-            .await
-            .unwrap();
+        // A connection id has to be a connection's.
+        assert!(
+            insert("INSERT INTO accounts (name, type, role, connection_id) VALUES ('E', 'other', 'tracking', 7)")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -678,11 +680,13 @@ mod tests {
     #[tokio::test]
     async fn a_manual_snapshot_is_refused_on_a_connected_account() {
         let (_dir, pool) = migrated().await;
+        let connection = crate::save_connection(&pool, b"sealed").await.unwrap();
         sqlx::query(
             "INSERT INTO accounts (id, name, type, role, connection_id) VALUES
-               (1, 'Synced', 'checking', 'budgeted', 7),
+               (1, 'Synced', 'checking', 'budgeted', ?),
                (2, 'Brokerage', 'investment', 'tracking', NULL)",
         )
+        .bind(connection)
         .execute(&pool)
         .await
         .unwrap();

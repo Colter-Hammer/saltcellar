@@ -6,6 +6,8 @@
 !.cargo/
 !.sqlx/
 !crates/
+# A workspace member, so cargo can load the workspace; only the app's own crates are built.
+!fixtures/simplefin-fake/
 !migrations/
 !web/
 web/node_modules/

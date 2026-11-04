@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     environment:
       BUDGET_BASE_URL: ${BUDGET_BASE_URL:-}
+      BUDGET_SECRET_KEY: ${BUDGET_SECRET_KEY:-}
     # Localhost only: the reverse proxy is what other machines reach.
     ports:
       - "127.0.0.1:${BUDGET_PORT:-8080}:8080"

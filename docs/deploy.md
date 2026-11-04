@@ -17,7 +17,7 @@ The app is then at <http://localhost:8080>, on this machine only. Other devices 
 - **Port.** `BUDGET_PORT` changes the localhost port (default 8080). Inside the container the app always listens on 8080.
 - **Data.** The SQLite database lives in the `data` volume, mounted at `/data`. To use a folder on the host instead, swap the volume for a bind mount (`./data:/data`). The folder must be writable by uid 65532, the image's non-root user: `sudo chown 65532:65532 ./data`.
 - **Health.** The image's `HEALTHCHECK` runs `budget healthcheck`, which asks `GET /api/v1/health` and passes only on a 200. That endpoint answers 200 when the database answers.
-- **Logs.** `docker compose logs budget`: one line per request, never amounts, payees or secrets. The setup code is the one secret printed, on purpose.
+- **Logs.** `docker compose logs budget`: one line per request, never amounts, payees or secrets (the bank connection's access URL and `BUDGET_SECRET_KEY` included). The setup code is the one secret printed, on purpose.
 
 **Forgotten password.** There's no email: run `docker compose exec budget budget reset-password <login>` on the server. It prints a link that sets a new password and logs in. The link works once, within 24 hours, and a newer one replaces it; setting the password ends that login's other sessions. With `BUDGET_BASE_URL` set it prints the whole link; without, only its path (`/reset-password#…`), to put after the app's address. It goes only to your terminal, never to the log. An unknown login is refused with an error.
 
@@ -34,8 +34,10 @@ Only what's needed before anyone can log in, or what touches the host. Everythin
 | `BUDGET_TRUSTED_PROXY` | none | Header mode: the proxy address (IP or CIDR) whose header is trusted. Required in header mode. |
 | `BUDGET_AUTH_HEADER` | `Remote-User` | Header mode: the header carrying the username. |
 | `BUDGET_BACKUP_DIR` | `$BUDGET_DATA_DIR/backups` | Where nightly backups are written. |
+| `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the bank connection's access URL. Required to connect a bank: without it Settings › Bank connection & sync says so and claims nothing. Keep a copy outside the data dir; backups don't include it. If it's lost or changed, sync shows paused until you paste a new setup token. Never logged. |
+| `BUDGET_SIMPLEFIN_CLAIM_HOSTS` | none | Development only. A comma-separated list of `host[:port]`: setup tokens may then point only at these, over plain `http://` too, so a fake SimpleFIN server on localhost works. Leave unset in production, where any `https://` setup token is accepted. |
 
-`compose.yaml` passes `BUDGET_BASE_URL` through from your shell or a `.env` file next to it. Add the others under `environment:` as you need them.
+`compose.yaml` passes `BUDGET_BASE_URL` and `BUDGET_SECRET_KEY` through from your shell or a `.env` file next to it. Add the others under `environment:` as you need them.
 
 ## Behind an HTTPS reverse proxy
 

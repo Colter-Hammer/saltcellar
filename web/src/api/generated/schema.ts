@@ -77,6 +77,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bank-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/bank-connection`: whether the secret key is set and what the connection is. */
+        get: operations["getBankConnection"];
+        /**
+         * `PUT /api/v1/bank-connection`: claims a setup token, stores the access URL it answers sealed
+         *     with `BUDGET_SECRET_KEY`, and makes it the household's connection: a new one, or the existing
+         *     one with its secret replaced and its pause cleared, keeping its accounts. A token that isn't
+         *     one is refused before any request is made; so is every claim without the secret key.
+         */
+        put: operations["claimSetupToken"];
+        post?: never;
+        /**
+         * `DELETE /api/v1/bank-connection`: disconnects. The secret is deleted and syncing stops; the
+         *     accounts and their rows stay, and become manual accounts. Disconnecting when there is no
+         *     connection does nothing.
+         */
+        delete: operations["disconnectBank"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -898,6 +926,12 @@ export interface components {
              */
             balance_minor: number;
         };
+        /** @description The bank connection screen's state. */
+        BankConnection: {
+            connection?: components["schemas"]["Connection"] | null;
+            /** @description Whether `BUDGET_SECRET_KEY` is set. Without it no setup token can be claimed. */
+            secret_key_set: boolean;
+        };
         Category: {
             hidden: boolean;
             /** Format: int64 */
@@ -979,6 +1013,20 @@ export interface components {
             /** @description As typed: case, spaces and dashes don't matter. */
             code: string;
         };
+        /** @description The household's one bank connection. Its secret is never part of this. */
+        Connection: {
+            /** @description What to call it, like `SimpleFIN Bridge`. */
+            label: string;
+            /** @description True for every status but `ok`: syncing is paused. */
+            paused: boolean;
+            status: components["schemas"]["ConnectionStatus"];
+        };
+        /**
+         * @description Where the connection stands. Anything but `ok` pauses syncing until a new setup token is
+         *     pasted.
+         * @enum {string}
+         */
+        ConnectionStatus: "ok" | "token_revoked" | "unpaid" | "key_mismatch";
         Created: {
             /** Format: int64 */
             id: number;
@@ -1158,6 +1206,11 @@ export interface components {
         SetupStatus: {
             /** @description Whether setup is finished. Until it is, the app shows only the setup wizard. */
             done: boolean;
+        };
+        /** @description A pasted setup token. */
+        SetupToken: {
+            /** @description The token from SimpleFIN Bridge: base64 of a claim URL, or the claim URL itself. */
+            setup_token: string;
         };
         /** @description One of a split transaction's lines. */
         SplitLine: {
@@ -1544,6 +1597,122 @@ export interface operations {
             };
             /** @description `account_connected`: the account has a connection, so its balance comes from the bank. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBankConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankConnection"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimSetupToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupToken"];
+            };
+        };
+        responses: {
+            /** @description Claimed; the connection now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankConnection"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `secret_key_missing`: `BUDGET_SECRET_KEY` isn't set. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed` with `setup_token` if it isn't a setup token; `token_refused` if SimpleFIN won't take it (already used, or not one). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `bridge_unavailable`: SimpleFIN couldn't be reached or answered something unexpected. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    disconnectBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

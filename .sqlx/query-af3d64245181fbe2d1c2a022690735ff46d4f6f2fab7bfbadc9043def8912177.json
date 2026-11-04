@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connections\n             SET secret_encrypted = ?, status = 'ok', last_error = NULL, paused_at = NULL\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "af3d64245181fbe2d1c2a022690735ff46d4f6f2fab7bfbadc9043def8912177"
+}
