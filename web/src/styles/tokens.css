@@ -43,11 +43,16 @@
   --row-touch: 2.75rem;
   --row-dense: 2.25rem;
   --page-x: 1rem;
+
+  /* Group colors past the 12th: --cat-n again, this much lighter or darker in OKLCH each time
+     round (docs/spec/visual-system.md#group-color-and-icon). Read by src/lib/groups.ts. */
+  --cat-cycle-shift: -0.08;
 }
 
 .dark,
 [data-palette].dark {
   --shadow-card: none;
+  --cat-cycle-shift: 0.08;
 }
 
 @media (min-width: 64rem) {

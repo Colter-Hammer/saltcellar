@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { type CategoryGroup, type CategoryGroupKind, useCategoryEdits } from '@/api/categories'
 import type { ActualCategory } from '@/api/imports'
+import GroupMark from '@/components/GroupMark.vue'
 import { startingGroup } from '@/lib/import'
 
 const props = defineProps<{
@@ -89,12 +90,19 @@ async function create() {
     </div>
     <div class="flex flex-col gap-1">
       <label :for="`${id}-group`" class="text-sm font-medium">In group</label>
-      <select :id="`${id}-group`" v-model="group" class="rounded-md border bg-background px-2 py-1">
-        <option v-for="shown in shownGroups" :key="shown.id" :value="String(shown.id)">
-          {{ shown.name }}
-        </option>
-        <option :value="NEW_GROUP">New group…</option>
-      </select>
+      <span class="flex items-center gap-1.5">
+        <GroupMark :group="group === NEW_GROUP ? null : Number(group)" />
+        <select
+          :id="`${id}-group`"
+          v-model="group"
+          class="min-w-0 flex-1 rounded-md border bg-background px-2 py-1"
+        >
+          <option v-for="shown in shownGroups" :key="shown.id" :value="String(shown.id)">
+            {{ shown.name }}
+          </option>
+          <option :value="NEW_GROUP">New group…</option>
+        </select>
+      </span>
     </div>
     <div v-if="group === NEW_GROUP" class="flex flex-wrap items-end gap-2">
       <div class="flex min-w-0 flex-1 flex-col gap-1">

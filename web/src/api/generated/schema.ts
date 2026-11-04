@@ -142,7 +142,10 @@ export interface paths {
         delete: operations["deleteCategoryGroup"];
         options?: never;
         head?: never;
-        /** `PATCH /api/v1/category-groups/{id}`: renames a group, hides it or shows it again. */
+        /**
+         * `PATCH /api/v1/category-groups/{id}`: renames a group, changes its icon, hides it or shows it
+         *     again.
+         */
         patch: operations["changeCategoryGroup"];
         trace?: never;
     };
@@ -830,7 +833,7 @@ export interface components {
             id: number;
             name: string;
         };
-        /** @description What a change to a group or a category sets; a field left out stays as it is. */
+        /** @description What a change to a category sets; a field left out stays as it is. */
         CategoryChange: {
             hidden?: boolean | null;
             name?: string | null;
@@ -840,10 +843,19 @@ export interface components {
             categories: components["schemas"]["Category"][];
             /** @description A hidden group hides its categories with it. */
             hidden: boolean;
+            /** @description A Lucide icon name, like `heart-pulse`; null shows `folder`. */
+            icon?: string | null;
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["CategoryGroupKind"];
             name: string;
+        };
+        /** @description What a change to a group sets; a field left out stays as it is. */
+        CategoryGroupChange: {
+            hidden?: boolean | null;
+            /** @description A Lucide icon name: 1–40 lowercase letters, digits and `-`. */
+            icon?: string | null;
+            name?: string | null;
         };
         /**
          * @description Whether a group's categories are spending or money coming in.
@@ -1031,6 +1043,11 @@ export interface components {
             name: string;
         };
         NewCategoryGroup: {
+            /**
+             * @description A Lucide icon name: 1–40 lowercase letters, digits and `-`. Left out, the group shows
+             *     `folder`.
+             */
+            icon?: string | null;
             kind: components["schemas"]["CategoryGroupKind"];
             name: string;
         };
@@ -1553,7 +1570,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `validation_failed`: the name is empty, too long or taken. */
+            /** @description `validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1624,7 +1641,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CategoryChange"];
+                "application/json": components["schemas"]["CategoryGroupChange"];
             };
         };
         responses: {
@@ -1653,7 +1670,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `validation_failed`: the name is empty, too long or taken. */
+            /** @description `validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name. */
             422: {
                 headers: {
                     [name: string]: unknown;

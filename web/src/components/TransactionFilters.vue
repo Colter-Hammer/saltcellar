@@ -9,6 +9,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useAccounts } from '@/api/accounts'
 import { useCategories } from '@/api/categories'
 import { useTags } from '@/api/transactions'
+import GroupMark from '@/components/GroupMark.vue'
 import { formatDate, useFormatting } from '@/lib/format'
 import {
   dateRangeLabel,
@@ -104,24 +105,30 @@ const on = 'border-primary bg-primary/10 font-medium'
           {{ account.name }}
         </option>
       </select>
-      <select
-        aria-label="Category"
-        :value="filter.category ?? ''"
-        :class="[chip, filter.category !== undefined && on]"
-        @change="set('category', picked($event))"
-      >
-        <option value="">Any category</option>
-        <option value="uncategorized">Uncategorized</option>
-        <optgroup v-for="group in groups" :key="group.id" :label="group.name">
-          <option
-            v-for="category in group.categories"
-            :key="category.id"
-            :value="String(category.id)"
-          >
-            {{ category.name }}
-          </option>
-        </optgroup>
-      </select>
+      <span class="inline-flex items-center gap-1.5">
+        <GroupMark
+          v-if="filter.category !== undefined && filter.category !== 'uncategorized'"
+          :category="Number(filter.category)"
+        />
+        <select
+          aria-label="Category"
+          :value="filter.category ?? ''"
+          :class="[chip, filter.category !== undefined && on]"
+          @change="set('category', picked($event))"
+        >
+          <option value="">Any category</option>
+          <option value="uncategorized">Uncategorized</option>
+          <optgroup v-for="group in groups" :key="group.id" :label="group.name">
+            <option
+              v-for="category in group.categories"
+              :key="category.id"
+              :value="String(category.id)"
+            >
+              {{ category.name }}
+            </option>
+          </optgroup>
+        </select>
+      </span>
       <button
         type="button"
         :class="[chip, dates !== null && on]"

@@ -117,9 +117,9 @@ One fixed density in v1, no toggle, all from spacing tokens so a toggle can come
 
 Each category group has a color and a Lucide icon; its categories show the group's.
 
-- **Color** is auto-assigned by the group's position, never picked: the n-th group (all groups, hidden ones included, in the Categories screen's order, `sort_order` then `id` *(agent: so hiding a group doesn't recolor the rest)*) takes `--cat-n`. Past 12 the sequence cycles with a lightness shift (−0.08 in light mode, +0.08 in dark, through CSS relative colors *(agent)*). Reordering groups changes their colors.
-- Shown in charts, and as a dot beside the group or category name wherever one is listed (Categories, transaction rows, category pickers).
-- **Icon:** `category_groups.icon`, a Lucide icon name; `NULL` shows `folder` *(agent)*. Chosen from a curated set of about 40 icons when creating or editing a group *(agent: a fixed list in the frontend, so the bundle doesn't carry all of Lucide)*. Starter groups ship with:
+- **Color** is auto-assigned by the group's position, never picked: the n-th group (all groups, hidden ones included, in the Categories screen's order, `sort_order` then `id` *(agent: so hiding a group doesn't recolor the rest)*) takes `--cat-n`. Past 12 the sequence cycles with a lightness shift (−0.08 in light mode, +0.08 in dark, through CSS relative colors *(agent)*; once more each time round, from `--cat-cycle-shift` in `tokens.css` *(agent)*). Reordering groups changes their colors.
+- Shown in charts, and as a dot beside the group or category name wherever one is listed (Categories, transaction rows, category pickers), with the group's icon. On Categories a category row shows only the dot, under its group's icon *(agent)*. A native picker's options can't draw icons, so a picker shows the chosen category's or group's dot and icon beside it *(agent)*. `web/src/lib/groups.ts` decides both; `GroupMark.vue` shows them *(agent)*.
+- **Icon:** `category_groups.icon`, a Lucide icon name; `NULL` shows `folder` *(agent)*. Chosen from a curated set of about 40 icons when creating or editing a group *(agent: a fixed list in the frontend, so the bundle doesn't carry all of Lucide)*: in the + Group form and the group's Change icon action *(agent)*. The server checks only the name's shape (1–40 lowercase letters, digits and `-`), as with palettes; a name not in the set shows `folder` *(agent)*. Starter groups ship with:
 
 | Group | Icon *(agent)* |
 |---|---|

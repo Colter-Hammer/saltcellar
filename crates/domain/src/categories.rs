@@ -80,18 +80,59 @@ impl fmt::Display for Name {
     }
 }
 
-/// A group of the starter set, with its categories in order.
+/// A group's Lucide icon name, like `heart-pulse` (docs/spec/visual-system.md#group-color-and-icon):
+/// 1–40 lowercase letters, digits and `-`. The server doesn't know the curated list; the frontend
+/// shows `folder` for a name it doesn't know *(agent: as with palettes, so changing the list never
+/// touches the server)*.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Icon(String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Choose an icon from the list.")]
+pub struct InvalidIcon;
+
+impl Icon {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for Icon {
+    type Err = InvalidIcon;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        let ok = (1..=40).contains(&name.len())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if ok {
+            Ok(Icon(name.to_owned()))
+        } else {
+            Err(InvalidIcon)
+        }
+    }
+}
+
+/// A group of the starter set, with its icon and its categories in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StarterGroup {
     pub name: &'static str,
     pub kind: GroupKind,
+    /// Its Lucide icon (docs/spec/visual-system.md#group-color-and-icon).
+    pub icon: &'static str,
     pub categories: &'static [&'static str],
 }
 
-const fn expense(name: &'static str, categories: &'static [&'static str]) -> StarterGroup {
+const fn expense(
+    name: &'static str,
+    icon: &'static str,
+    categories: &'static [&'static str],
+) -> StarterGroup {
     StarterGroup {
         name,
         kind: GroupKind::Expense,
+        icon,
         categories,
     }
 }
@@ -100,6 +141,7 @@ const fn expense(name: &'static str, categories: &'static [&'static str]) -> Sta
 pub const STARTER_GROUPS: &[StarterGroup] = &[
     expense(
         "Housing",
+        "house",
         &[
             "Mortgage & Rent",
             "Utilities",
@@ -107,25 +149,40 @@ pub const STARTER_GROUPS: &[StarterGroup] = &[
             "Home Maintenance",
         ],
     ),
-    expense("Food", &["Groceries", "Restaurants", "Fast Food & Coffee"]),
+    expense(
+        "Food",
+        "utensils",
+        &["Groceries", "Restaurants", "Fast Food & Coffee"],
+    ),
     expense(
         "Transportation",
+        "car",
         &["Gas", "Car Maintenance", "Car Purchase"],
     ),
     expense(
         "Health & Fitness",
+        "heart-pulse",
         &["Medical", "Dental & Vision", "Fitness"],
     ),
-    expense("Insurance", &["Insurance"]),
-    expense("Kids", &["Activities", "School & Childcare"]),
-    expense("Shopping", &["Household", "Clothing", "Personal Care"]),
-    expense("Fun", &["Entertainment", "Travel", "Subscriptions"]),
-    expense("Giving", &["Tithing & Donations", "Gifts"]),
-    expense("Pets", &["Pet Care"]),
-    expense("Financial", &["Bank Fees & Interest", "Taxes"]),
+    expense("Insurance", "shield", &["Insurance"]),
+    expense("Kids", "baby", &["Activities", "School & Childcare"]),
+    expense(
+        "Shopping",
+        "shopping-bag",
+        &["Household", "Clothing", "Personal Care"],
+    ),
+    expense(
+        "Fun",
+        "party-popper",
+        &["Entertainment", "Travel", "Subscriptions"],
+    ),
+    expense("Giving", "hand-heart", &["Tithing & Donations", "Gifts"]),
+    expense("Pets", "paw-print", &["Pet Care"]),
+    expense("Financial", "landmark", &["Bank Fees & Interest", "Taxes"]),
     StarterGroup {
         name: "Income",
         kind: GroupKind::Income,
+        icon: "wallet",
         categories: &["Paycheck", "Interest", "Tax Refunds", "Other Income"],
     },
 ];
@@ -198,7 +255,7 @@ mod tests {
         for group in &STARTER_GROUPS[..STARTER_GROUPS.len() - 1] {
             assert_eq!(
                 *group,
-                expense(group.name, group.categories),
+                expense(group.name, group.icon, group.categories),
                 "{}",
                 group.name
             );
@@ -265,6 +322,54 @@ mod tests {
         let count: usize = STARTER_GROUPS.iter().map(|g| g.categories.len()).sum();
         assert_eq!(count, 31);
         assert_eq!(ALWAYS_REVIEW_PAYEES.len(), 9);
+    }
+
+    #[test]
+    fn starter_groups_have_the_spec_icons() {
+        let icons: Vec<(&str, &str)> = STARTER_GROUPS.iter().map(|g| (g.name, g.icon)).collect();
+        assert_eq!(
+            icons,
+            [
+                ("Housing", "house"),
+                ("Food", "utensils"),
+                ("Transportation", "car"),
+                ("Health & Fitness", "heart-pulse"),
+                ("Insurance", "shield"),
+                ("Kids", "baby"),
+                ("Shopping", "shopping-bag"),
+                ("Fun", "party-popper"),
+                ("Giving", "hand-heart"),
+                ("Pets", "paw-print"),
+                ("Financial", "landmark"),
+                ("Income", "wallet"),
+            ]
+        );
+        for group in STARTER_GROUPS {
+            assert_eq!(group.icon.parse::<Icon>().unwrap().as_str(), group.icon);
+        }
+    }
+
+    #[test]
+    fn takes_icon_names() {
+        for name in ["folder", "heart-pulse", "gamepad-2", "a", &"a".repeat(40)] {
+            assert_eq!(name.parse::<Icon>().unwrap().as_str(), name);
+        }
+    }
+
+    #[test]
+    fn refuses_what_isnt_an_icon_name() {
+        for name in [
+            "",
+            "House",
+            "paw_print",
+            "car!",
+            "car ",
+            "ünï",
+            &"a".repeat(41),
+        ] {
+            assert_eq!(name.parse::<Icon>(), Err(InvalidIcon), "{name}");
+        }
+        assert_eq!(InvalidIcon.to_string(), "Choose an icon from the list.");
     }
 
     #[test]

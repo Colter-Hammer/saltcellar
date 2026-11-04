@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!: i64\", name, kind, hidden AS \"hidden: bool\"\n           FROM category_groups ORDER BY sort_order, id",
+  "query": "SELECT id AS \"id!: i64\", name, kind, icon, hidden AS \"hidden: bool\"\n           FROM category_groups ORDER BY sort_order, id",
   "describe": {
     "columns": [
       {
@@ -37,8 +37,19 @@
         }
       },
       {
-        "name": "hidden: bool",
+        "name": "icon",
         "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "category_groups",
+            "name": "icon"
+          }
+        }
+      },
+      {
+        "name": "hidden: bool",
+        "ordinal": 4,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -55,8 +66,9 @@
       false,
       false,
       false,
+      true,
       false
     ]
   },
-  "hash": "753b93b3b47b051493e16579d7c708c2ab0053032c776ab0bd8f5c5e85afe8dd"
+  "hash": "31cc37b088368d7b23c9455392070d4bade7249e9cae480dfacc5f7e42aa762c"
 }

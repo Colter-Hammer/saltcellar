@@ -103,6 +103,7 @@ async fn the_starter_set_is_twelve_groups_in_order_with_income_last() {
             "id": groups[0]["id"],
             "name": "Housing",
             "kind": "expense",
+            "icon": "house",
             "hidden": false,
             "categories": [
                 { "id": groups[0]["categories"][0]["id"], "name": "Mortgage & Rent", "hidden": false },
@@ -131,6 +132,54 @@ async fn the_starter_set_is_twelve_groups_in_order_with_income_last() {
     let (status, body) = call(&app, "POST", "/api/v1/categories/starter", &json!({})).await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["error"]["code"], "categories_exist");
+}
+
+#[tokio::test]
+async fn a_group_gets_its_icon_when_added_or_changed() {
+    let app = set_up().await;
+    let bills = add_group(&app, "Bills", "expense").await;
+    let (status, body) = call(
+        &app,
+        "POST",
+        "/api/v1/category-groups",
+        &json!({ "name": "Pets", "kind": "expense", "icon": "dog" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let icons = async || -> Vec<Value> {
+        groups(&app)
+            .await
+            .iter()
+            .map(|g| g["icon"].clone())
+            .collect()
+    };
+    assert_eq!(icons().await, [Value::Null, json!("dog")]);
+
+    let path = format!("/api/v1/category-groups/{bills}");
+    let (status, body) = call(&app, "PATCH", &path, &json!({ "icon": "receipt" })).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    // Hiding leaves the icon as it is.
+    let (status, _) = call(&app, "PATCH", &path, &json!({ "hidden": true })).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(icons().await, [json!("receipt"), json!("dog")]);
+
+    for icon in ["Receipt", "", "no_such icon"] {
+        let (status, body) = call(&app, "PATCH", &path, &json!({ "icon": icon })).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{icon}");
+        assert_eq!(
+            body["error"]["fields"]["icon"],
+            "Choose an icon from the list."
+        );
+    }
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/category-groups",
+        &json!({ "name": "Odd", "kind": "expense", "icon": "BAD" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(icons().await, [json!("receipt"), json!("dog")]);
 }
 
 #[tokio::test]

@@ -12,6 +12,8 @@ import {
   useCategoryEdits,
 } from '@/api/categories'
 import ActionMenu, { type Action } from '@/components/ActionMenu.vue'
+import GroupMark from '@/components/GroupMark.vue'
+import IconPicker from '@/components/IconPicker.vue'
 import NameForm from '@/components/NameForm.vue'
 import {
   canMoveCategory,
@@ -23,6 +25,7 @@ import {
   moveGroup,
   moveToGroup,
 } from '@/lib/categories'
+import { groupIcon } from '@/lib/groups'
 
 const categories = useCategories()
 const edits = useCategoryEdits()
@@ -34,7 +37,10 @@ const hidden = computed(() => hiddenOnes(groups.value))
 const startedEmpty = ref(false)
 const empty = computed(() => categories.isSuccess.value && groups.value.length === 0)
 
-/** The one form open: `rename-group:1`, `rename-category:11`, `add-category:1` or `add-group`. */
+/**
+ * The one form open: `rename-group:1`, `icon-group:1`, `rename-category:11`, `add-category:1` or
+ * `add-group`.
+ */
 const editing = ref<string | null>(null)
 /** The open form's name error. */
 const nameError = ref<string>()
@@ -74,11 +80,22 @@ async function applyStarter() {
 
 const newGroupName = ref('')
 const newGroupKind = ref<CategoryGroupKind>('expense')
+const newGroupIcon = ref(groupIcon(null).name)
 
 function openAddGroup() {
   newGroupName.value = ''
   newGroupKind.value = 'expense'
+  newGroupIcon.value = groupIcon(null).name
   open('add-group')
+}
+
+// ── A group's icon ──
+
+const chosenIcon = ref(groupIcon(null).name)
+
+function openIcon(group: CategoryGroup) {
+  chosenIcon.value = groupIcon(group.icon).name
+  open(`icon-group:${String(group.id)}`)
 }
 
 // ── Each row's actions ──
@@ -90,6 +107,12 @@ function groupActions(group: CategoryGroup): Action[] {
       label: 'Rename',
       run: () => {
         open(`rename-group:${String(group.id)}`)
+      },
+    },
+    {
+      label: 'Change icon',
+      run: () => {
+        openIcon(group)
       },
     },
     {
@@ -269,6 +292,7 @@ function endDrag() {
           >
             <GripVertical class="size-4" aria-hidden="true" />
           </span>
+          <GroupMark :group="group.id" />
           <NameForm
             v-if="editing === `rename-group:${group.id}`"
             :label="`New name for ${group.name}`"
@@ -289,6 +313,22 @@ function endDrag() {
             <ActionMenu :label="`${group.name} actions`" :actions="groupActions(group)" />
           </template>
         </div>
+        <form
+          v-if="editing === `icon-group:${group.id}`"
+          :aria-label="`Icon for ${group.name}`"
+          class="flex flex-col gap-2 border-b p-3"
+          @submit.prevent="save(() => edits.changeGroup(group.id, { icon: chosenIcon }))"
+        >
+          <IconPicker v-model="chosenIcon" :name="`icon-${group.id}`" />
+          <div class="flex gap-2">
+            <button type="submit" class="rounded-md bg-primary px-2 py-1 text-primary-foreground">
+              Save
+            </button>
+            <button type="button" class="rounded-md border px-2 py-1" @click="editing = null">
+              Cancel
+            </button>
+          </div>
+        </form>
         <ul class="divide-y">
           <template v-for="category in group.categories" :key="category.id">
             <li
@@ -306,6 +346,7 @@ function endDrag() {
               >
                 <GripVertical class="size-4" aria-hidden="true" />
               </span>
+              <GroupMark :category="category.id" dot-only />
               <NameForm
                 v-if="editing === `rename-category:${category.id}`"
                 :label="`New name for ${category.name}`"
@@ -349,7 +390,7 @@ function endDrag() {
       <form
         v-if="editing === 'add-group'"
         class="flex flex-col gap-2 rounded-xl border p-3"
-        @submit.prevent="save(() => edits.addGroup(newGroupName, newGroupKind))"
+        @submit.prevent="save(() => edits.addGroup(newGroupName, newGroupKind, newGroupIcon))"
       >
         <label for="new-group-name" class="text-sm font-medium">New group</label>
         <div class="flex flex-wrap items-center gap-2">
@@ -377,6 +418,7 @@ function endDrag() {
           </button>
         </div>
         <p v-if="nameError" role="alert" class="text-sm text-destructive">{{ nameError }}</p>
+        <IconPicker v-model="newGroupIcon" name="new-group-icon" />
       </form>
       <button
         v-else
@@ -399,6 +441,7 @@ function endDrag() {
             :key="`g${group.id}`"
             class="flex items-center gap-2 p-2"
           >
+            <GroupMark :group="group.id" />
             <span class="flex-1">
               {{ group.name }}
               <span class="text-sm text-muted-foreground">
@@ -420,6 +463,7 @@ function endDrag() {
             :key="`c${category.id}`"
             class="flex items-center gap-2 p-2"
           >
+            <GroupMark :category="category.id" />
             <span class="flex-1">
               {{ category.name }}
               <span class="text-sm text-muted-foreground">· in {{ group.name }}</span>

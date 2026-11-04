@@ -8,6 +8,7 @@ import { ApiError } from '@/api/client'
 import { useTransaction } from '@/api/transactions'
 import { useDecide } from '@/api/undecided'
 import CategoryPicker from '@/components/CategoryPicker.vue'
+import GroupMark from '@/components/GroupMark.vue'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
 import { categoryLabel, payeeLabel, sourceLabel, statusLabel } from '@/lib/transactions'
@@ -77,7 +78,12 @@ const batch = computed(() => {
         <dt class="text-muted-foreground">Category</dt>
         <dd>
           <ul v-if="transaction.splits.length > 0" aria-label="Split lines" class="flex flex-col">
-            <li v-for="(line, index) in transaction.splits" :key="index" class="flex gap-2">
+            <li
+              v-for="(line, index) in transaction.splits"
+              :key="index"
+              class="flex items-center gap-2"
+            >
+              <GroupMark :category="line.category_id" />
               <span class="flex-1">
                 {{ line.category }}
                 <span v-if="line.memo" class="text-muted-foreground">· {{ line.memo }}</span>
@@ -85,7 +91,10 @@ const batch = computed(() => {
               <Money :minor="line.amount_minor" signed />
             </li>
           </ul>
-          <template v-else>{{ categoryLabel(transaction) }}</template>
+          <span v-else class="inline-flex items-center gap-1.5">
+            <GroupMark :category="transaction.category_id" />
+            {{ categoryLabel(transaction) }}
+          </span>
         </dd>
         <dt class="text-muted-foreground">Memo</dt>
         <dd class="whitespace-pre-line">{{ transaction.memo ?? '—' }}</dd>

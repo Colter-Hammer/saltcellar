@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO category_groups (name, kind, sort_order) VALUES (?, ?, ?)\n               RETURNING id AS \"id!: i64\"",
+  "query": "INSERT INTO category_groups (name, kind, icon, sort_order) VALUES (?, ?, ?, ?)\n               RETURNING id AS \"id!: i64\"",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 4
     },
     "nullable": [
       false
     ]
   },
-  "hash": "985530ce3e3f763bdd190dbe46610e76a29029e0a9057c2c922d2a6ebccdec8e"
+  "hash": "b4818fd90208945cb3d52b5d6fc0d2624387bee23caf8e1bd51ac493381fd9f3"
 }

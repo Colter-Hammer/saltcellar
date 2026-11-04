@@ -36,11 +36,22 @@ export function useCategoryEdits() {
     /** Writes the starter categories and the always-review payees into an empty list. */
     applyStarter: () =>
       edit(call(client.POST('/api/v1/categories/starter', { headers: JSON_HEADERS }))),
-    /** Adds a group at the end; resolves to its id once the list has reloaded. */
-    addGroup: async (name: string, kind: CategoryGroupKind) =>
-      (await edit(call(client.POST('/api/v1/category-groups', { body: { name, kind } })))).id,
-    /** Renames the group, or hides it or shows it again. */
-    changeGroup: (id: number, change: { name?: string; hidden?: boolean }) =>
+    /**
+     * Adds a group at the end; resolves to its id once the list has reloaded. Without an icon it
+     * shows `folder`.
+     */
+    addGroup: async (name: string, kind: CategoryGroupKind, icon?: string) =>
+      (
+        await edit(
+          call(
+            client.POST('/api/v1/category-groups', {
+              body: { name, kind, ...(icon === undefined ? {} : { icon }) },
+            }),
+          ),
+        )
+      ).id,
+    /** Renames the group, changes its icon, or hides it or shows it again. */
+    changeGroup: (id: number, change: { name?: string; icon?: string; hidden?: boolean }) =>
       edit(
         call(
           client.PATCH('/api/v1/category-groups/{id}', { params: { path: { id } }, body: change }),

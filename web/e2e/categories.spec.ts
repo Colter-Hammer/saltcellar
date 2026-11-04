@@ -10,6 +10,24 @@ const groupNames = (page: Page) =>
 const categoryNames = (page: Page, group: string) =>
   page.getByTestId(`group-${group}`).locator('li > span.flex-1').allTextContents()
 
+/** The group header's mark: its icon's name and its dot's color as sRGB, for comparing. */
+const mark = (page: Page, group: string) =>
+  page.getByTestId(`group-${group}`).getByTestId('group-mark').first()
+const icon = (page: Page, group: string) => mark(page, group).getAttribute('data-icon')
+const color = (page: Page, group: string) =>
+  mark(page, group)
+    .locator('span')
+    .first()
+    .evaluate((dot) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = canvas.height = 1
+      const context = canvas.getContext('2d')
+      if (context === null) return []
+      context.fillStyle = getComputedStyle(dot).backgroundColor
+      context.fillRect(0, 0, 1, 1)
+      return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)]
+    })
+
 async function act(page: Page, row: string, action: string) {
   await page.getByRole('button', { name: `${row} actions`, exact: true }).click()
   await page.getByRole('menuitem', { name: action, exact: true }).click()
@@ -47,6 +65,39 @@ test('the starter set, renamed, hidden and reordered on a desktop and a phone', 
   ])
   await expect(page.getByTestId('group-Income')).toContainText('Income')
 
+  // Each starter group has its icon and a color of its own.
+  const starterIcons = {
+    Housing: 'house',
+    Food: 'utensils',
+    Transportation: 'car',
+    'Health & Fitness': 'heart-pulse',
+    Insurance: 'shield',
+    Kids: 'baby',
+    Shopping: 'shopping-bag',
+    Fun: 'party-popper',
+    Giving: 'hand-heart',
+    Pets: 'paw-print',
+    Financial: 'landmark',
+    Income: 'wallet',
+  }
+  const colors = new Set<string>()
+  for (const [group, name] of Object.entries(starterIcons)) {
+    expect(await icon(page, group)).toBe(name)
+    colors.add(String(await color(page, group)))
+  }
+  expect(colors.size).toBe(12)
+  const housingColor = await color(page, 'Housing')
+  const financialColor = await color(page, 'Financial')
+
+  // A group's icon can be changed.
+  await act(page, 'Kids', 'Change icon')
+  await page.getByRole('radio', { name: 'Graduation cap' }).check()
+  await page
+    .getByRole('form', { name: 'Icon for Kids' })
+    .getByRole('button', { name: 'Save' })
+    .click()
+  await expect.poll(() => icon(page, 'Kids')).toBe('graduation-cap')
+
   // Rename a category.
   await act(page, 'Restaurants', 'Rename')
   const name = page.getByLabel('New name for Restaurants')
@@ -61,6 +112,8 @@ test('the starter set, renamed, hidden and reordered on a desktop and a phone', 
   await expect(hidden).toContainText('Pets')
   await expect(hidden).toContainText('Fitness')
   await expect(page.getByTestId('group-Pets')).toHaveCount(0)
+  // Hiding a group recolors none of the others.
+  expect(await color(page, 'Financial')).toEqual(financialColor)
 
   // Drag a category to the top of its group, and a group above another.
   await page
@@ -74,6 +127,18 @@ test('the starter set, renamed, hidden and reordered on a desktop and a phone', 
   await housing.scrollIntoViewIfNeeded()
   await page.getByLabel('Drag Food', { exact: true }).dragTo(housing)
   await expect.poll(async () => (await groupNames(page)).slice(0, 2)).toEqual(['Food', 'Housing'])
+  // Reordering recolors: Food is first now, so it has the first color.
+  await expect.poll(() => color(page, 'Food')).toEqual(housingColor)
+
+  // A 13th group (Pets is hidden but counts) takes the first color, shifted in lightness.
+  await page.getByRole('button', { name: '+ Group' }).click()
+  await page.getByLabel('New group').fill('Extra')
+  await page.getByRole('radio', { name: 'Gift' }).check()
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect.poll(() => icon(page, 'Extra')).toBe('gift')
+  const extra = await color(page, 'Extra')
+  const distance = Math.hypot(...extra.map((value, i) => value - (housingColor[i] ?? 0)))
+  expect(distance).toBeGreaterThan(20)
 
   await page.reload()
   await expect
