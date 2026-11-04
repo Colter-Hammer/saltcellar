@@ -1,0 +1,61 @@
+/*
+ * Slate / teal (`slate-teal`), light and dark (docs/spec/visual-system.md#per-palette-colors).
+ * Every color token, as hex; the meaning colors are the same in every palette. The aliases
+ * (--card-foreground, --ring, --destructive …) are set once in tokens.css.
+ */
+
+[data-palette='slate-teal'] {
+  --background: #f8fafd;
+  --card: #ffffff;
+  --muted: #ecf1f5;
+  --border: #dadee3;
+  --foreground: #12171b;
+  --muted-foreground: #575e67;
+  --primary: #007272;
+  --primary-foreground: #fafafa;
+  --cat-1: #00858a;
+  --cat-2: #c76a99;
+  --cat-3: #478638;
+  --cat-4: #8d7ed7;
+  --cat-5: #986b00;
+  --cat-6: #009bcc;
+  --cat-7: #b45054;
+  --cat-8: #00a682;
+  --cat-9: #9558a3;
+  --cat-10: #939421;
+  --cat-11: #4573c0;
+  --cat-12: #cb733e;
+
+  --money-in: #137738;
+  --over-budget: #be2323;
+  --near-limit: #a0600b;
+  --chart-out: #c86556;
+}
+
+[data-palette='slate-teal'].dark {
+  --background: #0d1013;
+  --card: #14171b;
+  --muted: #1f2225;
+  --border: #2d3134;
+  --foreground: #eceff2;
+  --muted-foreground: #9fa5ac;
+  --primary: #64c3c3;
+  --primary-foreground: #0d1013;
+  --cat-1: #24c1c9;
+  --cat-2: #c26c96;
+  --cat-3: #81bd74;
+  --cat-4: #8c7ed0;
+  --cat-5: #d2a249;
+  --cat-6: #1f99c7;
+  --cat-7: #ed8b8b;
+  --cat-8: #1ea381;
+  --cat-9: #cc91da;
+  --cat-10: #91922f;
+  --cat-11: #7eabf6;
+  --cat-12: #c67544;
+
+  --money-in: #64cf80;
+  --over-budget: #fa706a;
+  --near-limit: #edb345;
+  --chart-out: #dd7767;
+}

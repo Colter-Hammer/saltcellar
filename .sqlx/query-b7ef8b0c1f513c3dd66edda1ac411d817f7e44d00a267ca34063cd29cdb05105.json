@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users SET palette = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b7ef8b0c1f513c3dd66edda1ac411d817f7e44d00a267ca34063cd29cdb05105"
+}

@@ -76,7 +76,7 @@ async function run(batch: ImportBatch, confirm: boolean) {
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"
-                class="rounded-md bg-destructive px-3 py-1 text-white disabled:opacity-50"
+                class="rounded-md bg-destructive px-3 py-1 text-destructive-foreground disabled:opacity-50"
                 :disabled="undo.isPending.value"
                 @click="run(batch, true)"
               >

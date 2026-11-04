@@ -1,15 +1,24 @@
 <script setup lang="ts">
 // Settings › Profile (docs/spec/m1-ledger-import.md#login-and-profile): this login's name, the
-// locale and week start its dates and numbers follow, its password, and logging out everywhere.
+// locale and week start its dates and numbers follow, its palette and mode
+// (docs/spec/visual-system.md#palettes-and-modes), its password, and logging out everywhere.
 import { useQueryClient } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
-import { changePassword, logOutEverywhere, useChangeProfile, useProfile } from '@/api/profile'
+import {
+  changePassword,
+  logOutEverywhere,
+  useChangePalette,
+  useChangeProfile,
+  useProfile,
+} from '@/api/profile'
 import FormField from '@/components/FormField.vue'
 import SearchSelect from '@/components/SearchSelect.vue'
 import { formatDate, formatMoney, localeWeekStart, useFormatting, weekdayName } from '@/lib/format'
 import { localeLabel, localeOptions } from '@/lib/locales'
+import { MODES, useAppearance } from '@/theme/appearance'
+import { PALETTES, paletteOrDefault } from '@/theme/palettes'
 
 const router = useRouter()
 const queryClient = useQueryClient()
@@ -80,6 +89,22 @@ async function submitProfile() {
     profileSaved.value = true
   } catch (error) {
     profileErrors.value = fieldErrors(error)
+  }
+}
+
+// ── Appearance: applied at once, no save button ──
+
+const changePalette = useChangePalette()
+const appearance = useAppearance()
+const palette = computed(() => paletteOrDefault(profile.data.value?.palette))
+const paletteError = ref('')
+
+async function pickPalette(id: string) {
+  paletteError.value = ''
+  try {
+    await changePalette.mutateAsync(id)
+  } catch (error) {
+    paletteError.value = error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -186,6 +211,69 @@ async function leaveEverywhere() {
           Save
         </button>
       </form>
+    </section>
+
+    <section aria-labelledby="appearance-heading" class="flex flex-col gap-4">
+      <h2 id="appearance-heading" class="font-semibold">Appearance</h2>
+      <fieldset class="flex flex-col gap-2">
+        <legend class="mb-2 text-sm font-medium">Palette</legend>
+        <div class="grid grid-cols-2 gap-2">
+          <label
+            v-for="option in PALETTES"
+            :key="option.id"
+            class="flex cursor-pointer flex-col gap-2 rounded-lg border bg-card p-3 has-checked:border-primary has-checked:ring-1 has-checked:ring-ring has-focus-visible:ring-2 has-focus-visible:ring-ring"
+          >
+            <input
+              type="radio"
+              name="palette"
+              class="sr-only"
+              :value="option.id"
+              :checked="palette === option.id"
+              @change="pickPalette(option.id)"
+            />
+            <!-- Drawn by the palette's own tokens, light and dark *(agent)*. -->
+            <span class="flex gap-1" aria-hidden="true">
+              <span
+                v-for="chip in ['', 'dark']"
+                :key="chip"
+                :data-palette="option.id"
+                :class="chip"
+                class="flex h-8 flex-1 items-center justify-center rounded-md border bg-background"
+              >
+                <span class="size-3 rounded-full bg-primary" />
+              </span>
+            </span>
+            <span class="text-sm font-medium">{{ option.label }}</span>
+            <span class="text-xs text-muted-foreground">{{ option.swatch }}</span>
+          </label>
+        </div>
+      </fieldset>
+      <p v-if="paletteError" role="alert" class="text-sm text-destructive">
+        {{ paletteError }}
+      </p>
+      <fieldset class="flex flex-col gap-2">
+        <legend class="mb-2 text-sm font-medium">Light or dark</legend>
+        <div class="flex self-start rounded-md border p-0.5">
+          <label
+            v-for="option in MODES"
+            :key="option.value"
+            class="cursor-pointer rounded-sm px-3 py-1.5 text-sm has-checked:bg-primary has-checked:text-primary-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring"
+          >
+            <input
+              type="radio"
+              name="mode"
+              class="sr-only"
+              :value="option.value"
+              :checked="appearance.mode.value === option.value"
+              @change="appearance.setMode(option.value)"
+            />
+            {{ option.label }}
+          </label>
+        </div>
+        <p class="text-sm text-muted-foreground">
+          On this device. System follows your phone or computer.
+        </p>
+      </fieldset>
     </section>
 
     <section aria-labelledby="password-heading" class="flex flex-col gap-4">

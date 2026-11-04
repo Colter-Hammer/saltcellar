@@ -1161,6 +1161,67 @@
         }
       }
     },
+    "/api/v1/profile/palette": {
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "`PUT /api/v1/profile/palette`: saves the palette on its own, so picking one applies at once\nwithout saving the rest of the profile *(agent)*. Any id of the right shape is stored.",
+        "operationId": "changePalette",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePalette"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The saved profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`setup_required`: setup isn't finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the palette id isn't of the right shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/profile/password": {
       "post": {
         "tags": [
@@ -2619,6 +2680,19 @@
           }
         }
       },
+      "ChangePalette": {
+        "type": "object",
+        "properties": {
+          "palette": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "1–32 of `a`–`z`, `0`–`9` and `-`, like `sage`; null = the default.",
+            "pattern": "^[a-z0-9-]{1,32}$"
+          }
+        }
+      },
       "ChangePassword": {
         "type": "object",
         "required": [
@@ -3047,6 +3121,13 @@
           },
           "display_name": {
             "type": "string"
+          },
+          "palette": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A palette id, like `sage`; null = the default. The frontend shows the default for an id it\ndoesn't know."
           },
           "username": {
             "type": "string"

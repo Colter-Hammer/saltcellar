@@ -46,6 +46,7 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         reset::use_reset,
         profile::get,
         profile::change,
+        profile::change_palette,
         profile::change_password,
         profile::log_out_everywhere,
         household::get,
@@ -160,6 +161,7 @@ pub fn router(state: AppState) -> Router {
         .route("/session", get(session::get).delete(session::log_out))
         .route("/sessions", delete(profile::log_out_everywhere))
         .route("/profile", get(profile::get).put(profile::change))
+        .route("/profile/palette", put(profile::change_palette))
         .route("/profile/password", post(profile::change_password))
         .route("/household", get(household::get))
         .route("/accounts", get(accounts::list))

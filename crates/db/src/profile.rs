@@ -1,7 +1,7 @@
 //! A login's own settings, password and sessions (Settings › Profile).
 
 use domain::login::DisplayName;
-use domain::profile::{Locale, WeekStart};
+use domain::profile::{Locale, Palette, WeekStart};
 
 use crate::{Error, SqlitePool};
 
@@ -14,6 +14,8 @@ pub struct Profile {
     pub display_locale: Option<String>,
     /// 0 = Sunday; `None` = from the locale.
     pub week_start: Option<u8>,
+    /// A palette id; `None` = the default.
+    pub palette: Option<String>,
 }
 
 /// The login's profile.
@@ -22,7 +24,7 @@ pub struct Profile {
 /// If the database fails, or there's no such login.
 pub async fn profile(pool: &SqlitePool, user_id: i64) -> Result<Profile, Error> {
     let row = sqlx::query!(
-        r#"SELECT username, display_name, display_locale, week_start AS "week_start: i64"
+        r#"SELECT username, display_name, display_locale, week_start AS "week_start: i64", palette
            FROM users WHERE id = ?"#,
         user_id
     )
@@ -34,6 +36,7 @@ pub async fn profile(pool: &SqlitePool, user_id: i64) -> Result<Profile, Error> 
         display_locale: row.display_locale,
         // The schema's CHECK keeps it to 0–6.
         week_start: row.week_start.and_then(|day| u8::try_from(day).ok()),
+        palette: row.palette,
     })
 }
 
@@ -61,6 +64,26 @@ pub async fn update_profile(
         display_name,
         locale,
         week_start,
+        user_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Sets the login's palette; `None` = the default.
+///
+/// # Errors
+/// If the database fails.
+pub async fn set_palette(
+    pool: &SqlitePool,
+    user_id: i64,
+    palette: Option<&Palette>,
+) -> Result<(), Error> {
+    let palette = palette.map(Palette::as_str);
+    sqlx::query!(
+        "UPDATE users SET palette = ? WHERE id = ?",
+        palette,
         user_id
     )
     .execute(pool)
@@ -128,6 +151,7 @@ mod tests {
                 display_name: "Sam".to_owned(),
                 display_locale: None,
                 week_start: None,
+                palette: None,
             }
         );
     }
@@ -157,6 +181,20 @@ mod tests {
         update_profile(&pool, sam, &cleared).await.unwrap();
         let saved = profile(&pool, sam).await.unwrap();
         assert_eq!((saved.display_locale, saved.week_start), (None, None));
+    }
+
+    #[tokio::test]
+    async fn sets_and_clears_the_palette() {
+        let (_dir, pool) = set_up().await;
+        let sam = sam_id(&pool).await;
+        let plum: Palette = "plum".parse().unwrap();
+        set_palette(&pool, sam, Some(&plum)).await.unwrap();
+        assert_eq!(
+            profile(&pool, sam).await.unwrap().palette.as_deref(),
+            Some("plum")
+        );
+        set_palette(&pool, sam, None).await.unwrap();
+        assert_eq!(profile(&pool, sam).await.unwrap().palette, None);
     }
 
     #[tokio::test]

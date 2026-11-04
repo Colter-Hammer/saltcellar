@@ -1,0 +1,61 @@
+/*
+ * Plum (`plum`), light and dark (docs/spec/visual-system.md#per-palette-colors).
+ * Every color token, as hex; the meaning colors are the same in every palette. The aliases
+ * (--card-foreground, --ring, --destructive …) are set once in tokens.css.
+ */
+
+[data-palette='plum'] {
+  --background: #fcf9fd;
+  --card: #ffffff;
+  --muted: #f4eef5;
+  --border: #e2dce3;
+  --foreground: #1a131b;
+  --muted-foreground: #645966;
+  --primary: #823b7d;
+  --primary-foreground: #fafafa;
+  --cat-1: #9558a3;
+  --cat-2: #939421;
+  --cat-3: #4573c0;
+  --cat-4: #cb733e;
+  --cat-5: #00858a;
+  --cat-6: #c76a99;
+  --cat-7: #478638;
+  --cat-8: #8d7ed7;
+  --cat-9: #986b00;
+  --cat-10: #009bcc;
+  --cat-11: #b45054;
+  --cat-12: #00a682;
+
+  --money-in: #137738;
+  --over-budget: #be2323;
+  --near-limit: #a0600b;
+  --chart-out: #c86556;
+}
+
+[data-palette='plum'].dark {
+  --background: #120e13;
+  --card: #1a151b;
+  --muted: #242025;
+  --border: #332e34;
+  --foreground: #f1edf1;
+  --muted-foreground: #aaa1ac;
+  --primary: #d892d1;
+  --primary-foreground: #120e13;
+  --cat-1: #cc91da;
+  --cat-2: #91922f;
+  --cat-3: #7eabf6;
+  --cat-4: #c67544;
+  --cat-5: #24c1c9;
+  --cat-6: #c26c96;
+  --cat-7: #81bd74;
+  --cat-8: #8c7ed0;
+  --cat-9: #d2a249;
+  --cat-10: #1f99c7;
+  --cat-11: #ed8b8b;
+  --cat-12: #1ea381;
+
+  --money-in: #64cf80;
+  --over-budget: #fa706a;
+  --near-limit: #edb345;
+  --chart-out: #dd7767;
+}

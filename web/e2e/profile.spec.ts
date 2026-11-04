@@ -1,5 +1,5 @@
-// The reset link from `budget reset-password`, then Settings › Profile: the locale and Log out
-// everywhere. Both end the login's sessions, so this runs on its own, after setup and before the
+// The reset link from `budget reset-password`, then Settings › Profile: the locale, the palette
+// and mode, and Log out everywhere. Both end the login's sessions, so this runs on its own, after setup and before the
 // layouts, and leaves a fresh session in STORAGE_STATE for them.
 import { expect, test, type Page } from '@playwright/test'
 import { appLog, budget } from './app.js'
@@ -75,6 +75,30 @@ test('the CLI reset link works once, then the profile changes formats and logs o
   await page.getByRole('option', { name: /^Browser default/ }).click()
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(example).toContainText('-€1,234.56')
+
+  // Appearance: the palette follows the login to the other browser; the mode stays on this device.
+  const html = (on: Page) => on.locator('html')
+  await expect(html(page)).toHaveAttribute('data-palette', 'sage')
+  await page.getByText('Plum', { exact: true }).click()
+  await expect(html(page)).toHaveAttribute('data-palette', 'plum')
+  await page.getByText('Dark', { exact: true }).click()
+  await expect(html(page)).toHaveClass(/\bdark\b/)
+  await expect(html(page)).toHaveCSS('color-scheme', 'dark')
+  // No flash: with the app's code held back, index.html alone paints the last palette and mode.
+  await page.route('**/assets/*.js', (route) => route.abort())
+  await page.reload()
+  await expect(html(page)).toHaveAttribute('data-palette', 'plum')
+  await expect(html(page)).toHaveClass(/\bdark\b/)
+  await page.unroute('**/assets/*.js')
+  await page.reload()
+  await other.reload()
+  await expect(html(other)).toHaveAttribute('data-palette', 'plum')
+  await expect(html(other)).not.toHaveClass(/\bdark\b/)
+  // Back to the defaults for the tests after.
+  await page.getByText('Sage', { exact: true }).click()
+  await page.getByText('System', { exact: true }).click()
+  await expect(html(page)).toHaveAttribute('data-palette', 'sage')
+  await expect(html(page)).not.toHaveClass(/\bdark\b/)
 
   // Log out everywhere ends the other browser's session too.
   await page.getByRole('button', { name: 'Log out everywhere' }).click()
