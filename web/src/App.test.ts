@@ -1082,11 +1082,11 @@ describe('Settings › Profile', () => {
     await flushPromises()
   }
 
-  it("shows Sage until a palette is picked, and one it doesn't know as Sage", async () => {
+  it("shows Deep blue until a palette is picked, and one it doesn't know as Deep blue", async () => {
     server.palette = 'not-a-palette'
     const { wrapper } = await open('/settings/profile')
-    expect(look()).toEqual(['sage', false, 'light'])
-    expect(wrapper.get<HTMLInputElement>('input[value="sage"]').element.checked).toBe(true)
+    expect(look()).toEqual(['deep-blue', false, 'light'])
+    expect(wrapper.get<HTMLInputElement>('input[value="deep-blue"]').element.checked).toBe(true)
     expect(
       wrapper.findAll('input[name="palette"]').map((input) => input.attributes('value')),
     ).toEqual(['slate-teal', 'sage', 'deep-blue', 'plum'])
@@ -1101,32 +1101,32 @@ describe('Settings › Profile', () => {
   })
 
   it("goes back to the palette it had if the server can't be reached", async () => {
-    server.palette = 'deep-blue'
+    server.palette = 'sage'
     const { wrapper } = await open('/settings/profile')
     serverDown()
     await pick(wrapper, 'palette', 'plum')
-    expect(look()[0]).toBe('deep-blue')
+    expect(look()[0]).toBe('sage')
     expect(wrapper.get('[role="alert"]').text()).toBe("Can't reach the server.")
   })
 
   it('keeps light, dark or the system on this device, for this login', async () => {
     const { wrapper } = await open('/settings/profile')
     await pick(wrapper, 'mode', 'dark')
-    expect(look()).toEqual(['sage', true, 'dark'])
+    expect(look()).toEqual(['deep-blue', true, 'dark'])
     expect(localStorage.getItem('saltcellar.mode.sam')).toBe('dark')
     expect(localStorage.getItem('saltcellar.mode')).toBe('dark')
 
     await pick(wrapper, 'mode', 'light')
-    expect(look()).toEqual(['sage', false, 'light'])
+    expect(look()).toEqual(['deep-blue', false, 'light'])
 
     // System follows the OS while the app is open.
     await pick(wrapper, 'mode', 'system')
     os.dark = true
     for (const listener of os.listeners) listener()
-    expect(look()).toEqual(['sage', true, 'dark'])
+    expect(look()).toEqual(['deep-blue', true, 'dark'])
     os.dark = false
     for (const listener of os.listeners) listener()
-    expect(look()).toEqual(['sage', false, 'light'])
+    expect(look()).toEqual(['deep-blue', false, 'light'])
   })
 
   it('follows the system where the browser refuses storage', async () => {
@@ -1142,7 +1142,7 @@ describe('Settings › Profile', () => {
     const { wrapper } = await open('/settings/profile')
     expect(wrapper.get<HTMLInputElement>('input[value="system"]').element.checked).toBe(true)
     await pick(wrapper, 'mode', 'light')
-    expect(look()).toEqual(['sage', false, 'light'])
+    expect(look()).toEqual(['deep-blue', false, 'light'])
     vi.restoreAllMocks()
     expect(localStorage.getItem('saltcellar.mode.alex')).toBe(null)
   })

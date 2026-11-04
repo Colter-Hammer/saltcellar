@@ -21,7 +21,7 @@ export const PALETTES: readonly Palette[] = [
   { id: 'plum', label: 'Plum', swatch: 'Plum on warm mauves' },
 ]
 
-export const DEFAULT_PALETTE = 'sage'
+export const DEFAULT_PALETTE = 'deep-blue'
 
 /** The palette to show for `id`: the default for none, or for one this app doesn't know. */
 export function paletteOrDefault(id: string | null | undefined): string {

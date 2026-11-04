@@ -10,7 +10,7 @@ Calm and data-first. Mostly neutral surfaces with one accent per palette. Color 
 
 ## Palettes and modes
 
-Four palettes ship, each with a light and a dark variant: **Slate / teal**, **Sage** (the default), **Deep blue**, **Plum**. Palettes vary the accent and the tint of the neutrals; meaning colors are the same in every palette so they read the same everywhere.
+Four palettes ship, each with a light and a dark variant: **Slate / teal**, **Sage**, **Deep blue** (the default), **Plum**. Palettes vary the accent and the tint of the neutrals; meaning colors are the same in every palette so they read the same everywhere.
 
 - **Palette is a per-login setting, stored on the server** (follows the login across devices, like display locale): `users.palette`, `NULL` = the default. The server stores any id matching `^[a-z0-9-]{1,32}$` and doesn't know the list; the frontend shows the default for an id it doesn't know *(agent: so adding a palette never touches the server)*. It is saved on its own, `PUT /api/v1/profile/palette`, so picking one doesn't save the rest of the profile form *(agent)*.
 - **Mode is Light, Dark or System**, default System, stored per device and per login in `localStorage` *(agent: key `saltcellar.mode.<username>`, the name the session gives the login)*.
@@ -21,7 +21,7 @@ Four palettes ship, each with a light and a dark variant: **Slate / teal**, **Sa
 
 - `web/src/styles/tokens.css` holds everything that isn't a color (font, spacing, density, radius, shadow, motion) and the `@theme inline` block that maps every token into Tailwind.
 - Each palette is **one CSS file**, `web/src/styles/palettes/<id>.css`, setting the same color custom properties under `[data-palette='<id>']` and `[data-palette='<id>'].dark`. Values are hex *(agent: the gamut-mapped sRGB the OKLCH design values land on, and what the contrast check reads)*.
-- `web/src/theme/palettes.ts` is the **registry**: id, label and swatch per palette, the default id (`sage`), and the CSS imports.
+- `web/src/theme/palettes.ts` is the **registry**: id, label and swatch per palette, the default id (`deep-blue`), and the CSS imports.
 - `<html>` carries `data-palette="<id>"`, the `.dark` class in dark mode, and `color-scheme` to match.
 - Components and (from milestone 4) the ECharts theme only read tokens. The ECharts theme re-reads the custom properties when the palette or mode changes.
 - **Adding a palette** = one CSS file + one registry entry, passing the contrast check. Nothing else changes.

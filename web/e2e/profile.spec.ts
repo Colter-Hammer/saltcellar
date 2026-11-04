@@ -78,7 +78,7 @@ test('the CLI reset link works once, then the profile changes formats and logs o
 
   // Appearance: the palette follows the login to the other browser; the mode stays on this device.
   const html = (on: Page) => on.locator('html')
-  await expect(html(page)).toHaveAttribute('data-palette', 'sage')
+  await expect(html(page)).toHaveAttribute('data-palette', 'deep-blue')
   await page.getByText('Plum', { exact: true }).click()
   await expect(html(page)).toHaveAttribute('data-palette', 'plum')
   await page.getByText('Dark', { exact: true }).click()
@@ -95,9 +95,9 @@ test('the CLI reset link works once, then the profile changes formats and logs o
   await expect(html(other)).toHaveAttribute('data-palette', 'plum')
   await expect(html(other)).not.toHaveClass(/\bdark\b/)
   // Back to the defaults for the tests after.
-  await page.getByText('Sage', { exact: true }).click()
+  await page.getByText('Deep blue', { exact: true }).click()
   await page.getByText('System', { exact: true }).click()
-  await expect(html(page)).toHaveAttribute('data-palette', 'sage')
+  await expect(html(page)).toHaveAttribute('data-palette', 'deep-blue')
   await expect(html(page)).not.toHaveClass(/\bdark\b/)
 
   // Log out everywhere ends the other browser's session too.

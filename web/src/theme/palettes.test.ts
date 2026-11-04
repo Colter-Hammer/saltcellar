@@ -4,10 +4,10 @@ import { DEFAULT_PALETTE, PALETTES, paletteOrDefault } from './palettes'
 import indexHtml from '../../index.html?raw'
 
 describe('paletteOrDefault', () => {
-  it('keeps a palette it knows, and shows Sage for none or one it does not', () => {
+  it('keeps a palette it knows, and shows Deep blue for none or one it does not', () => {
     expect(paletteOrDefault('plum')).toBe('plum')
     for (const id of [null, undefined, '', 'not-a-palette'])
-      expect(paletteOrDefault(id)).toBe('sage')
+      expect(paletteOrDefault(id)).toBe('deep-blue')
   })
 })
 
