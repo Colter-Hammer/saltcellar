@@ -31,7 +31,7 @@ The full **Get started** checklist on Overview arrives with Overview in mileston
 
 - Log-in page (username, password), with the throttle message "Too many attempts. Try again in N minutes." Log out from More.
 - `budget reset-password <login>` CLI subcommand prints a one-time link valid for 24 hours *(agent)*; the link opens a set-new-password page and logs the person in.
-- **Settings › Profile** *(agent)*: display name, display locale, week start, change password, log out everywhere.
+- **Settings › Profile** *(agent)*: display name, display locale, week start, appearance (palette and Light / Dark / System, see [Visual system](visual-system.md)), change password, log out everywhere.
 
 ## Categories
 

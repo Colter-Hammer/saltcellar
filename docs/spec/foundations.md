@@ -105,8 +105,9 @@ Structured logs via `tracing`, one line per request and per job. Never log amoun
 - **Layout: mobile-first.** Phone: header + bottom tab bar. Desktop (from the `lg` breakpoint *(agent)*): sidebar, with extra columns and side panels on dense views.
 - **Navigation (full v1).** Phone tab bar: Overview · Transactions · Review (count badge) · Budget · More. Desktop sidebar: the same top items, then a **Reports** section (Spending, Trends, Cash flow) and a **Money** section (Funds, Savings goals, Transfers), with Accounts and Settings, and the sync status spot at the foot (milestone 2).
 - **Navigation grows with the milestones** *(agent)*: only screens that exist are shown. Milestone 1: Transactions · Accounts · More (Categories, Import from Actual, Settings), landing on Transactions. Overview becomes the landing screen in milestone 4.
-- **Design tokens** (color, spacing, radius, typography) live in one place and feed both Tailwind and the ECharts theme. Layouts are grayscale until the styling pass.
-- **Formatting** goes through one module: money with the household currency and the login's locale, dates with the login's locale and week start.
+- **Design tokens** (color, spacing, radius, typography) live in one place and feed both Tailwind and the ECharts theme. Components never hard-code them.
+- **Visual system:** four palettes, each light and dark, picked per login; Inter; meaning colors; money format; group colors and icons; the logo. See [Visual system](visual-system.md).
+- **Formatting** goes through one module: money with the household currency and the login's locale (shown as [Visual system › Money](visual-system.md#money) says), dates with the login's locale and week start.
 - **Import boundaries:** views → components → API client. Views never call `fetch`; components never import views. Enforced by lint.
 - **PWA** (milestone 6): installable; last-loaded data cached read-only; no offline editing. Needs HTTPS from the server.
 

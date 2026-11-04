@@ -2,7 +2,7 @@
 
 A self-hosted, Mint-style budgeting app for one household: bank data comes in, transactions get categorized with as little effort as possible, and spending is compared against targets. Tracking-style budgeting, not envelopes: budgets compare a target with actual spending and nothing carries over, except in funds ([ADR-0003](../adr/0003-funds-carry-over.md)).
 
-This spec is enough to build milestone 1 without asking the owner anything, and describes every later milestone except the bank sync parts, which are added separately (see [Milestone 2](m2-bank-data.md)). Visual styling is not in it: the screens below are layouts, and a styling pass happens once milestone 1 runs on real data.
+This spec is enough to build milestone 1 without asking the owner anything, and describes every later milestone except the bank sync parts, which are added separately (see [Milestone 2](m2-bank-data.md)). The screens are layouts; how they look is the [Visual system](visual-system.md), decided once milestone 1 ran and followed by every later screen.
 
 The app is called **Saltcellar** (as in "worth their salt": a place to keep track of what money is worth). Machine names use `saltcellar`: the repo, image, crate prefix and database file *(agent)*.
 
@@ -17,6 +17,7 @@ The app is called **Saltcellar** (as in "worth their salt": a place to keep trac
 | [Milestone 4: Budgets, Overview, reports](m4-budgets-reports.md) | Budget setup and screen, Overview, Spending, Trends, Cash flow. |
 | [Milestone 5: Funds + savings goals](m5-funds-goals.md) | Play money, sinking funds, savings goals. |
 | [Milestone 6: Launch](m6-launch.md) | Backups, reminder, export, invites, trusted-header auth, PWA, release images. |
+| [Visual system](visual-system.md) | Palettes, light and dark, type, money format, density, group colors and icons, logo, contrast. |
 | [schema.sql](schema.sql) | The target schema, annotated with the milestone that first needs each table. |
 | [/GLOSSARY.md](../../GLOSSARY.md) | Domain vocabulary. Use these terms in code, UI copy, issues and tests. |
 | [docs/adr/](../adr/) | Hard-to-reverse decisions and why. |
