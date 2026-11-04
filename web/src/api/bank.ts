@@ -1,9 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { call, client } from './client'
-import type { components } from './generated/schema'
-
-export type BankConnection = components['schemas']['BankConnection']
-export type ConnectionStatus = components['schemas']['ConnectionStatus']
 
 /**
  * `GET /api/v1/bank-connection`: whether the server has its secret key, and the household's bank
