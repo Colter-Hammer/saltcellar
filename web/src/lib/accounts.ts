@@ -98,7 +98,6 @@ export function moveAccount(
 
 /** All `accounts`, with `id` dropped where the account `onto` is. */
 export function dropAccount(accounts: readonly Account[], id: number, onto: number): Account[] {
-  return dropGroup(accounts.map(asItem), id, onto).map(
-    ({ id: droppedId }) => accounts.find((account) => account.id === droppedId) ?? accounts[0]!,
-  )
+  const order = dropGroup(accounts.map(asItem), id, onto).map((item) => item.id)
+  return accounts.toSorted((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
 }
