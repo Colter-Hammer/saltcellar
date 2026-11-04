@@ -3,6 +3,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUndecided } from '@/api/undecided'
+import AppLogo from '@/components/AppLogo.vue'
 import LogOutButton from '@/components/LogOutButton.vue'
 import ServerBanner from '@/components/ServerBanner.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
@@ -23,7 +24,7 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
       aria-label="Sidebar"
       class="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r bg-muted/40 p-3 lg:flex"
     >
-      <div class="px-2 py-3 font-semibold">Saltcellar</div>
+      <AppLogo class="px-2 py-3 text-lg" />
       <RouterLink
         v-for="item in sidebar"
         :key="item.to"
@@ -54,7 +55,10 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
       <header
         class="sticky top-0 z-30 flex h-12 items-center border-b bg-background px-4 lg:static lg:h-auto lg:border-none lg:px-6 lg:pt-6"
       >
-        <h1 class="font-semibold lg:text-xl">{{ title }}</h1>
+        <!-- The phone has no sidebar, so its header carries the logo, then the screen's title *(agent)*. -->
+        <AppLogo class="lg:hidden" />
+        <span class="mx-3 h-5 border-l lg:hidden" aria-hidden="true" />
+        <h1 class="truncate font-semibold lg:text-xl">{{ title }}</h1>
       </header>
 
       <ServerBanner />

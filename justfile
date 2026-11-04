@@ -92,6 +92,10 @@ gen-api:
 fixtures:
     cargo run --quiet --locked -p actual --example fixtures -- fixtures
 
+# Rewrite the tile icons in web/public/ after changing the mark (web/src/assets/logo/mark.svg).
+icons:
+    node web/scripts/icons.ts
+
 # Frontend types, with vue-tsc.
 web-typecheck:
     npm --prefix web run typecheck

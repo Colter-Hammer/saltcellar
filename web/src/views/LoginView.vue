@@ -4,6 +4,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logIn } from '@/api/session'
+import AppLogo from '@/components/AppLogo.vue'
 import FormField from '@/components/FormField.vue'
 
 const route = useRoute()
@@ -36,6 +37,7 @@ async function submit() {
 
 <template>
   <main class="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-4 lg:pt-16">
+    <AppLogo class="text-2xl" />
     <h1 class="text-xl font-semibold">Log in</h1>
 
     <form class="flex flex-col gap-4" @submit.prevent="submit">

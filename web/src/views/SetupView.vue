@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { checkSetupCode, finishSetup, getCurrencies } from '@/api/setup'
+import AppLogo from '@/components/AppLogo.vue'
 import FormField from '@/components/FormField.vue'
 import SearchSelect, { type Option } from '@/components/SearchSelect.vue'
 import { defaultCurrency } from '@/lib/currency'
@@ -89,6 +90,7 @@ async function submitLogin() {
 
 <template>
   <main class="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-4 lg:pt-16">
+    <AppLogo class="text-2xl" />
     <h1 class="text-xl font-semibold">Set up Saltcellar</h1>
 
     <form v-if="step === 'code'" class="flex flex-col gap-4" @submit.prevent="submitCode">
