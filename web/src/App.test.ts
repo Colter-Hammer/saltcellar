@@ -27,6 +27,10 @@ interface FakeServer {
   /** The login's saved locale and week start. */
   locale: string | null
   weekStart: number | null
+  /** The login's saved palette id. */
+  palette: string | null
+  /** Who the profile says is logged in. */
+  username: string
   /** The reset link's token that still works, if any. */
   resetToken?: string | undefined
   /** The category groups, as `GET /api/v1/categories` lists them. */
@@ -279,7 +283,13 @@ async function profile(request: Request, path: string): Promise<Response> {
     server.password = body.password ?? ''
     return new Response(null, { status: 204 })
   }
-  if (request.method === 'PUT') {
+  if (path === '/api/v1/profile/palette') {
+    const body = (await request.json()) as { palette: string | null }
+    if (body.palette !== null && !/^[a-z0-9-]{1,32}$/.test(body.palette)) {
+      return invalid({ palette: 'Choose a palette from the list.' })
+    }
+    server.palette = body.palette
+  } else if (request.method === 'PUT') {
     const body = (await request.json()) as {
       display_locale: string | null
       week_start: number | null
@@ -291,10 +301,11 @@ async function profile(request: Request, path: string): Promise<Response> {
     server.weekStart = body.week_start
   }
   return Response.json({
-    username: 'sam',
+    username: server.username,
     display_name: 'Sam',
     display_locale: server.locale,
     week_start: server.weekStart,
+    palette: server.palette,
   })
 }
 
@@ -359,6 +370,14 @@ function serverDown() {
 // jsdom has no layout, so no scrolling; the picker scrolls its highlighted option into view.
 Element.prototype.scrollIntoView = () => undefined
 
+/** The OS's light or dark, which jsdom doesn't have: what `matchMedia` answers, and who listens. */
+const os = { dark: false, listeners: new Set<() => void>() }
+globalThis.matchMedia = (query: string) =>
+  ({
+    matches: query === '(prefers-color-scheme: dark)' && os.dark,
+    addEventListener: (_type: string, listener: () => void) => os.listeners.add(listener),
+  }) as unknown as MediaQueryList
+
 beforeEach(() => {
   server = {
     setupDone: true,
@@ -368,6 +387,8 @@ beforeEach(() => {
     password: PASSWORD,
     locale: null,
     weekStart: null,
+    palette: null,
+    username: 'sam',
     groups: [],
     accounts: [],
     transactions: [],
@@ -378,6 +399,8 @@ beforeEach(() => {
     undone: [],
   }
   serverUp()
+  os.dark = false
+  localStorage.clear()
 })
 
 // Every test's app is unmounted after it, so a leftover one can't fetch from the next test's
@@ -800,12 +823,13 @@ describe('logging in', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((request: Request) =>
-        new URL(request.url).pathname === '/api/v1/session'
+        ['/api/v1/session', '/api/v1/profile'].includes(new URL(request.url).pathname)
           ? Promise.reject(new TypeError('Failed to fetch'))
           : answer(request),
       ),
     )
-    // A screen that asks the server nothing itself: one that does would find the login gone.
+    // A screen that asks the server nothing itself, beyond the shell's profile (for the palette),
+    // which is gone too: one that asked more would find the login gone.
     const { router } = await open('/more')
     expect(router.currentRoute.value.path).toBe('/more')
   })
@@ -1048,6 +1072,79 @@ describe('Settings › Profile', () => {
       password_again: 'a whole new passphrase',
     })
     expect(form.get('[role="alert"]').text()).toBe("Can't reach the server.")
+  })
+
+  const html = document.documentElement
+  const look = () => [html.dataset.palette, html.classList.contains('dark'), html.style.colorScheme]
+
+  async function pick(wrapper: Wrapper, name: string, value: string) {
+    await wrapper.get(`input[name="${name}"][value="${value}"]`).trigger('change')
+    await flushPromises()
+  }
+
+  it("shows Deep blue until a palette is picked, and one it doesn't know as Deep blue", async () => {
+    server.palette = 'not-a-palette'
+    const { wrapper } = await open('/settings/profile')
+    expect(look()).toEqual(['deep-blue', false, 'light'])
+    expect(wrapper.get<HTMLInputElement>('input[value="deep-blue"]').element.checked).toBe(true)
+    expect(
+      wrapper.findAll('input[name="palette"]').map((input) => input.attributes('value')),
+    ).toEqual(['slate-teal', 'sage', 'deep-blue', 'plum'])
+  })
+
+  it('changes the palette at once, saved to the profile and cached for the next load', async () => {
+    const { wrapper } = await open('/settings/profile')
+    await pick(wrapper, 'palette', 'plum')
+    expect(server.palette).toBe('plum')
+    expect(look()).toEqual(['plum', false, 'light'])
+    expect(localStorage.getItem('saltcellar.palette')).toBe('plum')
+  })
+
+  it("goes back to the palette it had if the server can't be reached", async () => {
+    server.palette = 'sage'
+    const { wrapper } = await open('/settings/profile')
+    serverDown()
+    await pick(wrapper, 'palette', 'plum')
+    expect(look()[0]).toBe('sage')
+    expect(wrapper.get('[role="alert"]').text()).toBe("Can't reach the server.")
+  })
+
+  it('keeps light, dark or the system on this device, for this login', async () => {
+    const { wrapper } = await open('/settings/profile')
+    await pick(wrapper, 'mode', 'dark')
+    expect(look()).toEqual(['deep-blue', true, 'dark'])
+    expect(localStorage.getItem('saltcellar.mode.sam')).toBe('dark')
+    expect(localStorage.getItem('saltcellar.mode')).toBe('dark')
+
+    await pick(wrapper, 'mode', 'light')
+    expect(look()).toEqual(['deep-blue', false, 'light'])
+
+    // System follows the OS while the app is open.
+    await pick(wrapper, 'mode', 'system')
+    os.dark = true
+    for (const listener of os.listeners) listener()
+    expect(look()).toEqual(['deep-blue', true, 'dark'])
+    os.dark = false
+    for (const listener of os.listeners) listener()
+    expect(look()).toEqual(['deep-blue', false, 'light'])
+  })
+
+  it('follows the system where the browser refuses storage', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Storage is off', 'SecurityError')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage is off', 'SecurityError')
+    })
+    os.dark = true
+    // Another login, so its mode is read afresh.
+    server.username = 'alex'
+    const { wrapper } = await open('/settings/profile')
+    expect(wrapper.get<HTMLInputElement>('input[value="system"]').element.checked).toBe(true)
+    await pick(wrapper, 'mode', 'light')
+    expect(look()).toEqual(['deep-blue', false, 'light'])
+    vi.restoreAllMocks()
+    expect(localStorage.getItem('saltcellar.mode.alex')).toBe(null)
   })
 
   function everywhere(wrapper: Wrapper) {

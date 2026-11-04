@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT username, display_name, display_locale, week_start AS \"week_start: i64\"\n           FROM users WHERE id = ?",
+  "query": "SELECT username, display_name, display_locale, week_start AS \"week_start: i64\", palette\n           FROM users WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "week_start"
           }
         }
+      },
+      {
+        "name": "palette",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "palette"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +66,9 @@
       false,
       false,
       true,
+      true,
       true
     ]
   },
-  "hash": "79549ca9b0f47965882c49438af7841d9beedab132ade847b8dc6f99036e6916"
+  "hash": "994f619091a96461f7bc9d3620ef94eba5139ca3e067e655c1eb58be557b4352"
 }

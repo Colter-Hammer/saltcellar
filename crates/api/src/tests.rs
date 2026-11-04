@@ -965,7 +965,7 @@ async fn the_profile_starts_out_following_the_browser() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
-        json!({ "username": "sam", "display_name": "Sam", "display_locale": null, "week_start": null })
+        json!({ "username": "sam", "display_name": "Sam", "display_locale": null, "week_start": null, "palette": null })
     );
 }
 
@@ -980,7 +980,7 @@ async fn the_profile_saves_and_clears_the_locale_and_week_start() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
-        json!({ "username": "sam", "display_name": "Sam Lee", "display_locale": "de-DE", "week_start": 1 })
+        json!({ "username": "sam", "display_name": "Sam Lee", "display_locale": "de-DE", "week_start": 1, "palette": null })
     );
     let (_, body) = send(
         app.router.clone(),
@@ -1025,12 +1025,63 @@ async fn the_profile_names_each_field_that_is_wrong() {
     assert_eq!(body["display_name"], "Sam");
 }
 
+fn change_palette(palette: &Value) -> Request<Body> {
+    put("/api/v1/profile/palette", &json!({ "palette": palette }))
+}
+
+#[tokio::test]
+async fn the_palette_saves_any_id_of_the_right_shape_and_clears() {
+    let app = set_up().await;
+    // The server doesn't know the list: an id no palette has is stored all the same.
+    for id in ["plum", "not-a-palette-9"] {
+        let (status, body) = send(
+            app.router.clone(),
+            with(&app.cookie, change_palette(&json!(id))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["palette"], id);
+    }
+    let (_, body) = send(
+        app.router.clone(),
+        with(&app.cookie, get("/api/v1/profile")),
+    )
+    .await;
+    assert_eq!(body["palette"], "not-a-palette-9");
+
+    let (status, body) = send(
+        app.router.clone(),
+        with(&app.cookie, change_palette(&Value::Null)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["palette"], Value::Null);
+}
+
+#[tokio::test]
+async fn the_palette_refuses_an_id_of_the_wrong_shape() {
+    let app = set_up().await;
+    for id in ["", "Sage", "deep_blue", &"a".repeat(33)] {
+        let (status, body) = send(
+            app.router.clone(),
+            with(&app.cookie, change_palette(&json!(id))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{id}");
+        assert_eq!(
+            body["error"]["fields"],
+            json!({ "palette": "Choose a palette from the list." })
+        );
+    }
+}
+
 #[tokio::test]
 async fn the_profile_needs_a_login() {
     let app = set_up().await;
     for request in [
         get("/api/v1/profile"),
         change_profile(&json!("de-DE"), &json!(1)),
+        change_palette(&json!("plum")),
         change_password(PASSWORD, NEW_PASSWORD, NEW_PASSWORD),
         log_out_everywhere(),
     ] {

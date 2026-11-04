@@ -1,0 +1,61 @@
+/*
+ * Sage (`sage`), light and dark (docs/spec/visual-system.md#per-palette-colors).
+ * Every color token, as hex; the meaning colors are the same in every palette. The aliases
+ * (--card-foreground, --ring, --destructive …) are set once in tokens.css.
+ */
+
+[data-palette='sage'] {
+  --background: #f8fbf7;
+  --card: #ffffff;
+  --muted: #edf2ec;
+  --border: #dbe0d9;
+  --foreground: #121811;
+  --muted-foreground: #586156;
+  --primary: #5c6232;
+  --primary-foreground: #fafafa;
+  --cat-1: #008a5a;
+  --cat-2: #a676c8;
+  --cat-3: #857500;
+  --cat-4: #4992d9;
+  --cat-5: #b25634;
+  --cat-6: #00a39d;
+  --cat-7: #a5538c;
+  --cat-8: #739d41;
+  --cat-9: #6769bf;
+  --cat-10: #bf7e1f;
+  --cat-11: #00829e;
+  --cat-12: #cf697b;
+
+  --money-in: #137738;
+  --over-budget: #be2323;
+  --near-limit: #a0600b;
+  --chart-out: #c86556;
+}
+
+[data-palette='sage'].dark {
+  --background: #0d110c;
+  --card: #151814;
+  --muted: #1f231e;
+  --border: #2e322d;
+  --foreground: #ecefec;
+  --muted-foreground: #a0a79e;
+  --primary: #afb688;
+  --primary-foreground: #0d110c;
+  --cat-1: #5dc291;
+  --cat-2: #a276c2;
+  --cat-3: #bdac4a;
+  --cat-4: #4e90d2;
+  --cat-5: #eb9070;
+  --cat-6: #00a19b;
+  --cat-7: #dd8cc3;
+  --cat-8: #749a48;
+  --cat-9: #9ca2f5;
+  --cat-10: #ba7e2d;
+  --cat-11: #39bcdf;
+  --cat-12: #c96b7b;
+
+  --money-in: #64cf80;
+  --over-budget: #fa706a;
+  --near-limit: #edb345;
+  --chart-out: #dd7767;
+}

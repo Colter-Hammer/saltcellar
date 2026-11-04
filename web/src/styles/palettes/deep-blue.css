@@ -1,0 +1,61 @@
+/*
+ * Deep blue (`deep-blue`), light and dark (docs/spec/visual-system.md#per-palette-colors).
+ * Every color token, as hex; the meaning colors are the same in every palette. The aliases
+ * (--card-foreground, --ring, --destructive …) are set once in tokens.css.
+ */
+
+[data-palette='deep-blue'] {
+  --background: #f7faff;
+  --card: #ffffff;
+  --muted: #ebf1fa;
+  --border: #d9dee8;
+  --foreground: #101620;
+  --muted-foreground: #545e6e;
+  --primary: #1f53b8;
+  --primary-foreground: #fafafa;
+  --cat-1: #4573c0;
+  --cat-2: #cb733e;
+  --cat-3: #00858a;
+  --cat-4: #c76a99;
+  --cat-5: #478638;
+  --cat-6: #8d7ed7;
+  --cat-7: #986b00;
+  --cat-8: #009bcc;
+  --cat-9: #b45054;
+  --cat-10: #00a682;
+  --cat-11: #9558a3;
+  --cat-12: #939421;
+
+  --money-in: #137738;
+  --over-budget: #be2323;
+  --near-limit: #a0600b;
+  --chart-out: #c86556;
+}
+
+[data-palette='deep-blue'].dark {
+  --background: #0c1016;
+  --card: #13171e;
+  --muted: #1e2228;
+  --border: #2c3138;
+  --foreground: #ebeff4;
+  --muted-foreground: #9da5b2;
+  --primary: #77a6ff;
+  --primary-foreground: #0c1016;
+  --cat-1: #7eabf6;
+  --cat-2: #c67544;
+  --cat-3: #24c1c9;
+  --cat-4: #c26c96;
+  --cat-5: #81bd74;
+  --cat-6: #8c7ed0;
+  --cat-7: #d2a249;
+  --cat-8: #1f99c7;
+  --cat-9: #ed8b8b;
+  --cat-10: #1ea381;
+  --cat-11: #cc91da;
+  --cat-12: #91922f;
+
+  --money-in: #64cf80;
+  --over-budget: #fa706a;
+  --near-limit: #edb345;
+  --chart-out: #dd7767;
+}

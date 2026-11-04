@@ -7,10 +7,13 @@ import LogOutButton from '@/components/LogOutButton.vue'
 import ServerBanner from '@/components/ServerBanner.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
 import { cn } from '@/lib/utils'
+import { useAppearance } from '@/theme/appearance'
 
 const route = useRoute()
 const title = computed(() => route.meta.title)
 const undecided = useUndecided()
+// The login's palette and mode, once its profile loads.
+useAppearance()
 const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) > 0))
 </script>
 

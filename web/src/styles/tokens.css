@@ -1,40 +1,75 @@
 /*
- * The design tokens: every color, spacing step, radius and font the app uses, in one place.
- * Tailwind reads them through @theme; charts (later) read the same custom properties.
- * Grayscale until the styling pass (docs/spec/foundations.md#frontend), which changes this file, not components.
+ * The design tokens that aren't colors (font, spacing, density, radius, shadow, motion), the color
+ * aliases, and the @theme block that maps every token into Tailwind (docs/spec/visual-system.md).
+ * The colors themselves live in one file per palette, in ./palettes/. Components only read tokens:
+ * a new look is a token or palette change, never a component edit.
  * Names follow shadcn-vue's, so copied-in components work unchanged.
  */
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+/*
+ * Aliases, the same in every palette and mode (docs/spec/visual-system.md#color-tokens). Set on
+ * every [data-palette] too, so a palette shown inside another (a swatch) resolves its own.
+ */
+:root,
+[data-palette] {
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: var(--muted);
+  --accent-foreground: var(--foreground);
+  --input: var(--border);
+  --ring: var(--primary);
+  --needs-review: var(--primary);
+  --destructive: var(--over-budget);
+  /* Text on a destructive button (agent): passes AA on --over-budget in both modes. */
+  --destructive-foreground: var(--primary-foreground);
+  --chart-in: var(--money-in);
+
   --radius: 0.625rem;
+
+  /* Light shadows in light mode; in dark the border carries the edge (agent). Used as
+     `shadow-(--shadow-card)`: a theme entry of the same name would refer to itself. */
+  --shadow-card:
+    0 1px 2px 0 color-mix(in oklab, var(--foreground) 6%, transparent),
+    0 1px 3px 0 color-mix(in oklab, var(--foreground) 6%, transparent);
+
+  /* Motion: hover, open and close only (agent). */
+  --duration: 150ms;
+  --ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+
+  /* Density: one fixed density in v1, from tokens so a toggle can come later (agent). */
+  --row-touch: 2.75rem;
+  --row-dense: 2.25rem;
+  --page-x: 1rem;
+}
+
+.dark,
+[data-palette].dark {
+  --shadow-card: none;
+}
+
+@media (min-width: 64rem) {
+  :root,
+  [data-palette] {
+    --page-x: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  [data-palette] {
+    --duration: 0ms;
+  }
 }
 
 @theme inline {
   --font-sans: system-ui, sans-serif;
   --spacing: 0.25rem;
+  --spacing-row-touch: var(--row-touch);
+  --spacing-row-dense: var(--row-dense);
+  --spacing-page-x: var(--page-x);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -51,17 +86,35 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+
+  --color-money-in: var(--money-in);
+  --color-over-budget: var(--over-budget);
+  --color-near-limit: var(--near-limit);
+  --color-needs-review: var(--needs-review);
+  --color-chart-in: var(--chart-in);
+  --color-chart-out: var(--chart-out);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
+  --color-cat-7: var(--cat-7);
+  --color-cat-8: var(--cat-8);
+  --color-cat-9: var(--cat-9);
+  --color-cat-10: var(--cat-10);
+  --color-cat-11: var(--cat-11);
+  --color-cat-12: var(--cat-12);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --default-transition-duration: var(--duration);
+  --default-transition-timing-function: var(--ease-out);
 }

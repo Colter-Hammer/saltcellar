@@ -1,5 +1,6 @@
-//! Settings › Profile: a login's own display name, locale and week start, its password, and
-//! logging out everywhere (docs/spec/m1-ledger-import.md#login-and-profile).
+//! Settings › Profile: a login's own display name, locale and week start, its palette, its
+//! password, and logging out everywhere (docs/spec/m1-ledger-import.md#login-and-profile,
+//! docs/spec/visual-system.md#palettes-and-modes).
 
 use std::collections::BTreeMap;
 
@@ -8,7 +9,7 @@ use axum::extract::{Extension, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use domain::login::{DisplayName, Password};
-use domain::profile::{Locale, WeekStart};
+use domain::profile::{Locale, Palette, WeekStart};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -26,6 +27,9 @@ pub struct Profile {
     /// 0 = Sunday … 6 = Saturday; null = from the locale.
     #[schema(minimum = 0, maximum = 6)]
     week_start: Option<u8>,
+    /// A palette id, like `sage`; null = the default. The frontend shows the default for an id it
+    /// doesn't know.
+    palette: Option<String>,
 }
 
 impl From<db::Profile> for Profile {
@@ -35,6 +39,7 @@ impl From<db::Profile> for Profile {
             display_name: profile.display_name,
             display_locale: profile.display_locale,
             week_start: profile.week_start,
+            palette: profile.palette,
         }
     }
 }
@@ -113,6 +118,46 @@ pub async fn change(
         week_start,
     };
     db::update_profile(&state.pool, current.login.user_id, &change).await?;
+    get(State(state), Extension(current)).await
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ChangePalette {
+    /// 1–32 of `a`–`z`, `0`–`9` and `-`, like `sage`; null = the default.
+    #[schema(pattern = "^[a-z0-9-]{1,32}$")]
+    palette: Option<String>,
+}
+
+/// `PUT /api/v1/profile/palette`: saves the palette on its own, so picking one applies at once
+/// without saving the rest of the profile *(agent)*. Any id of the right shape is stored.
+#[utoipa::path(
+    put,
+    path = "/api/v1/profile/palette",
+    operation_id = "changePalette",
+    request_body = ChangePalette,
+    responses(
+        (status = 200, description = "The saved profile.", body = Profile),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 403, description = "`setup_required`: setup isn't finished.", body = ErrorEnvelope),
+        (status = 422, description = "`validation_failed`: the palette id isn't of the right shape.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn change_palette(
+    State(state): State<AppState>,
+    Extension(current): Extension<Current>,
+    Body(body): Body<ChangePalette>,
+) -> Result<Json<Profile>, ApiError> {
+    let palette = body
+        .palette
+        .map(|id| id.parse::<Palette>())
+        .transpose()
+        .map_err(|error| {
+            ApiError::validation(
+                "Some details need another look.",
+                [("palette".to_owned(), error.to_string())].into(),
+            )
+        })?;
+    db::set_palette(&state.pool, current.login.user_id, palette.as_ref()).await?;
     get(State(state), Extension(current)).await
 }
 

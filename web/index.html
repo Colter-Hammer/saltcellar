@@ -4,6 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Saltcellar</title>
+    <script>
+      // The palette and mode last applied on this device, before first paint, so a reload shows
+      // no flash of another (docs/spec/visual-system.md#palettes-and-modes). The keys and the
+      // default match src/theme/; the app takes over once the profile loads.
+      ;(function () {
+        var palette = 'deep-blue'
+        var mode = 'system'
+        try {
+          palette = localStorage.getItem('saltcellar.palette') || palette
+          mode = localStorage.getItem('saltcellar.mode') || mode
+        } catch (e) {}
+        var dark =
+          mode === 'dark' ||
+          (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        var html = document.documentElement
+        html.setAttribute('data-palette', palette)
+        html.classList.toggle('dark', dark)
+        html.style.colorScheme = dark ? 'dark' : 'light'
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

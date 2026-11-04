@@ -30,7 +30,8 @@ pub use imports::{
     actual_import_in_place, commit_actual_import, import_batches, undo_import,
 };
 pub use profile::{
-    Profile, ProfileChange, end_all_sessions, password_hash, profile, set_password, update_profile,
+    Profile, ProfileChange, end_all_sessions, password_hash, profile, set_palette, set_password,
+    update_profile,
 };
 pub use reset::{UseReset, issue_password_reset, password_reset, use_password_reset};
 pub use sqlx::SqlitePool;

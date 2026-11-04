@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { call, client } from './client'
 import type { components } from './generated/schema'
 
+type Profile = components['schemas']['Profile']
 export type ChangeProfile = components['schemas']['ChangeProfile']
 export type ChangePassword = components['schemas']['ChangePassword']
 
 const PROFILE = ['profile']
 
-/** `GET /api/v1/profile`: the logged-in login's name, locale and week start. */
+/** `GET /api/v1/profile`: the logged-in login's name, locale, week start and palette. */
 export function useProfile() {
   return useQuery({
     queryKey: PROFILE,
@@ -24,6 +25,29 @@ export function useChangeProfile() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (body: ChangeProfile) => call(client.PUT('/api/v1/profile', { body })),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(PROFILE, saved)
+    },
+  })
+}
+
+/**
+ * `PUT /api/v1/profile/palette`: saves the palette (`null` = the default). The profile takes it
+ * before the server answers, so the app changes at once, and goes back if the server refuses.
+ */
+export function useChangePalette() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (palette: string | null) =>
+      call(client.PUT('/api/v1/profile/palette', { body: { palette } })),
+    onMutate: (palette) => {
+      const before = queryClient.getQueryData<Profile>(PROFILE)
+      if (before !== undefined) queryClient.setQueryData(PROFILE, { ...before, palette })
+      return { before }
+    },
+    onError: (_error, _palette, context) => {
+      if (context?.before !== undefined) queryClient.setQueryData(PROFILE, context.before)
+    },
     onSuccess: (saved) => {
       queryClient.setQueryData(PROFILE, saved)
     },

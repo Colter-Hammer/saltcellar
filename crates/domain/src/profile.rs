@@ -78,6 +78,39 @@ impl WeekStart {
     }
 }
 
+/// A visual-system palette id, like `sage` (docs/spec/visual-system.md#palettes-and-modes):
+/// 1–32 lowercase letters, digits and `-`. The server doesn't know the list; the frontend shows the
+/// default for an id it doesn't know, so adding a palette never touches the server.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Palette(String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Choose a palette from the list.")]
+pub struct InvalidPalette;
+
+impl Palette {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for Palette {
+    type Err = InvalidPalette;
+
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        let ok = (1..=32).contains(&id.len())
+            && id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if ok {
+            Ok(Palette(id.to_owned()))
+        } else {
+            Err(InvalidPalette)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +163,34 @@ mod tests {
     fn explains_the_errors() {
         assert_eq!(InvalidLocale.to_string(), "Choose a locale from the list.");
         assert_eq!(InvalidWeekStart.to_string(), "Choose a day of the week.");
+    }
+
+    #[test]
+    fn takes_palette_ids() {
+        for id in [
+            "sage",
+            "slate-teal",
+            "deep-blue",
+            "a",
+            "x9",
+            &"a".repeat(32),
+        ] {
+            assert_eq!(id.parse::<Palette>().unwrap().as_str(), id);
+        }
+    }
+
+    #[test]
+    fn refuses_what_isnt_a_palette_id() {
+        for id in [
+            "",
+            "Sage",
+            "deep_blue",
+            "plum!",
+            "sage ",
+            "ünï",
+            &"a".repeat(33),
+        ] {
+            assert_eq!(id.parse::<Palette>(), Err(InvalidPalette), "{id}");
+        }
     }
 }

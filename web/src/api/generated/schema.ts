@@ -329,6 +329,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/profile/palette": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * `PUT /api/v1/profile/palette`: saves the palette on its own, so picking one applies at once
+         *     without saving the rest of the profile *(agent)*. Any id of the right shape is stored.
+         */
+        put: operations["changePalette"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profile/password": {
         parameters: {
             query?: never;
@@ -847,6 +867,10 @@ export interface components {
              */
             groups: components["schemas"]["CategoryGroupPlace"][];
         };
+        ChangePalette: {
+            /** @description 1–32 of `a`–`z`, `0`–`9` and `-`, like `sage`; null = the default. */
+            palette?: string | null;
+        };
         ChangePassword: {
             current_password: string;
             /** @description At least 12 characters. */
@@ -1014,6 +1038,11 @@ export interface components {
             /** @description BCP 47, like `de-DE`; null = the browser's locale. */
             display_locale?: string | null;
             display_name: string;
+            /**
+             * @description A palette id, like `sage`; null = the default. The frontend shows the default for an id it
+             *     doesn't know.
+             */
+            palette?: string | null;
             username: string;
             /**
              * Format: int32
@@ -2138,6 +2167,57 @@ export interface operations {
                 };
             };
             /** @description `validation_failed`, naming each field that's wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changePalette: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePalette"];
+            };
+        };
+        responses: {
+            /** @description The saved profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `setup_required`: setup isn't finished. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the palette id isn't of the right shape. */
             422: {
                 headers: {
                     [name: string]: unknown;

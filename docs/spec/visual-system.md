@@ -10,18 +10,18 @@ Calm and data-first. Mostly neutral surfaces with one accent per palette. Color 
 
 ## Palettes and modes
 
-Four palettes ship, each with a light and a dark variant: **Slate / teal**, **Sage** (the default), **Deep blue**, **Plum**. Palettes vary the accent and the tint of the neutrals; meaning colors are the same in every palette so they read the same everywhere.
+Four palettes ship, each with a light and a dark variant: **Slate / teal**, **Sage**, **Deep blue** (the default), **Plum**. Palettes vary the accent and the tint of the neutrals; meaning colors are the same in every palette so they read the same everywhere.
 
-- **Palette is a per-login setting, stored on the server** (follows the login across devices, like display locale): `users.palette`, `NULL` = the default. The server stores any id matching `^[a-z0-9-]{1,32}$` and doesn't know the list; the frontend shows the default for an id it doesn't know *(agent: so adding a palette never touches the server)*.
-- **Mode is Light, Dark or System**, default System, stored per device and per login in `localStorage` *(agent: key `saltcellar.mode.<user id>`)*.
-- **Where:** Settings › Profile gets an **Appearance** part: the palettes as swatches (name, accent, a light and dark chip) and a Light / Dark / System choice. Changing either applies at once, no save button *(agent)*.
-- **No flash** *(agent)*: an inline script in `index.html` applies the last palette and mode (cached in `localStorage`) before first paint; the profile's palette replaces it when it loads. The login and setup screens use the cached palette, or the default.
+- **Palette is a per-login setting, stored on the server** (follows the login across devices, like display locale): `users.palette`, `NULL` = the default. The server stores any id matching `^[a-z0-9-]{1,32}$` and doesn't know the list; the frontend shows the default for an id it doesn't know *(agent: so adding a palette never touches the server)*. It is saved on its own, `PUT /api/v1/profile/palette`, so picking one doesn't save the rest of the profile form *(agent)*.
+- **Mode is Light, Dark or System**, default System, stored per device and per login in `localStorage` *(agent: key `saltcellar.mode.<username>`, the name the session gives the login)*.
+- **Where:** Settings › Profile gets an **Appearance** part: the palettes as swatches (name, accent, a light and dark chip, drawn by the palette's own CSS so no color value lives outside its file *(agent)*) and a Light / Dark / System choice. Changing either applies at once, no save button *(agent)*.
+- **No flash** *(agent)*: an inline script in `index.html` applies the last palette and mode (cached in `localStorage` *(agent: `saltcellar.palette`, `saltcellar.mode`)*) before first paint; the profile's palette replaces it when it loads. The login and setup screens use the cached palette, or the default.
 
 ### Theme mechanism
 
 - `web/src/styles/tokens.css` holds everything that isn't a color (font, spacing, density, radius, shadow, motion) and the `@theme inline` block that maps every token into Tailwind.
 - Each palette is **one CSS file**, `web/src/styles/palettes/<id>.css`, setting the same color custom properties under `[data-palette='<id>']` and `[data-palette='<id>'].dark`. Values are hex *(agent: the gamut-mapped sRGB the OKLCH design values land on, and what the contrast check reads)*.
-- `web/src/theme/palettes.ts` is the **registry**: id, label and swatch per palette, the default id (`sage`), and the CSS imports.
+- `web/src/theme/palettes.ts` is the **registry**: id, label and swatch per palette, the default id (`deep-blue`), and the CSS imports.
 - `<html>` carries `data-palette="<id>"`, the `.dark` class in dark mode, and `color-scheme` to match.
 - Components and (from milestone 4) the ECharts theme only read tokens. The ECharts theme re-reads the custom properties when the palette or mode changes.
 - **Adding a palette** = one CSS file + one registry entry, passing the contrast check. Nothing else changes.
@@ -29,7 +29,7 @@ Four palettes ship, each with a light and a dark variant: **Slate / teal**, **Sa
 
 ## Color tokens
 
-Aliases, the same in every palette and mode: `--card-foreground`, `--popover-foreground`, `--secondary-foreground` and `--accent-foreground` = `--foreground`; `--popover` = `--card`; `--secondary` and `--accent` = `--muted` (shadcn's "accent" is the hover surface; the palette's accent color is `--primary`); `--input` = `--border`; `--ring` and `--needs-review` = `--primary`; `--destructive` = `--over-budget`; `--chart-in` = `--money-in`.
+Aliases, the same in every palette and mode: `--card-foreground`, `--popover-foreground`, `--secondary-foreground` and `--accent-foreground` = `--foreground`; `--popover` = `--card`; `--secondary` and `--accent` = `--muted` (shadcn's "accent" is the hover surface; the palette's accent color is `--primary`); `--input` = `--border`; `--ring` and `--needs-review` = `--primary`; `--destructive` = `--over-budget`; `--destructive-foreground` = `--primary-foreground` *(agent: text on a destructive button)*; `--chart-in` = `--money-in`.
 
 ### Meaning colors (every palette)
 
@@ -108,7 +108,7 @@ One fixed density in v1, no toggle, all from spacing tokens so a toggle can come
 ## Shape, shadow and motion
 
 - Radius stays `--radius: 0.625rem` with the `sm` … `xl` steps.
-- Shadows are light: cards get `--shadow-card` in light mode and none in dark, where the border carries the edge *(agent)*.
+- Shadows are light: cards get `--shadow-card` in light mode and none in dark, where the border carries the edge *(agent; used as `shadow-(--shadow-card)`)*.
 - **Motion** is short and subtle: `--duration` 150ms with an ease-out curve, for hover, open and close only *(agent)*. Under `prefers-reduced-motion` the durations are zero.
 
 ## Group color and icon
