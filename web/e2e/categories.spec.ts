@@ -1,7 +1,8 @@
 // Settings › Categories on both widths: the starter set, rename, hide and unhide, and reordering
 // that outlasts a reload. The list is the install's own, so this runs on its own, before the
-// layouts: the desktop by dragging, then a phone by Move up / Move down.
+// layouts: the desktop by dragging, then a phone by touch and by the row menus.
 import { devices, expect, test, type Page } from '@playwright/test'
+import { drag } from './drag.js'
 import { STORAGE_STATE } from './login-state.js'
 
 const heading = (page: Page) => page.getByRole('heading', { level: 1 })
@@ -115,17 +116,37 @@ test('the starter set, renamed, hidden and reordered on a desktop and a phone', 
   // Hiding a group recolors none of the others.
   expect(await color(page, 'Financial')).toEqual(financialColor)
 
-  // Drag a category to the top of its group, and a group above another.
-  await page
-    .getByLabel('Drag Fast Food & Coffee')
-    .dragTo(page.getByTestId('group-Food').getByText('Groceries'))
+  // Drag a category to the top of its group: held, it's lifted and the others slide aside.
+  const food = page.getByTestId('group-Food')
+  await drag(
+    page,
+    page.getByRole('button', { name: 'Reorder Fast Food & Coffee' }),
+    food.getByText('Groceries'),
+    {
+      to: 'top',
+      during: async () => {
+        await expect(page.locator('[data-sort-dragging]')).toContainText('Fast Food & Coffee')
+        await expect
+          .poll(() => categoryNames(page, 'Food'))
+          .toEqual(['Fast Food & Coffee', 'Groceries', 'Eating Out'])
+      },
+    },
+  )
   await expect
     .poll(() => categoryNames(page, 'Food'))
     .toEqual(['Fast Food & Coffee', 'Groceries', 'Eating Out'])
-  // A drag can't scroll to its target, so both ends start on screen.
-  const housing = page.getByRole('heading', { name: 'Housing' })
-  await housing.scrollIntoViewIfNeeded()
-  await page.getByLabel('Drag Food', { exact: true }).dragTo(housing)
+  // And a group above the one before it. Both ends start on screen: Housing is the first group, with Food
+  // under it.
+  const housing = page.getByTestId('group-Housing')
+  await page.evaluate(() => {
+    window.scrollTo(0, 0)
+  })
+  await drag(
+    page,
+    page.getByRole('button', { name: 'Reorder Food', exact: true }),
+    housing.getByRole('heading', { name: 'Housing' }),
+    { to: 'top' },
+  )
   await expect.poll(async () => (await groupNames(page)).slice(0, 2)).toEqual(['Food', 'Housing'])
   // Reordering recolors: Food is first now, so it has the first color.
   await expect.poll(() => color(page, 'Food')).toEqual(housingColor)
@@ -146,17 +167,27 @@ test('the starter set, renamed, hidden and reordered on a desktop and a phone', 
     .toEqual(['Fast Food & Coffee', 'Groceries', 'Eating Out'])
   expect((await groupNames(page)).slice(0, 2)).toEqual(['Food', 'Housing'])
 
-  // A phone moves things with the row menus, and unhides.
+  // A phone drags by touch and moves things with the row menus, and unhides.
   const phone = await (
     await browser.newContext({ ...devices['Pixel 7'], storageState: STORAGE_STATE })
   ).newPage()
   await phone.goto('/more')
   await phone.getByRole('main').getByRole('link', { name: 'Categories' }).click()
   await expect(heading(phone)).toHaveText('Categories')
-  await expect(phone.getByLabel('Drag Food', { exact: true })).toBeHidden()
 
   await act(phone, 'Housing', 'Move up')
-  await act(phone, 'Gas', 'Move down')
+  // Touch drags a category by its grip, past the one below it.
+  const transportation = phone.getByTestId('group-Transportation')
+  await transportation.scrollIntoViewIfNeeded()
+  await drag(
+    phone,
+    phone.getByRole('button', { name: 'Reorder Gas' }),
+    transportation.getByText('Car Maintenance'),
+    { touch: true },
+  )
+  await expect
+    .poll(() => categoryNames(phone, 'Transportation'))
+    .toEqual(['Car Maintenance', 'Gas', 'Car Purchase'])
   await phone.getByRole('button', { name: 'Unhide Pets' }).click()
   await expect(phone.getByTestId('group-Pets')).toBeVisible()
 

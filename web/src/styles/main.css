@@ -28,3 +28,28 @@
     @apply max-lg:min-h-row-touch;
   }
 }
+
+/* A row lifted by its grip (src/lib/sortable.ts): above the others, out of the pointer's way so
+   what is under it can be found, and carrying a shadow, or a border in dark where shadows don't
+   show. Its transform is set by the sortable, not here. */
+[data-sort-dragging] {
+  position: relative;
+  z-index: 20;
+  pointer-events: none;
+  cursor: grabbing;
+  outline: 1px solid var(--border);
+  box-shadow: 0 8px 24px -4px color-mix(in oklab, var(--foreground) 22%, transparent);
+}
+
+/* Native controls take the palette's colors, so the closed control and the open list read in light
+   and dark alike; the picker is the system's, and gets the same pair. */
+@layer base {
+  select {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+}

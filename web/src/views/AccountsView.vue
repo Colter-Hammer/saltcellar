@@ -1,34 +1,28 @@
 <script setup lang="ts">
 // Accounts (docs/spec/m1-ledger-import.md#accounts, editable per docs/spec/m2-bank-data.md#accounts).
-// Their order is set here: desktops drag a row by its grip, phones turn on Reorder for Move up /
-// Move down buttons within each group, as Settings › Categories does *(agent)*.
-// Phones list them grouped Budgeted / Tracking / Closed; desktops show one table in the same order,
-// closed ones marked so *(agent)*. Each opens its detail. With none, the empty state.
-import { GripVertical } from '@lucide/vue'
+// Their order is set here, on both widths, by dragging a row by its grip (or Up / Down on the grip):
+// the row lifts, the others slide to open its gap, and the order is saved once on drop. A row moves
+// within its group, Budgeted / Tracking / Closed *(agent)*.
+// Phones list them in those groups; desktops show one table in the same order, closed ones marked
+// so *(agent)*. Each opens its detail. With none, the empty state.
 import { computed, ref } from 'vue'
 import { type Account, useAccountEdits, useAccounts } from '@/api/accounts'
 import {
-  canMoveAccount,
+  describeAccount,
   dropAccount,
   groupAccounts,
-  moveAccount,
   roleLabel,
+  stepAccount,
   typeLabel,
 } from '@/lib/accounts'
 import Money from '@/components/Money.vue'
+import SortGrip from '@/components/SortGrip.vue'
 import { formatDate, useFormatting } from '@/lib/format'
+import { useSortable } from '@/lib/sortable'
 
 const accounts = useAccounts()
 const formatting = useFormatting()
-
-const list = computed(() => accounts.data.value?.accounts ?? [])
-const groups = computed(() => groupAccounts(list.value))
-/** The table's rows: the groups' order, so closed ones come last. */
-const rows = computed(() => groups.value.flatMap((group) => group.accounts))
-const empty = computed(() => accounts.isSuccess.value && list.value.length === 0)
-
 const edits = useAccountEdits()
-const reordering = ref(false)
 const problem = ref<string>()
 
 async function saveOrder(order: Account[]) {
@@ -40,33 +34,22 @@ async function saveOrder(order: Account[]) {
   }
 }
 
-function move(within: Account[], id: number, by: -1 | 1) {
-  void saveOrder(moveAccount(list.value, within, id, by))
-}
+const sortable = useSortable<Account[]>({
+  model: () => accounts.data.value?.accounts ?? [],
+  drop: (order, drag, over) =>
+    over.kind === 'account' ? dropAccount(order, drag.id, over.id) : null,
+  step: (order, drag, by) => stepAccount(order, drag.id, by),
+  signature: (order) => order.map((account) => account.id).join(),
+  describe: (order, drag) => describeAccount(order, drag.id),
+  save: saveOrder,
+})
 
-// Dragging, on desktop: the drop is saved once the drag is over, so the table doesn't move under it.
-let dragging: number | null = null
-let dropped: Account[] | null = null
-
-function startDrag(event: DragEvent, id: number) {
-  dragging = id
-  dropped = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', `account:${String(id)}`)
-  }
-}
-
-function dropOn(id: number) {
-  if (dragging !== null) dropped = dropAccount(list.value, dragging, id)
-}
-
-function endDrag() {
-  const order = dropped
-  dragging = null
-  dropped = null
-  if (order !== null) void saveOrder(order)
-}
+/** The accounts as they stand, the lifted one already in its new place. */
+const list = computed(() => sortable.shown.value)
+const groups = computed(() => groupAccounts(list.value))
+/** The table's rows: the groups' order, so closed ones come last. */
+const rows = computed(() => groups.value.flatMap((group) => group.accounts))
+const empty = computed(() => accounts.isSuccess.value && list.value.length === 0)
 </script>
 
 <template>
@@ -91,14 +74,6 @@ function endDrag() {
 
     <template v-else-if="list.length > 0">
       <!-- Phones: the groups. -->
-      <button
-        type="button"
-        :aria-pressed="reordering"
-        class="self-start rounded-md border px-3 py-2 lg:hidden"
-        @click="reordering = !reordering"
-      >
-        {{ reordering ? 'Done' : 'Reorder' }}
-      </button>
       <section
         v-for="group in groups"
         :key="group.name"
@@ -112,31 +87,18 @@ function endDrag() {
           <li
             v-for="account in group.accounts"
             :key="account.id"
-            :class="reordering && 'flex items-center'"
+            data-sort-kind="account"
+            :data-sort-id="account.id"
+            class="flex items-center bg-background pl-1"
           >
-            <span v-if="reordering" class="flex flex-col gap-1 pl-3">
-              <button
-                type="button"
-                class="rounded border px-2 text-xs disabled:opacity-40"
-                :aria-label="`Move ${account.name} up`"
-                :disabled="!canMoveAccount(group.accounts, account.id, -1)"
-                @click="move(group.accounts, account.id, -1)"
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                class="rounded border px-2 text-xs disabled:opacity-40"
-                :aria-label="`Move ${account.name} down`"
-                :disabled="!canMoveAccount(group.accounts, account.id, 1)"
-                @click="move(group.accounts, account.id, 1)"
-              >
-                Move down
-              </button>
-            </span>
+            <SortGrip
+              :label="`Reorder ${account.name}`"
+              @pointerdown="sortable.start($event, 'account', account.id)"
+              @keydown="sortable.key($event, 'account', account.id)"
+            />
             <RouterLink
               :to="`/accounts/${String(account.id)}`"
-              class="flex flex-1 items-center gap-3 px-4 py-3"
+              class="flex flex-1 items-center gap-3 py-3 pr-4 pl-2"
             >
               <span class="flex min-w-0 flex-1 flex-col">
                 <span class="truncate">{{ account.name }}</span>
@@ -165,20 +127,17 @@ function endDrag() {
           <tr
             v-for="account in rows"
             :key="account.id"
-            class="h-row-dense"
-            @dragover.prevent
-            @drop.prevent="dropOn(account.id)"
+            data-sort-kind="account"
+            :data-sort-id="account.id"
+            class="h-row-dense bg-background"
           >
             <th scope="row" class="py-1 pr-3 text-left font-normal">
-              <span
-                draggable="true"
-                :aria-label="`Drag ${account.name}`"
-                class="mr-2 inline-block cursor-grab align-middle text-muted-foreground"
-                @dragstart="startDrag($event, account.id)"
-                @dragend="endDrag"
-              >
-                <GripVertical class="size-4" aria-hidden="true" />
-              </span>
+              <SortGrip
+                :label="`Reorder ${account.name}`"
+                class="mr-2 align-middle"
+                @pointerdown="sortable.start($event, 'account', account.id)"
+                @keydown="sortable.key($event, 'account', account.id)"
+              />
               <RouterLink :to="`/accounts/${String(account.id)}`" class="hover:underline">
                 {{ account.name }}
               </RouterLink>
@@ -202,5 +161,7 @@ function endDrag() {
         </tbody>
       </table>
     </template>
+
+    <p role="status" class="sr-only">{{ sortable.announcement.value }}</p>
   </div>
 </template>

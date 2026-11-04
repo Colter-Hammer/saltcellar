@@ -37,7 +37,7 @@ The full **Get started** checklist on Overview arrives with Overview in mileston
 
 **Settings › Categories** (also under More). Groups (expense or income) containing categories; every category belongs to exactly one group; groups never hold transactions.
 
-- Add, rename, reorder (drag on desktop, move up/down on phone) and hide groups and categories. A category can be deleted only while no transaction, split line or rule uses it; otherwise it can be hidden *(agent)*.
+- Add, rename, reorder (drag by the grip on any width, the row lifting and the others sliding to open its gap, saved on drop; Up/Down on the grip for the keyboard *(agent)*; a row menu keeps Move up/down) and hide groups and categories. A category can be deleted only while no transaction, split line or rule uses it; otherwise it can be hidden *(agent)*.
 - When there are no categories, the screen offers **Use starter categories** or **Start empty**. The Actual importer's **+ New category…** also creates categories.
 
 **Starter categories** (generic, deliberately no catch-all "General"; unclear charges go to Review):
