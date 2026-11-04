@@ -1,0 +1,113 @@
+//! Editing and ordering accounts through the API.
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode, header};
+use serde_json::{Value, json};
+
+use super::{App, get, send, set_up, with};
+
+async fn call(app: &App, method: &str, uri: &str, body: &Value) -> (StatusCode, Value) {
+    let request = if method == "GET" {
+        get(uri)
+    } else {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    send(app.router.clone(), with(&app.cookie, request)).await
+}
+
+async fn names(app: &App) -> Vec<String> {
+    let (_, body) = call(app, "GET", "/api/v1/accounts", &Value::Null).await;
+    body["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn edits_an_account_and_refuses_a_name_taken_in_any_case() {
+    let app = set_up().await;
+    for (name, kind) in [("Checking", "checking"), ("Savings", "savings")] {
+        sqlx::query("INSERT INTO accounts (name, type, role) VALUES (?, ?, 'budgeted')")
+            .bind(name)
+            .bind(kind)
+            .execute(&app.pool)
+            .await
+            .unwrap();
+    }
+    let (_, body) = call(&app, "GET", "/api/v1/accounts", &Value::Null).await;
+    let id = body["accounts"][0]["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/accounts/{id}");
+
+    let (status, body) = call(&app, "PATCH", &uri, &json!({"name": "savings"})).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert!(body["error"]["fields"]["name"].is_string());
+
+    let change = json!({
+        "name": "Everyday", "institution": "Fake Bank", "type": "cash", "role": "tracking",
+        "balances_only": true, "in_net_worth": false, "closed": true,
+    });
+    let (status, _) = call(&app, "PATCH", &uri, &change).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, account) = call(&app, "GET", &uri, &Value::Null).await;
+    assert_eq!(account["name"], "Everyday");
+    assert_eq!(account["institution"], "Fake Bank");
+    assert_eq!(account["type"], "cash");
+    assert_eq!(account["role"], "tracking");
+    assert_eq!(account["balances_only"], true);
+    assert_eq!(account["in_net_worth"], false);
+    assert_eq!(account["closed"], true);
+
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/v1/accounts/999",
+        &json!({"closed": false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn orders_accounts_only_by_listing_every_one_once() {
+    let app = set_up().await;
+    for name in ["A", "B"] {
+        sqlx::query("INSERT INTO accounts (name, type, role) VALUES (?, 'checking', 'budgeted')")
+            .bind(name)
+            .execute(&app.pool)
+            .await
+            .unwrap();
+    }
+    let (_, body) = call(&app, "GET", "/api/v1/accounts", &Value::Null).await;
+    let ids: Vec<i64> = body["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["id"].as_i64().unwrap())
+        .collect();
+    let (status, body) = call(
+        &app,
+        "PUT",
+        "/api/v1/accounts/order",
+        &json!({"accounts": [ids[0]]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "accounts_changed");
+    let (status, _) = call(
+        &app,
+        "PUT",
+        "/api/v1/accounts/order",
+        &json!({"accounts": [ids[1], ids[0]]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(names(&app).await, ["B", "A"]);
+}

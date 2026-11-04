@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Account } from '@/api/accounts'
-import { groupAccounts, roleLabel, transactionsLink, typeLabel } from './accounts'
+import {
+  canMoveAccount,
+  dropAccount,
+  groupAccounts,
+  moveAccount,
+  roleLabel,
+  transactionsLink,
+  typeLabel,
+} from './accounts'
 
 function account(id: number, fields: Partial<Account> = {}): Account {
   return {
@@ -10,6 +18,7 @@ function account(id: number, fields: Partial<Account> = {}): Account {
     type: 'checking',
     role: 'budgeted',
     closed: false,
+    in_net_worth: true,
     balances_only: false,
     balance_minor: 0,
     app_balance_minor: 0,
@@ -66,5 +75,33 @@ describe('transactionsLink', () => {
 
   it('is none for a balances-only account', () => {
     expect(transactionsLink(account(7, { balances_only: true }))).toBeNull()
+  })
+})
+
+describe('ordering accounts', () => {
+  const ids = (accounts: Account[]) => accounts.map((a) => a.id)
+  const all = [
+    account(1),
+    account(2, { role: 'tracking' }),
+    account(3),
+    account(4, { closed: true }),
+    account(5),
+  ]
+  const budgeted = all.filter((a) => a.role === 'budgeted' && !a.closed)
+
+  it('moves within a group, leaving the others where they were', () => {
+    expect(ids(moveAccount(all, budgeted, 3, -1))).toEqual([3, 2, 1, 4, 5])
+    expect(ids(moveAccount(all, budgeted, 1, 1))).toEqual([3, 2, 1, 4, 5])
+  })
+
+  it('knows the ends of a group', () => {
+    expect(canMoveAccount(budgeted, 1, -1)).toBe(false)
+    expect(canMoveAccount(budgeted, 1, 1)).toBe(true)
+    expect(canMoveAccount(budgeted, 5, 1)).toBe(false)
+  })
+
+  it('drops an account where another is', () => {
+    expect(ids(dropAccount(all, 5, 2))).toEqual([1, 5, 2, 3, 4])
+    expect(ids(dropAccount(all, 1, 5))).toEqual([2, 3, 4, 5, 1])
   })
 })

@@ -52,6 +52,8 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         household::get,
         accounts::list,
         accounts::get,
+        accounts::change,
+        accounts::order,
         transactions::list,
         transactions::get,
         transactions::tags,
@@ -165,7 +167,8 @@ pub fn router(state: AppState) -> Router {
         .route("/profile/password", post(profile::change_password))
         .route("/household", get(household::get))
         .route("/accounts", get(accounts::list))
-        .route("/accounts/{id}", get(accounts::get))
+        .route("/accounts/order", put(accounts::order))
+        .route("/accounts/{id}", get(accounts::get).patch(accounts::change))
         .route("/transactions", get(transactions::list))
         .route("/transactions/{id}", get(transactions::get))
         .route("/transactions/{id}/category", put(undecided::set_category))

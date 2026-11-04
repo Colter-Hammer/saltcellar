@@ -2,6 +2,7 @@
 //! importer creates them.
 
 use domain::accounts::{AccountType, Opening, Role, app_balance};
+use domain::categories::Name;
 use domain::{Date, Money};
 
 use crate::{Error, SqlitePool};
@@ -40,6 +41,8 @@ pub struct AccountBalance {
     pub kind: AccountType,
     pub role: Role,
     pub closed: bool,
+    /// Whether it counts in net worth.
+    pub in_net_worth: bool,
     /// False for a balances-only account, which holds balance snapshots and no transactions.
     pub has_transactions: bool,
     /// `None` for a balances-only account.
@@ -74,7 +77,7 @@ pub async fn account_balance(pool: &SqlitePool, id: i64) -> Result<Option<Accoun
 async fn balances(pool: &SqlitePool, only: Option<i64>) -> Result<Vec<AccountBalance>, Error> {
     let found = sqlx::query!(
         r#"SELECT a.id AS "id!: i64", a.name, a.institution, a.type AS kind, a.role,
-             a.closed AS "closed: bool", a.has_transactions AS "has_transactions: bool",
+             a.closed AS "closed: bool", a.in_net_worth AS "in_net_worth: bool", a.has_transactions AS "has_transactions: bool",
              a.opening_balance_minor, a.opening_date,
              (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS "rows!: i64",
              (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS "last: String",
@@ -121,6 +124,7 @@ async fn balances(pool: &SqlitePool, only: Option<i64>) -> Result<Vec<AccountBal
                 name: account.name,
                 institution: account.institution,
                 closed: account.closed,
+                in_net_worth: account.in_net_worth,
                 has_transactions: account.has_transactions,
                 opening,
                 rows: u64::try_from(account.rows).unwrap_or_default(),
@@ -130,6 +134,118 @@ async fn balances(pool: &SqlitePool, only: Option<i64>) -> Result<Vec<AccountBal
             })
         })
         .collect()
+}
+
+/// What an edit changes about an account; `None` leaves that part as it is.
+#[derive(Debug, Clone, Default)]
+pub struct AccountChange {
+    pub name: Option<Name>,
+    /// `Some(None)` clears the institution.
+    pub institution: Option<Option<String>>,
+    pub kind: Option<AccountType>,
+    pub role: Option<Role>,
+    /// True for a balances-only account.
+    pub balances_only: Option<bool>,
+    pub in_net_worth: Option<bool>,
+    pub closed: Option<bool>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AccountError {
+    #[error("there's no such account")]
+    NotFound,
+    #[error("another account has the name, whatever its case")]
+    NameTaken,
+    #[error("the order doesn't list every account exactly once")]
+    Order,
+    #[error(transparent)]
+    Db(#[from] Error),
+}
+
+impl From<sqlx::Error> for AccountError {
+    fn from(error: sqlx::Error) -> Self {
+        AccountError::Db(Error::Sqlx(error))
+    }
+}
+
+/// Changes an account.
+///
+/// # Errors
+/// [`AccountError::NotFound`] if there's no such account, [`AccountError::NameTaken`] if another
+/// account has the name in any case; otherwise only if the database fails.
+pub async fn update_account(
+    pool: &SqlitePool,
+    id: i64,
+    change: &AccountChange,
+) -> Result<(), AccountError> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let name = change.name.as_ref().map(Name::as_str);
+    if let Some(name) = name {
+        let taken = sqlx::query_scalar!(
+            r#"SELECT EXISTS (SELECT 1 FROM accounts WHERE lower(name) = lower(?1) AND id <> ?2) AS "taken!: bool""#,
+            name,
+            id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if taken {
+            return Err(AccountError::NameTaken);
+        }
+    }
+    let set_institution = change.institution.is_some();
+    let institution = change.institution.as_ref().and_then(Option::as_deref);
+    let kind = change.kind.map(AccountType::as_str);
+    let role = change.role.map(Role::as_str);
+    let has_transactions = change.balances_only.map(|only| !only);
+    let updated = sqlx::query!(
+        "UPDATE accounts SET name = coalesce(?1, name),
+           institution = CASE WHEN ?2 THEN ?3 ELSE institution END,
+           type = coalesce(?4, type), role = coalesce(?5, role),
+           has_transactions = coalesce(?6, has_transactions),
+           in_net_worth = coalesce(?7, in_net_worth), closed = coalesce(?8, closed)
+         WHERE id = ?9",
+        name,
+        set_institution,
+        institution,
+        kind,
+        role,
+        has_transactions,
+        change.in_net_worth,
+        change.closed,
+        id
+    )
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AccountError::NotFound);
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Puts the accounts in the given order.
+///
+/// # Errors
+/// [`AccountError::Order`] if `ids` isn't every account there is exactly once, leaving the order
+/// as it was; otherwise only if the database fails.
+pub async fn set_account_order(pool: &SqlitePool, ids: &[i64]) -> Result<(), AccountError> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut have = sqlx::query_scalar!(r#"SELECT id AS "id!: i64" FROM accounts"#)
+        .fetch_all(&mut *tx)
+        .await?;
+    let mut want = ids.to_vec();
+    have.sort_unstable();
+    want.sort_unstable();
+    if have != want {
+        return Err(AccountError::Order);
+    }
+    for (order, id) in (0_i64..).zip(ids) {
+        sqlx::query!("UPDATE accounts SET sort_order = ? WHERE id = ?", order, id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
 }
 
 fn read_date(date: String) -> Result<Date, Error> {
@@ -198,6 +314,7 @@ mod tests {
         let date = |text: &str| text.parse::<Date>().unwrap();
         let checking = AccountBalance {
             id: 1,
+            in_net_worth: true,
             name: "Checking".to_owned(),
             institution: Some("Fake Bank".to_owned()),
             kind: AccountType::Checking,
@@ -216,6 +333,7 @@ mod tests {
         };
         let brokerage = AccountBalance {
             id: 2,
+            in_net_worth: true,
             name: "Brokerage".to_owned(),
             institution: None,
             kind: AccountType::Investment,
@@ -257,5 +375,79 @@ mod tests {
         insert("INSERT INTO accounts (name, type, role, connection_id) VALUES ('E', 'other', 'tracking', 7)")
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn edits_an_account_and_refuses_a_name_taken_in_any_case() {
+        let (_dir, pool) = migrated().await;
+        sqlx::query(
+            "INSERT INTO accounts (id, name, type, role) VALUES
+               (1, 'Checking', 'checking', 'budgeted'), (2, 'Savings', 'savings', 'budgeted')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let taken = AccountChange {
+            name: Some(Name::new("SAVINGS").unwrap()),
+            ..AccountChange::default()
+        };
+        assert!(matches!(
+            update_account(&pool, 1, &taken).await,
+            Err(AccountError::NameTaken)
+        ));
+        let change = AccountChange {
+            name: Some(Name::new("CHECKING").unwrap()),
+            institution: Some(Some("Fake Bank".to_owned())),
+            kind: Some(AccountType::Cash),
+            role: Some(Role::Tracking),
+            balances_only: Some(true),
+            in_net_worth: Some(false),
+            closed: Some(true),
+        };
+        update_account(&pool, 1, &change).await.unwrap();
+        let account = account_balance(&pool, 1).await.unwrap().unwrap();
+        assert_eq!(account.name, "CHECKING");
+        assert_eq!(account.institution.as_deref(), Some("Fake Bank"));
+        assert_eq!(account.kind, AccountType::Cash);
+        assert_eq!(account.role, Role::Tracking);
+        assert!(!account.has_transactions && !account.in_net_worth && account.closed);
+        let clear = AccountChange {
+            institution: Some(None),
+            ..AccountChange::default()
+        };
+        update_account(&pool, 1, &clear).await.unwrap();
+        let account = account_balance(&pool, 1).await.unwrap().unwrap();
+        assert_eq!(account.institution, None);
+        assert_eq!(account.name, "CHECKING");
+        assert!(matches!(
+            update_account(&pool, 9, &clear).await,
+            Err(AccountError::NotFound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn orders_accounts_only_by_listing_every_one_once() {
+        let (_dir, pool) = migrated().await;
+        sqlx::query(
+            "INSERT INTO accounts (id, name, type, role) VALUES
+               (1, 'A', 'checking', 'budgeted'), (2, 'B', 'savings', 'budgeted')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        for bad in [&[1_i64][..], &[1, 1], &[1, 2, 3]] {
+            assert!(matches!(
+                set_account_order(&pool, bad).await,
+                Err(AccountError::Order)
+            ));
+        }
+        set_account_order(&pool, &[2, 1]).await.unwrap();
+        let ids: Vec<i64> = accounts(&pool)
+            .await
+            .unwrap()
+            .iter()
+            .map(|a| a.id)
+            .collect();
+        assert_eq!(ids, [2, 1]);
     }
 }

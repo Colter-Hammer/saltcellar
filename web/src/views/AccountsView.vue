@@ -1,10 +1,20 @@
 <script setup lang="ts">
-// Accounts (docs/spec/m1-ledger-import.md#accounts), read-only: the Actual importer creates them.
+// Accounts (docs/spec/m1-ledger-import.md#accounts, editable per docs/spec/m2-bank-data.md#accounts).
+// Their order is set here: desktops drag a row by its grip, phones turn on Reorder for Move up /
+// Move down buttons within each group, as Settings › Categories does *(agent)*.
 // Phones list them grouped Budgeted / Tracking / Closed; desktops show one table in the same order,
 // closed ones marked so *(agent)*. Each opens its detail. With none, the empty state.
-import { computed } from 'vue'
-import { useAccounts } from '@/api/accounts'
-import { groupAccounts, roleLabel, typeLabel } from '@/lib/accounts'
+import { GripVertical } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { type Account, useAccountEdits, useAccounts } from '@/api/accounts'
+import {
+  canMoveAccount,
+  dropAccount,
+  groupAccounts,
+  moveAccount,
+  roleLabel,
+  typeLabel,
+} from '@/lib/accounts'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
 
@@ -16,6 +26,47 @@ const groups = computed(() => groupAccounts(list.value))
 /** The table's rows: the groups' order, so closed ones come last. */
 const rows = computed(() => groups.value.flatMap((group) => group.accounts))
 const empty = computed(() => accounts.isSuccess.value && list.value.length === 0)
+
+const edits = useAccountEdits()
+const reordering = ref(false)
+const problem = ref<string>()
+
+async function saveOrder(order: Account[]) {
+  problem.value = undefined
+  try {
+    await edits.order(order)
+  } catch (error) {
+    problem.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+function move(within: Account[], id: number, by: -1 | 1) {
+  void saveOrder(moveAccount(list.value, within, id, by))
+}
+
+// Dragging, on desktop: the drop is saved once the drag is over, so the table doesn't move under it.
+let dragging: number | null = null
+let dropped: Account[] | null = null
+
+function startDrag(event: DragEvent, id: number) {
+  dragging = id
+  dropped = null
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', `account:${String(id)}`)
+  }
+}
+
+function dropOn(id: number) {
+  if (dragging !== null) dropped = dropAccount(list.value, dragging, id)
+}
+
+function endDrag() {
+  const order = dropped
+  dragging = null
+  dropped = null
+  if (order !== null) void saveOrder(order)
+}
 </script>
 
 <template>
@@ -23,6 +74,8 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
     <p v-if="accounts.isError.value" role="alert" class="text-sm text-destructive">
       {{ accounts.error.value?.message }}
     </p>
+
+    <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
 
     <template v-if="empty">
       <p class="text-sm text-muted-foreground">No accounts yet.</p>
@@ -38,6 +91,14 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
 
     <template v-else-if="list.length > 0">
       <!-- Phones: the groups. -->
+      <button
+        type="button"
+        :aria-pressed="reordering"
+        class="self-start rounded-md border px-3 py-2 lg:hidden"
+        @click="reordering = !reordering"
+      >
+        {{ reordering ? 'Done' : 'Reorder' }}
+      </button>
       <section
         v-for="group in groups"
         :key="group.name"
@@ -48,10 +109,34 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
           {{ group.name }}
         </h2>
         <ul class="divide-y rounded-xl border">
-          <li v-for="account in group.accounts" :key="account.id">
+          <li
+            v-for="account in group.accounts"
+            :key="account.id"
+            :class="reordering && 'flex items-center'"
+          >
+            <span v-if="reordering" class="flex flex-col gap-1 pl-3">
+              <button
+                type="button"
+                class="rounded border px-2 text-xs disabled:opacity-40"
+                :aria-label="`Move ${account.name} up`"
+                :disabled="!canMoveAccount(group.accounts, account.id, -1)"
+                @click="move(group.accounts, account.id, -1)"
+              >
+                Move up
+              </button>
+              <button
+                type="button"
+                class="rounded border px-2 text-xs disabled:opacity-40"
+                :aria-label="`Move ${account.name} down`"
+                :disabled="!canMoveAccount(group.accounts, account.id, 1)"
+                @click="move(group.accounts, account.id, 1)"
+              >
+                Move down
+              </button>
+            </span>
             <RouterLink
               :to="`/accounts/${String(account.id)}`"
-              class="flex items-center gap-3 px-4 py-3"
+              class="flex flex-1 items-center gap-3 px-4 py-3"
             >
               <span class="flex min-w-0 flex-1 flex-col">
                 <span class="truncate">{{ account.name }}</span>
@@ -77,8 +162,23 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
           </tr>
         </thead>
         <tbody class="divide-y">
-          <tr v-for="account in rows" :key="account.id" class="h-row-dense">
+          <tr
+            v-for="account in rows"
+            :key="account.id"
+            class="h-row-dense"
+            @dragover.prevent
+            @drop.prevent="dropOn(account.id)"
+          >
             <th scope="row" class="py-1 pr-3 text-left font-normal">
+              <span
+                draggable="true"
+                :aria-label="`Drag ${account.name}`"
+                class="mr-2 inline-block cursor-grab align-middle text-muted-foreground"
+                @dragstart="startDrag($event, account.id)"
+                @dragend="endDrag"
+              >
+                <GripVertical class="size-4" aria-hidden="true" />
+              </span>
               <RouterLink :to="`/accounts/${String(account.id)}`" class="hover:underline">
                 {{ account.name }}
               </RouterLink>

@@ -1206,6 +1206,7 @@ fn the_openapi_document_describes_health_and_the_error_envelope() {
     assert_eq!(schemas["ErrorBody"]["required"], json!(["code", "message"]));
 }
 
+mod accounts;
 #[path = "tests/categories.rs"]
 mod categories;
 mod import;

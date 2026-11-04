@@ -3,6 +3,7 @@
 // server.
 import type { RouteLocationRaw } from 'vue-router'
 import type { Account } from '@/api/accounts'
+import { canMoveGroup, dropGroup, moveGroup } from '@/lib/categories'
 
 export const ACCOUNT_TYPES: readonly { value: Account['type']; label: string }[] = [
   { value: 'checking', label: 'Checking' },
@@ -54,4 +55,50 @@ export function groupAccounts(accounts: readonly Account[]): AccountGroup[] {
 export function transactionsLink(account: Account): RouteLocationRaw | null {
   if (account.balances_only) return null
   return { path: '/transactions', query: { account: String(account.id) } }
+}
+
+// Ordering accounts reuses the category ordering: a closed account stands where a hidden category
+// does, so a move steps over it. A move inside one phone group puts the group's accounts back into
+// the slots they held *(agent)*.
+
+const asItem = (account: Account) => ({ ...account, hidden: account.closed })
+
+/** `accounts` with `moved` (a rearrangement of `within`) written back into `within`'s slots. */
+function refill(
+  accounts: readonly Account[],
+  within: readonly Account[],
+  moved: readonly Account[],
+) {
+  const ids = new Set(within.map((account) => account.id))
+  const queue = [...moved]
+  return accounts.map((account) => (ids.has(account.id) ? (queue.shift() ?? account) : account))
+}
+
+/** Whether `id` can move up (-1) or down (1) among the open ones of `within`, its phone group. */
+export function canMoveAccount(within: readonly Account[], id: number, by: -1 | 1) {
+  return canMoveGroup(within.map(asItem), id, by)
+}
+
+/** All `accounts`, with `id` moved one place up or down among the accounts of `within`. */
+export function moveAccount(
+  accounts: readonly Account[],
+  within: readonly Account[],
+  id: number,
+  by: -1 | 1,
+): Account[] {
+  const moved = moveGroup(within.map(asItem), id, by).map(({ id: movedId }) =>
+    within.find((account) => account.id === movedId),
+  )
+  return refill(
+    accounts,
+    within,
+    moved.filter((account) => account !== undefined),
+  )
+}
+
+/** All `accounts`, with `id` dropped where the account `onto` is. */
+export function dropAccount(accounts: readonly Account[], id: number, onto: number): Account[] {
+  return dropGroup(accounts.map(asItem), id, onto).map(
+    ({ id: droppedId }) => accounts.find((account) => account.id === droppedId) ?? accounts[0]!,
+  )
 }
