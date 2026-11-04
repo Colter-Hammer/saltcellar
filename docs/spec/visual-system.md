@@ -151,8 +151,9 @@ Under target the bar is the palette accent; from 90% of the target (the default)
 
 - **The mark** is the footed bowl: a bowl on a foot with a mound of salt, a single 32×32 SVG drawn in `currentColor` at `web/src/assets/logo/mark.svg`. It is one swappable asset: changing the logo is a file swap, not a component edit. Two alternative sketches (a lidded cellar, a dish with an S) are kept in `docs/assets/logo/` *(agent)*.
 - **The wordmark** is "Saltcellar" set in Inter semibold beside the mark, as text, not outlined *(agent)*.
-- **In the app** (login, setup, sidebar, phone header) the mark takes the palette accent.
+- **In the app** (login, setup, sidebar, phone header) the mark takes the palette accent; the wordmark stays the foreground color *(agent)*. One component, `web/src/components/AppLogo.vue`, draws `mark.svg` inline and is sized by the text it sits in *(agent)*. The phone header shows the logo, then the screen's title after a divider *(agent)*.
 - **Favicon and PWA icon** are one fixed tile whatever the palette: the mark in `#f4f1ea` on `#1d3a40`, rounded. `web/public/` holds `favicon.svg`, `apple-touch-icon.png` (180) and `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` *(agent)*; the manifest that uses them comes with the PWA in milestone 6.
+- The tiles are written from `mark.svg` by `just icons` (`web/scripts/icons.ts`, rendering with Playwright's Chromium), and a test fails while `favicon.svg` doesn't match the mark *(agent)*. The mark fills 22 of the tile's 32 units, with 7-unit corners; `apple-touch-icon.png` is square, since iOS rounds it; the maskable one is full bleed with the mark at 55%, well inside the 80% safe circle *(agent)*.
 
 ## Later, not v1
 
