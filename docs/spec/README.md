@@ -2,7 +2,7 @@
 
 A self-hosted, Mint-style budgeting app for one household: bank data comes in, transactions get categorized with as little effort as possible, and spending is compared against targets. Tracking-style budgeting, not envelopes: budgets compare a target with actual spending and nothing carries over, except in funds ([ADR-0003](../adr/0003-funds-carry-over.md)).
 
-This spec is enough to build milestone 1 without asking the owner anything, and describes every later milestone except the bank sync parts, which are added separately (see [Milestone 2](m2-bank-data.md)). The screens are layouts; how they look is the [Visual system](visual-system.md), decided once milestone 1 ran and followed by every later screen.
+This spec is enough to build milestone 1 without asking the owner anything, and describes every later milestone, bank sync included. The screens are layouts; how they look is the [Visual system](visual-system.md), decided once milestone 1 ran and followed by every later screen.
 
 The app is called **Saltcellar** (as in "worth their salt": a place to keep track of what money is worth). Machine names use `saltcellar`: the repo, image, crate prefix and database file *(agent)*.
 
@@ -12,7 +12,7 @@ The app is called **Saltcellar** (as in "worth their salt": a place to keep trac
 |---|---|
 | [Foundations](foundations.md) | Stack, architecture, conventions, configuration, auth, coding standards, app shell. Read first. |
 | [Milestone 1: Ledger + Import from Actual](m1-ledger-import.md) | Setup wizard, login, categories, accounts, transactions, the Actual importer. |
-| [Milestone 2: Bank data in](m2-bank-data.md) | Placeholder for SimpleFIN sync, CSV/QFX import and manual entry. |
+| [Milestone 2: Bank data in](m2-bank-data.md) | SimpleFIN sync, balances and drift, sync health, CSV/QFX import, manual entry, the Actual import's overlap with sync. |
 | [Milestone 3: Categorization + Review](m3-categorization-review.md) | The categorization pipeline, Review, transfers, rules, history re-check, accuracy stats. |
 | [Milestone 4: Budgets, Overview, reports](m4-budgets-reports.md) | Budget setup and screen, Overview, Spending, Trends, Cash flow. |
 | [Milestone 5: Funds + savings goals](m5-funds-goals.md) | Play money, sinking funds, savings goals. |

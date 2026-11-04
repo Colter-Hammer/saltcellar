@@ -150,7 +150,7 @@ Read raw tables, not Actual's views (views can be missing or stale in older expo
 | linked transfer whose other account was skipped | the imported leg only, treated like a Transfer-mapped row |
 | starting-balance row | not imported; feeds the opening balance |
 
-Every row's Actual category name and what the mapping did with it are stored on its `import_batch_rows` entry (`source_category`, `source_disposition`), with Actual's transaction id as `import_ref`. `dedupe_key` uses the shared dedupe function defined with the bank sync sections; until those land, a hash of account, date, amount and normalized description *(agent)*.
+Every row's Actual category name and what the mapping did with it are stored on its `import_batch_rows` entry (`source_category`, `source_disposition`), with Actual's transaction id as `import_ref`. `dedupe_key` is the shared dedupe key ([milestone 2](m2-bank-data.md#the-dedupe-key)): a hash of account, date, amount and normalized description.
 
 **Balances.** For each imported account, the import writes a balance snapshot (`source = 'import'`) equal to the account's Actual balance (sum of all its alive rows, starting balances included) as of its last row's date, and sets the **opening balance** to that balance minus the imported rows, dated the day before the earliest imported row. Never a transaction, never income. An account with no imported rows gets its Actual balance as the opening balance, dated the import day *(agent)*.
 

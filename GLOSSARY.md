@@ -86,6 +86,25 @@ _Avoid_: Weak transfer, suggested transfer
 The household's single link to the bank-data provider, through which every synced account arrives. Distinct from a bank link: the provider's own login to one bank inside that connection. A bank link can need reconnecting while the rest keeps syncing; losing the connection stops all syncing until it is replaced.
 _Avoid_: Integration, token (that's only its secret)
 
+**Bank link**:
+The provider's own login to one bank inside the connection. Every synced account from that bank arrives through it; when the bank wants the household to sign in again, only that bank link needs reconnecting.
+_Avoid_: Connection (that's the whole provider link), institution
+
+**Pending transaction**:
+A transaction the bank has authorized but not yet posted. It counts toward spending at once, but it is a snapshot: its amount can change when it posts (a tip), and it can vanish without ever posting (a hold).
+_Avoid_: Uncleared, authorization
+
+**Adopted row**:
+An imported or manually entered transaction that the bank sync later recognized as one it sent, and took over. From then on the bank owns its amount, date, status and text; everything the household set on it stays.
+_Avoid_: Merged row, reconciled row
+
+**Stale**:
+A synced account whose bank data hasn't been refreshed by the provider for more than two days, though sync itself works. Shown quietly; it becomes needs attention after five.
+
+**Needs attention**:
+A synced account the household has to act on: its bank link needs reconnecting, or its data is more than five days old. Counted in the sync status spot.
+_Avoid_: Error, broken
+
 **Balance snapshot**:
 The balance a bank reported for an account on a given day, or, for an account with no working sync, the balance the household entered. It is the balance the app shows for every account; for a balances-only account it is the whole record.
 _Avoid_: Statement balance, available balance

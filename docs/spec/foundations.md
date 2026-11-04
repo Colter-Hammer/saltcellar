@@ -15,7 +15,7 @@ Everything every milestone builds on. Terms are from [/GLOSSARY.md](../../GLOSSA
 | Server state in the browser | TanStack Vue Query *(agent)* | |
 | Packaging | One Docker image, run with Docker Compose | |
 | Push notifications | ntfy, behind a small notifier seam (milestone 6) | |
-| Bank data | SimpleFIN Bridge; CSV/QFX files; manual entry (milestone 2) | ADR added with the milestone 2 sections |
+| Bank data | SimpleFIN Bridge; CSV/QFX files; manual entry (milestone 2) | [ADR-0010](../adr/0010-simplefin-provider.md) |
 
 Tool and crate versions are pinned during milestone 1 setup.
 
@@ -65,8 +65,9 @@ Environment variables cover only what's needed before anyone can log in, or what
 | `BUDGET_TRUSTED_PROXY` | none | Header mode: the proxy address (IP or CIDR) whose header is trusted. Required in header mode. |
 | `BUDGET_AUTH_HEADER` | `Remote-User` | Header mode: the header carrying the username. |
 | `BUDGET_BACKUP_DIR` | `$BUDGET_DATA_DIR/backups` | Where nightly backups are written. |
+| `BUDGET_SECRET_KEY` | none (needed from milestone 2 to connect a bank) | 32 random bytes, base64. Encrypts the bank connection's access URL and kept raw responses; keep a copy outside the data dir, since backups don't include it ([milestone 2](m2-bank-data.md#the-connection)). |
 
-Bank sync adds its own (e.g. the key that encrypts the connection secret) in the milestone 2 sections. Startup fails with a clear message if a required variable is missing or invalid.
+Startup fails with a clear message if a required variable is missing or invalid.
 
 ## HTTP API *(agent)*
 
@@ -98,7 +99,7 @@ One in-process scheduler in `server`, ticking every minute, running jobs at time
 
 ## Logging
 
-Structured logs via `tracing`, one line per request and per job. Never log amounts, merchants, descriptions, tokens, passwords or the bank access URL. The setup code and CLI reset link are the only secrets ever printed, and only on purpose.
+Structured logs via `tracing`, one line per request and per job. Never log amounts, merchants, descriptions, tokens, passwords, the bank access URL or `BUDGET_SECRET_KEY`. The setup code and CLI reset link are the only secrets ever printed, and only on purpose.
 
 ## Frontend
 

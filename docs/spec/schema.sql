@@ -11,8 +11,6 @@
 --           "Today", period boundaries and scheduled jobs use household.timezone.
 --   bools:  INTEGER 0/1.
 --   Rules marked "enforce in code" are invariants the Rust domain crate owns and tests.
---   Sections marked [sync] are reconciled by the bank sync part of the spec (milestone 2); treat them as
---   provisional until that lands.
 
 PRAGMA foreign_keys = ON;
 
@@ -74,16 +72,18 @@ CREATE TABLE password_resets (              -- M1 (CLI-issued) / M6 (issued by a
 
 -- ───────────────────────── Accounts and sync ─────────────────────────
 
-CREATE TABLE connections (                  -- [sync] M2. One bank-data provider login (one SimpleFIN access URL).
+-- M2. The household's one link to the bank-data provider (one SimpleFIN access URL); the UI offers one.
+CREATE TABLE connections (
   id               INTEGER PRIMARY KEY,
   provider         TEXT NOT NULL CHECK (provider IN ('simplefin')),
   label            TEXT NOT NULL,
-  secret_encrypted BLOB NOT NULL,           -- AEAD-encrypted; key lives outside the DB
+  secret_encrypted BLOB NOT NULL,           -- XChaCha20-Poly1305 with BUDGET_SECRET_KEY, which lives outside the DB
   last_sync_at     TEXT,
   last_error       TEXT,
-  status           TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','token_revoked','unpaid')),
+  status           TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','token_revoked','unpaid','key_mismatch')),
                      -- token_revoked (403/gen.auth) or unpaid (402): all syncing paused until a new
-                     -- setup token is claimed, which replaces secret_encrypted on this same row
+                     -- setup token is claimed, which replaces secret_encrypted on this same row.
+                     -- key_mismatch: BUDGET_SECRET_KEY can't decrypt the secret; same fix *(agent)*
   paused_at        TEXT
 ) STRICT;
 
@@ -111,12 +111,14 @@ CREATE TABLE accounts (                     -- M1
   -- recomputed so drift is unchanged. NULL for balances-only accounts.
   opening_balance_minor INTEGER,
   opening_date          TEXT,
-  balance_includes_pending INTEGER,         -- [sync] does the bank's balance count pending rows? NULL = unknown
+  balance_includes_pending INTEGER,         -- does the bank's balance count pending rows? NULL until a snapshot
+                                            -- matches exactly one of the two app balances, then learned (0 so far
+                                            -- at every bank observed)
   UNIQUE (connection_id, external_account_id),
   CHECK ((opening_balance_minor IS NULL) = (opening_date IS NULL))
 ) STRICT;
 
--- [sync] M2. Every account a connection reports. New ones wait as 'pending' until the user tracks
+-- M2. Every account a connection reports. New ones wait as 'pending' until the user tracks
 -- (creates/links an accounts row, choosing its role) or ignores them; ignored ones can be revived.
 -- After a re-link at the Bridge or a new token, a new external id can be linked to an existing
 -- account ("this is the same as…"): its account_id moves to the new row, history carries over.
@@ -132,14 +134,15 @@ CREATE TABLE connection_accounts (
   CHECK ((decision = 'tracked') = (account_id IS NOT NULL))
 ) STRICT;
 
--- M1 ('import' source) / [sync] M2 ('provider', 'manual').
+-- M1 ('import' source) / M2 ('provider', 'manual').
 -- The bank's balance is the balance shown for every account; the app's own sum only detects drift.
 -- 'import': the Actual import writes one snapshot per account, its Actual balance as of the export's last
 -- row, so balances match Actual from day one.
 -- Provider snapshots: `balance` only (never `available-balance`), written only when `balance-date` moves
 -- forward, at most one per account per UTC day (a later refresh that day replaces it). Kept forever.
--- Drift = balance_minor − app balance. Flagged when non-zero drift holds at the same value for 2 consecutive
--- snapshots; clears when it returns to zero. Never auto-adjusted.
+-- Drift = balance_minor − app balance (posted-only unless accounts.balance_includes_pending = 1). Flagged when
+-- non-zero drift holds at the same value for 2 consecutive snapshots; clears when it returns to zero. Never
+-- auto-adjusted. Failed runs and runs where `balance-date` didn't move write no snapshot.
 -- Manual snapshots only on accounts with no working sync.
 CREATE TABLE balance_snapshots (
   account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -154,7 +157,7 @@ CREATE TABLE balance_snapshots (
   PRIMARY KEY (account_id, as_of)
 ) STRICT;
 
--- [sync] M2. "Accept $X": unexplained drift the user chose not to trace. Not a transaction: never in
+-- M2. "Accept $X": unexplained drift the user chose not to trace. Not a transaction: never in
 -- spending, budgets, Review or transfer matching. Undo keeps the row so a drift report can count them.
 CREATE TABLE balance_adjustments (
   id           INTEGER PRIMARY KEY,
@@ -168,7 +171,8 @@ CREATE TABLE balance_adjustments (
   undone_by    INTEGER REFERENCES users(id)
 ) STRICT;
 
--- [sync] M2. Kept 90 days, shown in Settings › Sync. One run at a time: a second request joins the running one.
+-- M2. Kept 90 days, shown in Settings › Bank connection & sync. One run at a time: a second request joins the
+-- running one.
 CREATE TABLE sync_runs (
   id            INTEGER PRIMARY KEY,
   connection_id INTEGER NOT NULL REFERENCES connections(id),
@@ -182,30 +186,31 @@ CREATE TABLE sync_runs (
   error         TEXT                         -- sanitized; never amounts, merchants or the access URL
 ) STRICT;
 
-CREATE TABLE sync_account_results (         -- [sync] M2. Banks fail independently.
+CREATE TABLE sync_account_results (         -- M2. Banks fail independently.
   sync_run_id          INTEGER NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
   account_id           INTEGER NOT NULL REFERENCES accounts(id),
-  ok                   INTEGER NOT NULL,
-  error_code           TEXT,
+  ok                   INTEGER NOT NULL,    -- 0 = keeps its last data; no miss counts or drift move this run
+  error_code           TEXT,                -- errlist code, HTTP status, or 'absent' (missing from a successful
+                                            -- response with no error) *(agent)*
   error                TEXT,
   provider_balance_date TEXT,               -- > 2 days old = stale, > 5 = needs attention
   PRIMARY KEY (sync_run_id, account_id)
 ) STRICT;
 
-CREATE TABLE sync_raw_responses (           -- [sync] M2. Only with the "keep raw responses (debug)" setting;
+CREATE TABLE sync_raw_responses (           -- M2. Only with the "keep raw bank responses" setting;
   sync_run_id INTEGER NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE, -- pruned after 7 days
   seq         INTEGER NOT NULL,
   received_at TEXT NOT NULL,
-  body        BLOB NOT NULL,                -- encrypted; never logged
+  body        BLOB NOT NULL,                -- encrypted with BUDGET_SECRET_KEY; never logged
   PRIMARY KEY (sync_run_id, seq)
 ) STRICT;
 
 -- ───────────────────────── Imports ─────────────────────────
--- [sync] M2 for files. Matching a file row to a stored row: same account, exact amount, date within ±3 days;
+-- M2 for files. Matching a file row to a stored row: same account, exact amount, date within ±3 days;
 -- description only breaks ties; identical rows are counted, not collapsed; a tie with no tiebreaker →
 -- "possible duplicate" in the preview. Nothing is written until the user commits the preview.
 
-CREATE TABLE import_mappings (              -- [sync] M2. CSV column mapping, saved per account on first import
+CREATE TABLE import_mappings (              -- M2. CSV column mapping, saved per account on first import
   id               INTEGER PRIMARY KEY,
   account_id       INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   header_signature TEXT NOT NULL,
@@ -216,7 +221,7 @@ CREATE TABLE import_mappings (              -- [sync] M2. CSV column mapping, sa
   UNIQUE (account_id, header_signature)
 ) STRICT;
 
--- M1 ('actual') / [sync] M2 ('csv', 'ofx'). One committed import, undoable as a whole from Settings › Imports:
+-- M1 ('actual') / M2 ('csv', 'ofx'). One committed import, undoable as a whole from Settings › Imports:
 -- deletes the rows it inserted (asking first if any were edited since) and restores fields it filled on
 -- matched rows. Never deletes rows that sync has since adopted (source = 'provider').
 -- The Import from Actual wizard is one batch for the whole export (account_id NULL).
@@ -295,8 +300,10 @@ CREATE TABLE tags (                         -- M1
 ) STRICT;
 
 -- ───────────────────────── Transactions ─────────────────────────
--- [sync] Manual entry (M2): a manual row needs a category at entry (suggestions only), so it never reaches
--- Review; shows a "manual" badge until sync adopts it (same account, exact amount, bank date −3/+14 days).
+-- Manual entry (M2): a manual row needs a category at entry (suggestions only), so it never reaches Review;
+-- shows a "manual" badge until sync adopts it (same account, exact amount, bank date −3/+14 days).
+-- Synced rows (M2): sync owns amount_minor, date, status, raw_description; the household owns payee, category,
+-- splits, memo, tags, exclude_from_budget. Matching order and flags: docs/spec/m2-bank-data.md.
 
 CREATE TABLE transactions (                 -- M1
   id                  INTEGER PRIMARY KEY,
@@ -307,7 +314,7 @@ CREATE TABLE transactions (                 -- M1
                         -- pending counts toward budgets immediately
   payee_id            INTEGER REFERENCES payees(id),
   raw_description     TEXT NOT NULL,        -- exactly what the bank sent; never edited
-  bank_category       TEXT,                 -- [sync] the bank's own label from an imported file; a rule input only
+  bank_category       TEXT,                 -- M2: the bank's own label from an imported file; a rule input only
   memo                TEXT,                 -- Actual import: Actual's notes
   category_id         INTEGER REFERENCES categories(id),
                         -- NULL when split, a transfer leg, or uncategorized
@@ -320,13 +327,15 @@ CREATE TABLE transactions (                 -- M1
                                             -- "rule: <name>", "9 of 10 → Groceries", "always-review payee", "mixed history"
   source              TEXT NOT NULL CHECK (source IN ('provider','import','manual')),
   external_id         TEXT,                 -- provider transaction id; the Actual import copies Actual's
-  dedupe_key          TEXT NOT NULL,        -- [sync]
-  last_seen_at        TEXT,                 -- [sync]
-  pending_miss_count  INTEGER NOT NULL DEFAULT 0, -- [sync]
+  dedupe_key          TEXT NOT NULL,        -- SHA-256 hex of account id, date, amount_minor and the frozen shared
+                                            -- normalization of raw_description: "exactly the same row"
+  last_seen_at        TEXT,                 -- M2: last successful run that returned this provider row
+  pending_miss_count  INTEGER NOT NULL DEFAULT 0, -- M2: runs in a row that returned the account but not this pending
+                                            -- row; removed at 2
   sync_flag           TEXT CHECK (sync_flag IN ('possible_duplicate','not_seen_at_bank','amount_changed_split',
-                                             'possible_manual_match')), -- [sync]
-  possible_duplicate_of INTEGER REFERENCES transactions(id), -- [sync]
-  awaiting_transfer_until TEXT,             -- [sync/M3] transfer-like leg with no partner yet: out of Review until then
+                                             'possible_manual_match')), -- M2: waits for the household
+  possible_duplicate_of INTEGER REFERENCES transactions(id), -- M2: the row a possible_duplicate/_manual_match points at
+  awaiting_transfer_until TEXT,             -- M3: transfer-like leg with no partner yet: out of Review until then (5 days)
   review_quiet        INTEGER NOT NULL DEFAULT 0,
                         -- imported row dated > 90 days before its import that the pipeline left uncategorized:
                         -- stays out of Review, listed under the "Imported, uncategorized" filter instead
@@ -341,15 +350,16 @@ CREATE INDEX idx_txn_payee         ON transactions(payee_id);
 CREATE INDEX idx_txn_dedupe        ON transactions(account_id, dedupe_key);
 CREATE INDEX idx_txn_date          ON transactions(date);   -- M1: the list newest first (migration 0007) *(agent)*
 
-CREATE TABLE dropped_transactions (         -- [sync] M2. Pending rows the bank dropped; kept 30 days.
+CREATE TABLE dropped_transactions (         -- M2. Pending rows the bank dropped; kept 30 days.
   id           INTEGER PRIMARY KEY,
   account_id   INTEGER NOT NULL REFERENCES accounts(id),
-  snapshot     TEXT NOT NULL,
-  user_edited  INTEGER NOT NULL,
-  dropped_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  snapshot     TEXT NOT NULL,               -- JSON of the row with its splits and tags, enough to restore it
+  user_edited  INTEGER NOT NULL,            -- 1 = listed under "Recently dropped by bank", undoable
+  dropped_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  restored_at  TEXT                         -- *(agent)*
 ) STRICT;
 
-CREATE TABLE deleted_bank_rows (            -- [sync] M2. Sync skips these ids so the daily window doesn't bring them back.
+CREATE TABLE deleted_bank_rows (            -- M2. Sync skips these ids so the daily window doesn't bring them back.
   account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   external_id  TEXT NOT NULL,
   deleted_by   INTEGER REFERENCES users(id),
@@ -376,7 +386,7 @@ CREATE TABLE transaction_tags (             -- M1
 -- data (has_transactions = 0). Enforce in code: legs are in the named accounts, from-leg = −(to-leg), legs
 -- have no category. Strong pairs → 'confirmed' + matched_by 'auto'; weak → 'suggested' (a Transfer candidate:
 -- Transfers screen, legs out of Review and Uncategorized until decided; rejecting deletes the row).
--- [sync] Matching windows and strength rules: see the milestone 3 transfer section.
+-- Matching window (±5 days) and strength rules: docs/spec/m3-categorization-review.md, Transfer detection.
 CREATE TABLE transfers (
   id              INTEGER PRIMARY KEY,
   from_account_id INTEGER NOT NULL REFERENCES accounts(id),
@@ -415,7 +425,7 @@ CREATE TABLE rule_suggestions (
   id          INTEGER PRIMARY KEY,
   trigger     TEXT NOT NULL CHECK (trigger IN ('repeated_correction','amount_pattern','consistent_review_pick',
                                                'recheck_keep','actual_import','one_legged_transfer')),
-                                            -- one_legged_transfer [sync]: a description names a balances-only
+                                            -- one_legged_transfer: a description names a balances-only
                                             -- account (last-4 or institution) → mark_transfer_to
   payee_id    INTEGER REFERENCES payees(id) ON DELETE CASCADE,
   conditions  TEXT NOT NULL,                -- same JSON shape as rules
@@ -547,7 +557,7 @@ CREATE TABLE savings_goal_accounts (        -- enforce in code: tracking account
 --   backups.enabled (default true), backups.age_public_key, backups.keep_daily (30), backups.keep_monthly (12)
 --   ntfy.server_url, ntfy.access_token (M6; ntfy is off until configured)
 --   restore_drill.last_at (M6)
---   sync.* [sync] (connection settings, sync time, keep raw responses)
+--   sync.time ("06:13", household timezone), sync.keep_raw_responses (false)  (M2)
 CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

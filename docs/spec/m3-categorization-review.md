@@ -33,7 +33,14 @@ Equal and opposite amounts between two of the household's own accounts, close in
 
 Rows the Actual import marked as Transfer count as transfer-like text. A Transfer-marked row with no opposite leg becomes a Transfer candidate with two choices: **Pick a category** (a payment to a card the app doesn't track is spending) or **Transfer to <balances-only account>** (one-legged). Never automatic.
 
-> **Placeholder:** the matching window, the exact strong/weak rules, lone legs waiting for a partner, one-legged transfers to balances-only accounts, and what happens when a leg changes are written with the bank sync sections.
+- **Candidates:** exactly equal and opposite amounts between two of the household's accounts, at most **5 days** apart, either leg first (card issuers often post the payment credit a day before the checking debit). The same rule for every account pair. Synced, imported and manual rows can all be legs.
+- **Strong → matched automatically:** the only candidate on both sides within the window, and at least one leg looks like a transfer: it names the other account's last four digits, or a transfer phrase ("Payment Thank You", "Funds Transfer", "Pmt", "Transfer"; the list lives in `domain` *(agent)*), or it was marked Transfer by the Actual import. A description naming the last four digits of some *other* account rules the pair out (two same-day transfers of the same amount to different accounts). Recorded as `matched_by = 'auto'`, `state = 'confirmed'`.
+- **Weak → Transfer candidate:** amounts match but there are several candidates or no transfer-like text. Shown on the Transfers screen (`state = 'suggested'`); both legs stay out of Review and the Uncategorized line until decided, with no expiry. Rejecting deletes the pair and sends each leg through the rest of the pipeline. A manual row only ever forms a Transfer candidate, never an automatic pair.
+- **Pending legs** pair at once; the pair carries over when the row posts and goes when the pending row vanishes.
+- **Lone legs:** a transfer-like row with no partner yet waits out of Review for up to 5 days (`awaiting_transfer_until`), counted as Uncategorized meanwhile, then goes on through the pipeline.
+- **One-legged transfers** (into a balances-only account): matched only by a **mark as transfer to account X** rule, never guessed. The first time a description names a balances-only account (its last four digits or its institution's name), the app suggests that rule (`one_legged_transfer`).
+- **Card payments:** checking → a tracked card is a transfer like any other; a payment to a card the app doesn't track stays spending.
+- **A leg changes or vanishes:** an automatic pair unpairs and the surviving leg is detected again; a confirmed (by a person) or manual pair is kept and flagged **amounts no longer match** (`mismatch_flag`).
 
 ### 3. Payee review setting
 
