@@ -11,7 +11,7 @@
 - **No key yet:** backups are written unencrypted, with a warning in Settings and on Overview. When a key is set, later backups are encrypted and the old unencrypted files are deleted.
 - **Alerts:** a failed run, or no successful run in the last 26 hours *(agent)*, raises an alert (ntfy if configured, always an Overview banner).
 - **Settings › Backups:** on/off, `age` public key, retention, last runs, and **Download backup** (takes a fresh backup, encrypted if a key is set, and downloads it).
-- **Restore** = stop the app, put the decrypted file in the data dir as the database file, start the app. Documented in `docs/deploy.md`. The private key never touches the server.
+- **Restore** = stop the app, put the decrypted file in the data dir as the database file, start the app. Documented in `docs/deploy.md`. The private key never touches the server. Bank sync resumes if the new install has the same `BUDGET_SECRET_KEY`; otherwise it shows **Sync paused** until a new setup token is pasted, and nothing else is lost ([milestone 2](m2-bank-data.md#the-connection)).
 - **Restore drill:** at launch, then every 6 months on a reminder: decrypt the latest backup on another machine and open it in a throwaway instance. Settings records when the last drill was done ("Mark drill done") *(agent)*.
 
 ## Notifications

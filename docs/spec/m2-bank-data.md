@@ -1,22 +1,219 @@
 # Milestone 2: Bank data in
 
-> **Placeholder.** The sections for this milestone are written separately, once the bank sync design finishes its live observation of the provider feed. Until then, this page lists what they will cover and what's already fixed elsewhere in the spec. Don't start milestone 2 from this page.
+**Goal:** bank data arrives on its own every day, files fill the gaps, and anything can be entered by hand. The bank's balance is shown for every account, and any gap between it and the app's own rows is visible and traceable.
 
-**Goal:** bank data arrives on its own every day, files fill the gaps, and anything can be entered by hand.
+**Done when:** on the owner's PC, a real SimpleFIN connection syncs every tracked account daily without help, balances match the banks, and the Actual history and the synced rows sit side by side with no duplicates; a CSV and an OFX file import into an account; a manual row is adopted when the bank sends it; the Playwright smoke test (connect to a fake SimpleFIN server → track accounts → sync → import a file → enter a manual row → see it adopted) passes in CI on fake data.
 
-## What the sections will cover
+**Not in this milestone:** the categorization pipeline, Review and transfer detection (milestone 3). Rows that arrive here stay uncategorized until milestone 3 ships and its pipeline runs once over them; a person can already set categories by hand *(agent)*.
 
-- **SimpleFIN sync.** Claiming the setup token in Settings (the access URL is stored encrypted in the database, never displayed again, never in the repo or image); a daily scheduled sync, Sync now, retries, run history; needs-attention, stale and paused states; pending → posted; upserts and back-fill; balances, balance snapshots and drift; balance adjustments.
-- **CSV/QFX import.** A generic CSV column mapper (date, amount or debit/credit, description, optional bank category; date format; sign convention) saved per account and reused; OFX/QFX/QBO parsed directly; no hard-coded bank presets; a preview before commit; each file an undoable Import batch.
-- **Manual entry**, and sync adopting manual and imported rows.
-- **Import from Actual, accounts step:** matching Actual accounts to synced accounts by provider account id, and de-duplicating the overlap between imported and synced rows.
-- **Sync health in the UI:** one status spot (phone header pill, desktop sidebar foot) opening a sheet with every problem and its fix; a ⚠ marker on problem accounts; the paused banner on every screen.
-- The ADR for SimpleFIN as the provider, the sync tables in [schema.sql](schema.sql) (marked `[sync]`), and the sync terms in the glossary.
-- The sync-dependent part of milestone 3's transfer matching (windows, strength rules, timing).
+Provider: SimpleFIN Bridge ([ADR-0010](../adr/0010-simplefin-provider.md)). Terms are from the [glossary](../../GLOSSARY.md): connection, bank link, pending transaction, balance snapshot, drift, balance adjustment, opening balance, manual account, import batch, bank category, adopted row, stale, needs attention.
 
-## Already fixed elsewhere
+## Order of work *(agent)*
 
-- The pipeline never overwrites a category a person set ([milestone 3](m3-categorization-review.md#user-choices-win)).
-- Transfer detection runs before rules ([milestone 3](m3-categorization-review.md#the-pipeline)).
-- Settings lives in the database, not env ([Foundations › Configuration](foundations.md#configuration)).
-- Balance snapshots, drift, opening balances, import batches, Connection and Manual account are defined in the [glossary](../../GLOSSARY.md).
+1. **Accounts become editable**, manual accounts and manual entry. Needs no provider, so it lands first and is checkable at once.
+2. **Fake SimpleFIN server** in `fixtures/` (claim + `/accounts` with scripted scenarios: pending rows posting, an id re-issued, a bank needing re-auth, a revoked token, an account missing from a response). Every sync rule below is tested against it, never against the real Bridge.
+3. **Connection:** claim a setup token, list the connection's accounts, track or ignore them.
+4. **Sync engine:** the request, reading the feed, matching rows, pending rows, back-fill.
+5. **Schedule and failures:** daily run, Sync now, the request budget, retries, catch-up, run history.
+6. **Balances:** snapshots, opening balances, drift, balance adjustments.
+7. **Sync health in the UI.**
+8. **CSV and OFX/QFX import.**
+9. **Import from Actual becomes overlap-aware.**
+
+## Accounts
+
+Accounts become editable (they were read-only in milestone 1): name, institution, type, role (budgeted / tracking), balances-only, in net worth, closed, order. Changing role or balances-only on an account with rows asks first, since it changes what counts toward budgets *(agent)*.
+
+**New account** (Accounts, + button): a **manual account** (name, type, role) that asks "What's in it today?"; the answer is its first manual balance snapshot and its opening balance is derived from it. Synced accounts aren't created here; they arrive through the connection.
+
+**New accounts prompt.** Every account the connection reports is recorded (`connection_accounts`). One that isn't linked yet waits at the top of Accounts as "N new accounts found", each with **Track · budgeted**, **Track · tracking** or **Ignore**. Nothing from it counts until decided. Tracking one creates its account (type guessed from the name, balances-only chosen at that moment *(agent)*), or links it to an existing one with **This is the same as…**, which moves the existing account (its history and opening balance) onto the new feed account. Ignored accounts are listed under **Ignored** and can be revived with **Start tracking…**.
+
+- An account the Actual import created with a provider account id is attached on first sight, already tracked with the role chosen in the import; it skips the prompt.
+- A bank re-link or a new setup token can bring new account ids. The new ids arrive in the prompt with **This is the same as…** pre-filled when the name and institution match a tracked account whose old id has stopped arriving *(agent)*.
+- A manual account that later appears through the connection is linked with **This is the same as…**: the back-fill adopts its rows (below), unmatched manual rows inside the back-fill window get the `not_seen_at_bank` flag, older manual rows stay, and manual balance entry stops.
+
+**Balances-only accounts** (investments, loans): only their balance is synced; any transactions the feed sends for them are ignored.
+
+## The connection
+
+One connection per household: the SimpleFIN access URL. **Settings › Bank connection & sync** claims it:
+
+1. "Get a setup token from SimpleFIN Bridge and paste it here." The token is base64 of a claim URL; the server decodes it (or accepts the claim URL itself if pasted), checks it starts with `https://`, and `POST`s to it once with an empty body. A token that doesn't decode is refused without any request.
+2. The response is the access URL (`https://user:pass@host/path`). It is encrypted with `BUDGET_SECRET_KEY` (XChaCha20-Poly1305 *(agent)*) into `connections.secret_encrypted`, never displayed again, never logged, never in an API response.
+3. The first sync runs at once as a back-fill (below), and the new accounts prompt fills.
+
+**Replace setup token…** claims a new token onto the same connection (after a revoke, a lapse or a leak). Accounts re-match by provider account id; any that don't come in through the prompt with **This is the same as…**. Disconnecting deletes the secret and stops syncing; accounts and rows stay, and become manual accounts *(agent)*.
+
+`BUDGET_SECRET_KEY` is required to claim a token; without it the claim screen says so and does nothing. If a connection exists and the key is missing or wrong, the app still starts, sync shows **Sync paused** with "The secret key changed. Paste a new setup token." and nothing else is affected *(agent)*. Losing the key costs a new setup token, never data.
+
+### The request
+
+`GET <access URL base>/accounts?version=2&pending=1&start-date=<epoch seconds>`, with HTTP Basic auth from the URL's user and password and a `User-Agent: saltcellar/<version>` header (the Bridge's CDN blocks default client agents). All accounts in one request; never `?account=` (it has a separate, smaller quota) *(agent)*. No `end-date`. Timeout 60 s *(agent)*.
+
+- **Daily sync, Sync now, retries, catch-up:** `start-date` = now − 30 days.
+- **First connection (back-fill):** 90 days as two requests of 45 days each; older history comes from the Actual import or files. No request ever asks for more than 45 days.
+- Around 2–4 requests a day in normal use.
+
+### Reading the feed
+
+What the protocol and the live Bridge actually do, so code doesn't rediscover it:
+
+- **Shape (v2):** top level `errlist`, `accounts`, `connections`. Each account carries `conn_id` (its bank link), `id`, `name`, `currency`, `balance`, `available-balance`, `balance-date`, `transactions`, `holdings`. Each transaction carries `id`, `posted`, `amount`, `description`, `payee`, `memo`, `transacted_at`, and `pending: true` only when pending (posted rows omit the key). `mcc` exists but has always been null.
+- **Amounts** are decimal strings; convert to minor units with the household currency's decimal places. A value with more decimals than the currency allows fails that account for the run *(agent)*. An account whose `currency` differs from the household's is refused with a clear error and never tracked ([ADR-0006](../adr/0006-one-currency-one-timezone.md)) *(agent)*.
+- **Pending:** a row is pending when `pending` is `true`. Never infer it from `posted == 0`: some banks send a future `posted` date on pending rows.
+- **Dates:** both `posted` and `transacted_at` are epoch seconds whose encoding varies by bank (a date at noon UTC, a date at local midnight Eastern, real clock times). Take the **UTC calendar date**; converting to the household timezone shifts some banks' dates back a day. A row's `date` is the UTC date of `posted`, or of `transacted_at` while pending *(agent: the rule mature clients use; it keeps dates equal to the Actual import's for the same rows)*.
+- **Window edge:** the Bridge cuts the window at the exact second on `transacted_at`, not on `posted` and not at day precision. A row transacted just before `start-date` is missing even if it posted inside the window. Hence the overlapping 30-day window.
+- **Order** of rows in the response is not reliable.
+- **Ids:** account ids (`ACT-…`) and transaction ids (`TRN-…`) are opaque. The protocol forbids reusing a transaction id within an account but doesn't promise one transaction keeps one id: ids have been seen re-issued over days at some banks, and re-linking a bank can change them. Hence the content fallbacks below.
+- **Text:** `description` (raw bank text) is stored as `raw_description`; `payee` (the provider's cleaned name) feeds the payee. Text can change on posting or a day later under the same id (a truncated name completed, a date token dropped); sync owns it, so it updates.
+- **Balances:** `balance` is what the bank reports, and never includes pending rows at the banks observed. Liabilities are negative. `available-balance` is only meaningful on depository accounts (balance plus pending there; 0 on cards, loans and investments) and is never stored *(agent)*. `balance-date` is when the provider last refreshed that bank link, so it is the staleness signal.
+- **An account can be missing** from a successful response, with an empty `errlist`, and come back the next day unchanged. Missing never means closed (below).
+
+### Errors
+
+`errlist` entries are `{code, msg, conn_id?, account_id?}`; an unknown subcode falls back to its prefix. Every message is shown to the household, sanitized (no access URL, no amounts) *(agent: control characters stripped, 300 characters max)*.
+
+| Signal | Meaning | What the app does |
+|---|---|---|
+| network error, HTTP 5xx, `act.failed`, `act.missingdata` | transient | Retry (below). Those accounts keep their last data. |
+| `con.auth` (with `conn_id`) | one bank link needs re-authorizing at the Bridge | That bank's accounts show **needs reconnecting** with **Fix at SimpleFIN ↗** (the Bridge's connections page), then **Done, sync now**. Not retried. |
+| other `con.*` | bank link error | Shown on its accounts; retried like a transient error *(agent)*. |
+| HTTP 403 or `gen.auth` | access URL revoked or disabled | Connection `token_revoked`: all syncing pauses, banner on every screen. Not retried. |
+| HTTP 402 | Bridge subscription unpaid | Connection `unpaid`: paused as above. Not retried. |
+| `gen.api`, or anything else without a `conn_id` or `account_id` | developer-facing notice (e.g. a long-window warning) | Logged on the run; nothing shown *(agent)*. |
+
+## Sync runs
+
+- **Schedule:** once a day at `sync.time` in the household timezone, default **06:13** (after the provider's overnight refresh; off the hour, as the Bridge asks). Changeable in Settings › Bank connection & sync; the UI says it loosely ("syncs daily around 6 am"). Retries and catch-ups also use off-the-hour minutes.
+- **Sync now:** a 30-minute cooldown after any sync ("Synced 12 min ago"). **Done, sync now** after a re-authorization skips the cooldown.
+- **Request budget:** the app makes at most **12** Bridge requests in any rolling 24 hours, across every trigger (scheduled, manual, retry, catch-up, back-fill), half the Bridge's limit of 24. One is always held back for the scheduled sync. At the cap, Sync now reads "Sync limit reached, try again after 3:40 pm". Counted from `sync_runs.requests`.
+- **Retries:** only transient failures, at about +20 minutes and +2 hours, all accounts in one request, counted against the cap; then wait for the next day.
+- **Catch-up:** on startup, if the last successful scheduled sync is over 20 hours old, a catch-up sync runs a few minutes after boot; the next scheduled run still happens.
+- **One at a time:** a second trigger (another login, a retry, a catch-up) joins the running sync; never a second Bridge call.
+- **Partial failure:** accounts that succeeded commit; each failed account keeps its last data and shows "Last updated Oct 21 · needs attention". A failed account, or one missing from the response, doesn't count toward pending retirement, `not_seen_at_bank` or drift for that run.
+- **Stale and needs attention:** after a successful sync, an account whose `balance-date` is more than **2 days** old is **stale** ("data is 3 days old"; quiet, no retry); more than **5 days**, it **needs attention** with the reconnect button. A tracked account missing from responses for more than 5 days also needs attention *(agent)*.
+- **Paused:** while the connection is `token_revoked` or `unpaid`, no scheduled calls; a banner on every screen: "Bank sync stopped. Get a new setup token from SimpleFIN and paste it in Settings" (or "SimpleFIN subscription unpaid"). Replacing the token clears it.
+- **Run history:** every run, with per-account results (ok, error code, sanitized message, `balance-date`), counts added and updated, and requests made, kept 90 days, listed in Settings › Bank connection & sync. One container log line per run (trigger, counts, requests, error codes), never amounts, merchants or the access URL.
+- **Raw responses:** only behind **Keep raw bank responses for troubleshooting** (off by default), kept 7 days, encrypted with `BUDGET_SECRET_KEY`, never logged.
+
+## Matching a synced row
+
+Each row in the response is matched to a stored row in this order; the first step that matches wins.
+
+0. **Deleted by the household:** an id in `deleted_bank_rows` for that account is skipped.
+1. **Same id:** `(account, external_id)`. Update the sync-owned fields.
+2. **Pending → posted:** a posted row with no id match takes over a stored pending row on the same account when the pending row isn't in this response, the posted date is within 7 days after the pending date, the description is similar, and the amount is equal or up to 25% larger in size (tips). One candidate: the posted row replaces the pending one and inherits everything the household set (category, memo, tags, splits, payee). Several: pair oldest first on exact amount only; otherwise insert new and let the pending rows retire normally.
+3. **Re-issued id:** exactly one stored row on the account with the same amount, a similar description and a date within ±1 day, whose own id wasn't in this response → the same transaction; record the new id. Two or more → insert as new with `sync_flag = 'possible_duplicate'` and `possible_duplicate_of`, for the household to merge or keep.
+4. **Adopt an imported row:** an imported row with no `external_id` on the same account, exact amount, date within ±3 days (identical rows counted, not collapsed; a tie → `possible_duplicate`) is taken over.
+5. **Adopt a manual row:** exactly one manual row with no `external_id` on the same account, exact amount, bank date from 3 days before to 14 days after the manual date, is taken over. Two or more → insert as new, `possible_duplicate`. No exact match, but exactly one manual candidate in the window and the bank amount is up to 25% larger in size → insert, and flag the bank row `possible_manual_match` ("Is this your $X manual entry?"); accepting merges them, keeping the household's fields and the bank's amount. Never automatic.
+6. **Insert** as a new row, `source = 'provider'`.
+
+"Similar description" *(agent)*: after the shared normalization (below), one text starts with the other, or they share their first word and their first 8 characters *(agent)*. Pending text is often truncated.
+
+Live behaviour behind these rules: at the banks observed, a pending row normally **keeps its id** when it posts (step 1), usually within a day, at most three; a new id appeared only when the amount changed (a restaurant tip), with the same `transacted_at`, which step 2 catches. No posted id was re-issued in the observation period, but other banks do it, so step 3 stays.
+
+**Adopting** a row (steps 4 and 5) gives it the provider id and `source = 'provider'`; from then on sync owns its amount, date, status and text. The household's category, memo, payee, splits and tags stay.
+
+### Who owns which field
+
+- **Sync owns** amount, date, pending/posted status and raw description. It updates them on every run.
+- **The household owns** payee, category, splits, memo, tags and exclude-from-budget. Sync never changes them once set.
+- An **unsplit** row whose amount changes keeps its category. A **split** row whose amount changes is never adjusted silently: it gets `sync_flag = 'amount_changed_split'`, "Amount changed from $X to $Y, fix the split", and in milestone 3 goes back to Review.
+
+### Rows the bank stops sending
+
+- **Vanished pending:** a pending row is removed after **two consecutive successful syncs** that returned its account but not the row (`pending_miss_count`). Runs where its account failed, had `act.missingdata` or was missing don't count. A removed row the household had edited goes to **Recently dropped by bank** (under Transactions' filters *(agent)*), undoable for 30 days (`dropped_transactions`). Holds that never post (a hotel deposit) end this way.
+- **Posted rows missing:** never deleted automatically. A posted provider row whose date lies inside the fetch window, at least 5 days after its start *(agent: the margin covers rows transacted before the window that posted inside it)*, and that hasn't been returned for 7 days while its account kept succeeding, gets the quiet `not_seen_at_bank` flag; the household deletes or keeps it.
+- **Missing accounts:** an account missing from a successful response counts as failed for that run (error code `absent` *(agent)*): its data stays, its rows' miss counts don't move.
+
+### Deleting a synced row
+
+Allowed, with a warning that the bank still has it and a suggestion to exclude it from budgets instead. Its id goes into `deleted_bank_rows`, so the daily window never brings it back.
+
+### Payees for synced rows *(agent)*
+
+Until milestone 3's normalizer, a synced row's payee comes from the feed's `payee` field (else `description`) the same way the Actual import does it: an existing payee alias, else a payee by exact name, created if new, with the minimal normalization as its alias. Milestone 3 re-runs the normalizer over rows whose payee the household didn't set.
+
+## The dedupe key
+
+`transactions.dedupe_key` is a SHA-256 (lowercase hex) of account id, date, amount in minor units and the description after the **shared normalization**: lowercase, whitespace collapsed, punctuation stripped. It is the same function milestone 1 introduced, now final for every source (sync, files, manual, Actual) *(agent)*. The normalization is deliberately frozen: milestone 3's payee normalizer can improve without changing stored keys.
+
+It answers one question cheaply: "is this exactly the same row?" Identical rows (same key) are counted, not collapsed, when a file or the Actual import matches against stored rows. The windowed matches above (±1, ±3, −3/+14 days) query by account, amount and date range instead.
+
+## Balances
+
+The bank's balance, stored as a **balance snapshot**, is the balance shown for every account. The app's own balance (opening balance + transactions + balance adjustments) only detects **drift** (bank − app). The goal is that the two match, and that every gap can be traced to a sync.
+
+- **Snapshots:** from `balance` only. Written only when `balance-date` moves forward, at most one per account per UTC day (a later refresh that day replaces it). Each stores the bank balance, the app's posted-only and with-pending balances, the run that wrote it, and `sign_corrected`. Kept forever.
+- **Which app balance:** `balance` excluded pending rows at every bank observed, so drift compares with the **posted-only** app balance. `accounts.balance_includes_pending` is learned per account: NULL until a snapshot matches exactly one of the two app balances, then 0 or 1 *(agent)*. While NULL, an account is flagged only when neither matches.
+- **Drift flag:** non-zero drift that holds at the same value for **2 consecutive snapshots** shows "Balance off by $X since <date>" on the account. The date is when drift last stepped; the rows that run added, changed or dropped are listed as **suspect rows**. Failed runs, and runs where `balance-date` didn't move, write no snapshot and don't count. The flag clears itself when drift returns to zero. The app never adjusts on its own.
+- **Balance adjustment:** fix rows where possible; otherwise **Accept $X as balance adjustment** records one (account, date, amount, note, who). It is not a transaction: never in spending, budgets, Review or transfer matching. Undo keeps the record, so a later drift report can count how often drift went unexplained.
+- **Opening balance:** derived on an account's first sync when it has none: first bank balance − the back-filled rows, dated the day before the earliest one. Stored on the account, never as a transaction. When older history arrives (Actual, files), the date moves back and the amount is recomputed so drift doesn't change.
+- **Sign bugs:** the provider sometimes reports a balance with the wrong sign while the rows are right. On an account with transactions, a bank balance whose sign differs from the app's posted-only balance, where the flipped value is closer to it, is flipped on save and marked `sign_corrected`, unless both are within one major unit of zero *(agent: the near-zero crossover)*. On a balances-only loan, a positive balance is flipped *(agent)*.
+- **Balances-only accounts:** snapshots only. No opening balance, no drift, no flag; only stale and needs attention apply.
+- **Fund-backing accounts:** a fund's real balance (milestone 5) is its backing account's latest snapshot. Drift is flagged on the account, never on the fund.
+
+## Manual entry
+
+Mainly for entering something on a synced account before the bank sends it (a check, a payment app transfer); also for manual accounts.
+
+- **Entry form** (Transactions, + button): account, date, amount (money out by default *(agent)*), payee, **category (required)**, memo, tags, or **Transfer to…** another account. Category suggestions only, no pipeline, so a manual row never reaches Review. Pending-like: it counts in budgets and reports at once, with a **manual** badge.
+- **Before adoption:** every field is editable and matching uses the edited values; delete is immediate with an undo toast.
+- **Adoption:** step 5 above. After it, the row behaves like any synced row and the badge goes.
+- **Never matched:** a manual row on a synced account still unmatched 14 days after its date gets `not_seen_at_bank`; delete or keep. Never deleted automatically. Drift points at it too.
+- **Transfers:** **Transfer to…** writes a one-leg transfer (`matched_by = 'manual'`) whose other leg fills in when that account syncs. Otherwise a manual row pairs with a synced leg only as a **Transfer candidate** (milestone 3), never automatically.
+- **Manual balance snapshots:** only on accounts with no working sync: manual accounts, and balances-only accounts whose bank link is broken or gone. On a manual account with transactions they behave like bank snapshots (drift, accept as balance adjustment). Never on a syncing account.
+
+## CSV and OFX/QFX import
+
+**Import a file** (an account's detail, and More *(agent)*). Any account can take one, including manual accounts. Each commit is an **import batch**, undoable from Settings › Imports.
+
+- **Formats:** CSV with a column mapping, and OFX/QFX/QBO through one OFX parser. No PDF. No built-in bank presets.
+- **Account:** chosen at import; pre-selected by an OFX account's last 4 digits, or by a CSV header already mapped on an account.
+- **CSV mapping**, saved per account on first import and reused when a file with the same header arrives: date column (+ optional post date), description, amount as one signed column or debit/credit columns, flip sign, date format (guessed from the rows, confirmable), optional category and memo columns, header rows to skip.
+- **Matching** against stored rows (synced, imported or manual): same account, exact amount, date within ±3 days of the file's transaction or post date; description only breaks ties. Identical rows are counted, not collapsed. A tie with no tiebreaker shows as **possible duplicate** for the household to decide. A FITID or CSV row hash (`import_ref`) from an earlier batch short-circuits matching on re-import. A posted file row matching a pending synced row counts as matched; sync posts it as usual.
+- **Matched rows** keep their amount, date, status and text: a file never overwrites sync-owned fields. It can only add a **bank category**.
+- **Preview before commit:** "N new, M already there, K to check", with the K rows to decide. Nothing is written until **Import**.
+- **Bank category:** a file's category column is stored as `bank_category` on new and matched rows. Rules can match it (milestone 3), e.g. an always-review warehouse club + bank category "Gas" → Gas. A row gaining a bank category re-runs the pipeline unless the household set its category.
+- **New rows** run the full pipeline from milestone 3 on, like synced ones, transfer detection included (pairing with synced or imported legs). Rows dated more than 90 days before the import that end up uncategorized are quiet (`review_quiet`): out of Review, under the **Imported, uncategorized** filter.
+- **Balances:** a file never writes a balance. Rows older than the opening date move the opening balance back (drift unchanged).
+- **Undo** deletes the rows the batch inserted (asking first if any were edited) and clears bank categories it set. It never deletes rows sync has since adopted.
+- **Sync adopts imported rows** (step 4 above).
+
+## Import from Actual becomes overlap-aware
+
+Actual may itself have been syncing from SimpleFIN, so its accounts and rows can carry the same provider ids the connection sends. Milestone 1's wizard gains overlap handling:
+
+- **Accounts step:** each Actual account is pre-matched to the app account, or the connection account waiting in the new accounts prompt, with the same provider account id; the household confirms, overrides, creates new or skips. Name matching or a manual pick covers accounts without an id. An Actual account with no feed counterpart can become a manual account. Order doesn't matter: imported first, the accounts carry their provider ids and the first sync attaches them as tracked.
+- **Same id:** a shared (account, transaction id) is the same row. The synced row keeps its amount, date, status and text; Actual adds its mapped category, notes and payee, unless the household already set the category (`categorized_by = 'user'`), in which case Actual's category is dropped. Fields filled this way are recorded in `prior_fields` and restored on undo.
+- **No id match:** inside the period the connection has synced, the file rule applies (same account, exact amount, ±3 days, repeats counted, ties shown as possible duplicates in a preview step before Done *(agent)*). Rows older than the oldest synced row are inserted.
+- **Ids kept:** imported rows carry Actual's provider transaction id as `external_id` (`source = 'import'`), so a later sync or back-fill matches them by id.
+- **Re-import:** the milestone 1 refusal ("Undo the earlier import first") is lifted: a second Actual import matches its rows against the first by id like any other overlap *(agent)*.
+- **Transfer-mapped and uncategorized rows** are handled by milestone 3's pipeline, as milestone 1 already describes.
+
+## Sync health in the UI
+
+**One status spot**, never warnings scattered over every screen:
+
+- **Where:** a pill in the phone header, and a button at the foot of the desktop sidebar. All good: "Synced 6:13 am" on desktop, "6:13 am" on phone, with a hollow dot. Problems: a filled dot and "1 sync problem" / "2 sync problems" (only needs-attention problems count), or "Sync paused".
+- **Sync sheet**, opened from the spot: the last-sync line ("Synced 6:13 am · syncs daily around 6 am"); every problem with its account, a short state, one sentence of explanation and its fix (**Fix at SimpleFIN ↗**, **See suspect rows**, **Paste new token**); quiet states (stale data) listed without counting toward the pill; **Sync now** with its cooldown and "N of 12 requests left today"; a link to the run history.
+- **Overview, Review, Transactions:** nothing extra.
+- **Accounts list:** a problem account shows only a ⚠ marker.
+- **Account detail:** the full explanation and fix. Drift shows the bank's balance against the app's, **See suspect rows** and **Accept $X as balance adjustment**. The footer gives the last sync and "bank data as of <date>".
+- **Paused banner** on every screen while the connection is paused.
+- **Sync flags on rows** (`possible_duplicate`, `possible_manual_match`, `not_seen_at_bank`, `amount_changed_split`) show as a badge and an action in the transaction detail, and under a **Needs a look** filter in Transactions *(agent)*.
+
+## Settings › Bank connection & sync
+
+- The connection: "SimpleFIN Bridge · connected", "Syncs daily around 6 am · 9 of 12 requests left today", **Sync now**, **Replace setup token…**, **Disconnect** *(agent)*, and the sync time.
+- **Banks:** one row per bank link with its accounts count, state (ok, balances only, stale with "bank hasn't updated in 4 days", needs reconnecting with **Fix at SimpleFIN ↗**) and last refresh.
+- **Recent syncs:** the run history, newest first.
+- **Keep raw bank responses for troubleshooting** checkbox.
+
+## Configuration added
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the connection's access URL and kept raw responses. Required to claim a setup token. Keep a copy outside the data dir; backups don't include it. |
+
+Settings keys: `sync.time` (`"06:13"`), `sync.keep_raw_responses` (`false`).
