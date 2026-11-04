@@ -15,6 +15,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.ts', 'checks/**/*.test.ts'],
+    // The contrast check reads the palette files' text (`?raw`), which Vitest blanks otherwise.
+    css: { include: /styles\/palettes\// },
+    // The cache keeps a test's `import.meta.glob` from seeing a file added since, so a new
+    // palette could skip the contrast and registry checks on a rerun *(agent)*.
+    fsModuleCache: false,
     // The floor in ../coverage-floors.txt (`web`) is on frontend logic: the TypeScript modules.
     coverage: {
       provider: 'v8',
