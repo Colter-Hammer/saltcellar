@@ -1,5 +1,6 @@
-//! Accounts (docs/spec/m1-ledger-import.md#accounts). Read-only in milestone 1, where the Actual
-//! importer creates them.
+//! Accounts (docs/spec/m1-ledger-import.md#accounts). The Actual importer creates them in
+//! milestone 1; milestone 2 edits them and adds manual accounts with their manual balance
+//! snapshots (docs/spec/m2-bank-data.md#accounts).
 
 use domain::accounts::{AccountType, Opening, Role, app_balance};
 use domain::categories::Name;
@@ -43,6 +44,8 @@ pub struct AccountBalance {
     pub closed: bool,
     /// Whether it counts in net worth.
     pub in_net_worth: bool,
+    /// Its connection, if it has one. Only an account without one takes manual balance snapshots.
+    pub connection_id: Option<i64>,
     /// False for a balances-only account, which holds balance snapshots and no transactions.
     pub has_transactions: bool,
     /// `None` for a balances-only account.
@@ -78,6 +81,7 @@ async fn balances(pool: &SqlitePool, only: Option<i64>) -> Result<Vec<AccountBal
     let found = sqlx::query!(
         r#"SELECT a.id AS "id!: i64", a.name, a.institution, a.type AS kind, a.role,
              a.closed AS "closed: bool", a.in_net_worth AS "in_net_worth: bool", a.has_transactions AS "has_transactions: bool",
+             a.connection_id,
              a.opening_balance_minor, a.opening_date,
              (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS "rows!: i64",
              (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS "last: String",
@@ -125,6 +129,7 @@ async fn balances(pool: &SqlitePool, only: Option<i64>) -> Result<Vec<AccountBal
                 institution: account.institution,
                 closed: account.closed,
                 in_net_worth: account.in_net_worth,
+                connection_id: account.connection_id,
                 has_transactions: account.has_transactions,
                 opening,
                 rows: u64::try_from(account.rows).unwrap_or_default(),
@@ -158,6 +163,8 @@ pub enum AccountError {
     NameTaken,
     #[error("the order doesn't list every account exactly once")]
     Order,
+    #[error("the account has a connection, so its balance comes from the bank")]
+    Connected,
     #[error(transparent)]
     Db(#[from] Error),
 }
@@ -166,6 +173,143 @@ impl From<sqlx::Error> for AccountError {
     fn from(error: sqlx::Error) -> Self {
         AccountError::Db(Error::Sqlx(error))
     }
+}
+
+/// A manual account to create (docs/spec/m2-bank-data.md#accounts).
+#[derive(Debug, Clone)]
+pub struct NewAccount {
+    pub name: Name,
+    pub kind: AccountType,
+    pub role: Role,
+    /// What's in it today: its first manual balance snapshot, and its opening balance.
+    pub balance: Money,
+    /// Today in the household's timezone.
+    pub today: Date,
+}
+
+/// Creates a manual account, last in the order, with what's in it today as its first manual
+/// balance snapshot and its opening balance, dated the day before (see [`Opening::from_manual`]).
+/// Returns its id.
+///
+/// # Errors
+/// [`AccountError::NameTaken`] if an account has the name in any case; otherwise only if the
+/// database fails.
+pub async fn create_manual_account(
+    pool: &SqlitePool,
+    new: &NewAccount,
+) -> Result<i64, AccountError> {
+    let opening = Opening::from_manual(new.balance, new.today).ok_or(Error::Unreadable {
+        what: "a date",
+        value: new.today.to_string(),
+    })?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let name = new.name.as_str();
+    let taken = sqlx::query_scalar!(
+        r#"SELECT EXISTS (SELECT 1 FROM accounts WHERE lower(name) = lower(?1)) AS "taken!: bool""#,
+        name
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if taken {
+        return Err(AccountError::NameTaken);
+    }
+    let (kind, role) = (new.kind.as_str(), new.role.as_str());
+    let (opening_balance, opening_date) = (opening.balance.minor(), opening.date.to_string());
+    let id = sqlx::query_scalar!(
+        r#"INSERT INTO accounts (name, type, role, sort_order, opening_balance_minor, opening_date)
+           VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM accounts), ?4, ?5)
+           RETURNING id AS "id!: i64""#,
+        name,
+        kind,
+        role,
+        opening_balance,
+        opening_date
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    write_manual_snapshot(&mut tx, id, new.balance, new.today).await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
+/// Records what's in a manual account today as a manual balance snapshot, the balance shown from
+/// now on. A second one the same day replaces the first, as a bank's later refresh does.
+///
+/// # Errors
+/// [`AccountError::NotFound`] if there's no such account, [`AccountError::Connected`] if it has a
+/// connection; otherwise only if the database fails.
+pub async fn add_manual_snapshot(
+    pool: &SqlitePool,
+    id: i64,
+    balance: Money,
+    today: Date,
+) -> Result<(), AccountError> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let connected = sqlx::query_scalar!(
+        r#"SELECT connection_id IS NOT NULL AS "connected!: bool" FROM accounts WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(AccountError::NotFound)?;
+    if connected {
+        return Err(AccountError::Connected);
+    }
+    write_manual_snapshot(&mut tx, id, balance, today).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Writes account `id`'s manual snapshot for `today`, with the app's posted-only and with-pending
+/// balances beside it so drift can be read from it; both NULL without an opening balance (a
+/// balances-only account).
+async fn write_manual_snapshot(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    id: i64,
+    balance: Money,
+    today: Date,
+) -> Result<(), AccountError> {
+    let found = sqlx::query!(
+        r#"SELECT a.name, a.opening_balance_minor,
+             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
+               WHERE t.account_id = a.id AND t.status = 'posted') AS "posted!: i64",
+             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
+               WHERE t.account_id = a.id) AS "all!: i64"
+           FROM accounts a WHERE a.id = ?"#,
+        id
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+    let unreadable = || Error::Unreadable {
+        what: "a balance",
+        value: found.name.clone(),
+    };
+    let (posted, pending) = match found.opening_balance_minor.map(Money::from_minor) {
+        Some(opening) => (
+            Some(app_balance(opening, [Money::from_minor(found.posted)]).ok_or_else(unreadable)?),
+            Some(app_balance(opening, [Money::from_minor(found.all)]).ok_or_else(unreadable)?),
+        ),
+        None => (None, None),
+    };
+    let (as_of, balance) = (today.to_string(), balance.minor());
+    let (posted, pending) = (posted.map(Money::minor), pending.map(Money::minor));
+    sqlx::query!(
+        "INSERT INTO balance_snapshots
+           (account_id, as_of, balance_minor, source, app_balance_posted_minor, app_balance_pending_minor)
+         VALUES (?, ?, ?, 'manual', ?, ?)
+         ON CONFLICT (account_id, as_of) DO UPDATE SET
+           balance_minor = excluded.balance_minor, source = excluded.source,
+           app_balance_posted_minor = excluded.app_balance_posted_minor,
+           app_balance_pending_minor = excluded.app_balance_pending_minor",
+        id,
+        as_of,
+        balance,
+        posted,
+        pending
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 /// Changes an account.
@@ -315,6 +459,7 @@ mod tests {
         let checking = AccountBalance {
             id: 1,
             in_net_worth: true,
+            connection_id: None,
             name: "Checking".to_owned(),
             institution: Some("Fake Bank".to_owned()),
             kind: AccountType::Checking,
@@ -334,6 +479,7 @@ mod tests {
         let brokerage = AccountBalance {
             id: 2,
             in_net_worth: true,
+            connection_id: None,
             name: "Brokerage".to_owned(),
             institution: None,
             kind: AccountType::Investment,
@@ -423,6 +569,143 @@ mod tests {
             update_account(&pool, 9, &clear).await,
             Err(AccountError::NotFound)
         ));
+    }
+
+    fn date(text: &str) -> Date {
+        text.parse().unwrap()
+    }
+
+    fn wallet(name: &str, balance: i64) -> NewAccount {
+        NewAccount {
+            name: Name::new(name).unwrap(),
+            kind: AccountType::Cash,
+            role: Role::Budgeted,
+            balance: Money::from_minor(balance),
+            today: date("2026-03-01"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_manual_account_starts_from_whats_in_it_today() {
+        let (_dir, pool) = migrated().await;
+        sqlx::query("INSERT INTO accounts (name, type, role, sort_order) VALUES ('Checking', 'checking', 'budgeted', 4)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let id = create_manual_account(&pool, &wallet("Wallet", 4_200))
+            .await
+            .unwrap();
+        let account = account_balance(&pool, id).await.unwrap().unwrap();
+        assert_eq!(
+            account.opening,
+            Some(Opening {
+                balance: Money::from_minor(4_200),
+                date: date("2026-02-28"),
+            })
+        );
+        assert_eq!(account.snapshot, Some(Money::from_minor(4_200)));
+        assert_eq!(account.app_balance, Some(Money::from_minor(4_200)));
+        assert!(account.connection_id.is_none() && account.has_transactions);
+        let snapshots: Vec<(String, String, Option<i64>)> = sqlx::query_as(
+            "SELECT as_of, source, app_balance_posted_minor FROM balance_snapshots WHERE account_id = ?",
+        )
+        .bind(id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            snapshots,
+            [("2026-03-01".to_owned(), "manual".to_owned(), Some(4_200))]
+        );
+        // Last in the order.
+        let names: Vec<String> = accounts(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(names, ["Checking", "Wallet"]);
+        assert!(matches!(
+            create_manual_account(&pool, &wallet("WALLET", 0)).await,
+            Err(AccountError::NameTaken)
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_manual_snapshot_is_the_balance_shown_and_drift_shows_beside_it() {
+        let (_dir, pool) = migrated().await;
+        let id = create_manual_account(&pool, &wallet("Wallet", 4_200))
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO transactions
+               (account_id, date, amount_minor, status, raw_description, source, dedupe_key) VALUES
+               (?1, '2026-03-02', -1000, 'posted', 'a', 'manual', 'a'),
+               (?1, '2026-03-02', -200, 'pending', 'b', 'manual', 'b')",
+        )
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        add_manual_snapshot(&pool, id, Money::from_minor(3_000), date("2026-03-03"))
+            .await
+            .unwrap();
+        // Later the same day: it replaces the first.
+        add_manual_snapshot(&pool, id, Money::from_minor(2_900), date("2026-03-03"))
+            .await
+            .unwrap();
+        let account = account_balance(&pool, id).await.unwrap().unwrap();
+        assert_eq!(account.snapshot, Some(Money::from_minor(2_900)));
+        // Drift: the app's own balance is opening + posted rows.
+        assert_eq!(account.app_balance, Some(Money::from_minor(3_200)));
+        let snapshots: Vec<(String, i64, Option<i64>, Option<i64>)> = sqlx::query_as(
+            "SELECT as_of, balance_minor, app_balance_posted_minor, app_balance_pending_minor
+             FROM balance_snapshots WHERE account_id = ? ORDER BY as_of",
+        )
+        .bind(id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            snapshots,
+            [
+                ("2026-03-01".to_owned(), 4_200, Some(4_200), Some(4_200)),
+                ("2026-03-03".to_owned(), 2_900, Some(3_200), Some(3_000)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_manual_snapshot_is_refused_on_a_connected_account() {
+        let (_dir, pool) = migrated().await;
+        sqlx::query(
+            "INSERT INTO accounts (id, name, type, role, connection_id) VALUES
+               (1, 'Synced', 'checking', 'budgeted', 7),
+               (2, 'Brokerage', 'investment', 'tracking', NULL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let today = date("2026-03-01");
+        assert!(matches!(
+            add_manual_snapshot(&pool, 1, Money::from_minor(1), today).await,
+            Err(AccountError::Connected)
+        ));
+        assert!(matches!(
+            add_manual_snapshot(&pool, 9, Money::from_minor(1), today).await,
+            Err(AccountError::NotFound)
+        ));
+        assert_eq!(
+            account_balance(&pool, 1).await.unwrap().unwrap().snapshot,
+            None
+        );
+        // No opening balance: the snapshot alone, no app balances beside it.
+        add_manual_snapshot(&pool, 2, Money::from_minor(500_000), today)
+            .await
+            .unwrap();
+        let account = account_balance(&pool, 2).await.unwrap().unwrap();
+        assert_eq!(account.snapshot, Some(Money::from_minor(500_000)));
+        assert_eq!(account.app_balance, None);
     }
 
     #[tokio::test]

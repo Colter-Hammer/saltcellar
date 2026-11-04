@@ -39,6 +39,55 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "`POST /api/v1/accounts`: creates a manual account, last in the order.",
+        "operationId": "addAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewAccount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The account is created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the name is empty, too long or taken by another account (any case).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/accounts/order": {
@@ -191,6 +240,72 @@
           },
           "422": {
             "description": "`validation_failed`: the name is empty, too long or taken by another account (any case).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{id}/balance": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "`POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,\nas a manual balance snapshot. A second one the same day replaces the first.",
+        "operationId": "updateAccountBalance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The account.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BalanceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The balance is recorded."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`account_connected`: the account has a connection, so its balance comes from the bank.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2147,6 +2262,7 @@
           "closed",
           "in_net_worth",
           "balances_only",
+          "connection_id",
           "balance_minor",
           "app_balance_minor",
           "opening_balance_minor",
@@ -2177,6 +2293,14 @@
           },
           "closed": {
             "type": "boolean"
+          },
+          "connection_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Its connection; null for an account with none. One with a connection gets its balance from\nthe bank and takes no manual balance."
           },
           "id": {
             "type": "integer",
@@ -2737,6 +2861,20 @@
           }
         }
       },
+      "BalanceUpdate": {
+        "type": "object",
+        "description": "What's in a manual account today.",
+        "required": [
+          "balance_minor"
+        ],
+        "properties": {
+          "balance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units."
+          }
+        }
+      },
       "Category": {
         "type": "object",
         "required": [
@@ -3290,6 +3428,33 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "NewAccount": {
+        "type": "object",
+        "description": "A manual account: one with no connection, whose balance is entered by hand.",
+        "required": [
+          "name",
+          "type",
+          "role",
+          "balance_minor"
+        ],
+        "properties": {
+          "balance_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "What's in it today, in minor units: its first balance, and its opening balance, dated the\nday before *(agent)*."
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique among the accounts, ignoring case."
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole"
+          },
+          "type": {
+            "$ref": "#/components/schemas/AccountType"
           }
         }
       },

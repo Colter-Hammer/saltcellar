@@ -164,6 +164,17 @@ impl Opening {
             },
         })
     }
+
+    /// A new manual account's opening balance (docs/spec/m2-bank-data.md#accounts): the balance
+    /// entered as what's in it today, dated the day before `today` *(agent)*, so the first manual
+    /// balance snapshot, dated today, matches it. `None` if there's no day before.
+    #[must_use]
+    pub fn from_manual(balance: Money, today: Date) -> Option<Opening> {
+        Some(Opening {
+            balance,
+            date: today.previous_day()?,
+        })
+    }
 }
 
 /// The app's own balance for an account: its opening balance plus its transactions. The balance
@@ -219,6 +230,17 @@ mod tests {
 
     fn date(text: &str) -> Date {
         text.parse().unwrap()
+    }
+
+    #[test]
+    fn a_manual_accounts_opening_balance_is_todays_dated_the_day_before() {
+        assert_eq!(
+            Opening::from_manual(Money::from_minor(4_200), date("2026-03-01")),
+            Some(Opening {
+                balance: Money::from_minor(4_200),
+                date: date("2026-02-28"),
+            })
+        );
     }
 
     #[test]

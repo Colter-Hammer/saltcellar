@@ -14,6 +14,7 @@ const account = (id: number): Account => ({
   closed: false,
   in_net_worth: true,
   balances_only: false,
+  connection_id: null,
   balance_minor: 0,
   app_balance_minor: 0,
   opening_balance_minor: 0,
@@ -82,6 +83,19 @@ describe('the account edits', () => {
     expect(list.data.value?.accounts.map((a) => a.id)).toEqual([2, 1])
     await saving
     expect(sent[0]).toBe('PUT /api/v1/accounts/order {"accounts":[2,1]}')
+  })
+
+  it('create a manual account and record a balance, reloading the accounts after each', async () => {
+    const { edits } = await setUp()
+    sent = []
+    await edits.create({ name: 'Wallet', type: 'cash', role: 'budgeted', balance_minor: 4200 })
+    await edits.updateBalance(3, -150)
+    expect(sent).toEqual([
+      'POST /api/v1/accounts {"name":"Wallet","type":"cash","role":"budgeted","balance_minor":4200}',
+      'GET /api/v1/accounts',
+      'POST /api/v1/accounts/3/balance {"balance_minor":-150}',
+      'GET /api/v1/accounts',
+    ])
   })
 
   it('reload the accounts after a change that fails, and throw', async () => {

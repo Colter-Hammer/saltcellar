@@ -2,12 +2,15 @@
 // An account's detail (docs/spec/m1-ledger-import.md#accounts): the balance shown (its latest
 // snapshot) with the app's own beside it, the opening balance and its date, the row count, and its
 // transactions. A balances-only account has only its balance. Edit opens the account's form
-// (docs/spec/m2-bank-data.md#accounts).
+// (docs/spec/m2-bank-data.md#accounts). Update balance, on an account with no connection, records
+// what's in it today (docs/spec/m2-bank-data.md#manual-entry); where the app's own balance differs,
+// that's drift, shown beside it as for a synced account.
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAccount, useAccountEdits, type AccountChange } from '@/api/accounts'
 import { ApiError } from '@/api/client'
 import AccountEditForm from '@/components/AccountEditForm.vue'
+import BalanceForm from '@/components/BalanceForm.vue'
 import { roleLabel, transactionsLink, typeLabel } from '@/lib/accounts'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
@@ -18,6 +21,7 @@ const formatting = useFormatting()
 const edits = useAccountEdits()
 
 const editing = ref(false)
+const updating = ref(false)
 const nameError = ref<string>()
 const problem = ref<string>()
 
@@ -31,6 +35,16 @@ async function save(change: AccountChange) {
     const name = error instanceof ApiError ? error.fields.name : undefined
     if (name !== undefined) nameError.value = name
     else problem.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function saveBalance(balanceMinor: number) {
+  problem.value = undefined
+  try {
+    await edits.updateBalance(Number(route.params.id), balanceMinor)
+    updating.value = false
+  } catch (error) {
+    problem.value = error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -79,14 +93,29 @@ const opening = computed(() => {
         @save="save"
         @cancel="((editing = false), (nameError = undefined), (problem = undefined))"
       />
-      <button
-        v-else
-        type="button"
-        class="inline-flex items-center self-start rounded-md border px-3 py-2"
-        @click="editing = true"
-      >
-        Edit
-      </button>
+      <BalanceForm
+        v-else-if="updating"
+        :formatting="formatting"
+        @save="saveBalance"
+        @cancel="((updating = false), (problem = undefined))"
+      />
+      <div v-else class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center rounded-md border px-3 py-2"
+          @click="editing = true"
+        >
+          Edit
+        </button>
+        <button
+          v-if="account.connection_id === null"
+          type="button"
+          class="inline-flex items-center rounded-md border px-3 py-2"
+          @click="updating = true"
+        >
+          Update balance
+        </button>
+      </div>
 
       <dl
         aria-label="Figures"
@@ -98,8 +127,8 @@ const opening = computed(() => {
           <template v-else>—</template>
         </dd>
         <template v-if="!account.balances_only">
-          <!-- The app's own balance: opening plus transactions. Equal in milestone 1; where they
-               differ, that's drift, which milestone 2 surfaces. -->
+          <!-- The app's own balance: opening plus posted transactions. Where it differs from the
+               balance, that's drift; its flag and Accept arrive with drift detection. -->
           <dt class="text-muted-foreground">App's balance</dt>
           <dd class="text-right">
             <Money v-if="account.app_balance_minor !== null" :minor="account.app_balance_minor" />

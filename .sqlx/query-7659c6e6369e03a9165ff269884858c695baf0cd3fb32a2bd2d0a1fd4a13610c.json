@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT a.id AS \"id!: i64\", a.name, a.institution, a.type AS kind, a.role,\n             a.closed AS \"closed: bool\", a.in_net_worth AS \"in_net_worth: bool\", a.has_transactions AS \"has_transactions: bool\",\n             a.opening_balance_minor, a.opening_date,\n             (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS \"rows!: i64\",\n             (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS \"last: String\",\n             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t\n               WHERE t.account_id = a.id AND t.status = 'posted') AS \"posted!: i64\",\n             (SELECT s.balance_minor FROM balance_snapshots s WHERE s.account_id = a.id\n               ORDER BY s.as_of DESC LIMIT 1) AS \"snapshot: i64\"\n           FROM accounts a WHERE ?1 IS NULL OR a.id = ?1 ORDER BY a.sort_order, a.id",
+  "query": "SELECT a.id AS \"id!: i64\", a.name, a.institution, a.type AS kind, a.role,\n             a.closed AS \"closed: bool\", a.in_net_worth AS \"in_net_worth: bool\", a.has_transactions AS \"has_transactions: bool\",\n             a.connection_id,\n             a.opening_balance_minor, a.opening_date,\n             (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS \"rows!: i64\",\n             (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS \"last: String\",\n             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t\n               WHERE t.account_id = a.id AND t.status = 'posted') AS \"posted!: i64\",\n             (SELECT s.balance_minor FROM balance_snapshots s WHERE s.account_id = a.id\n               ORDER BY s.as_of DESC LIMIT 1) AS \"snapshot: i64\"\n           FROM accounts a WHERE ?1 IS NULL OR a.id = ?1 ORDER BY a.sort_order, a.id",
   "describe": {
     "columns": [
       {
@@ -92,8 +92,19 @@
         }
       },
       {
-        "name": "opening_balance_minor",
+        "name": "connection_id",
         "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "connection_id"
+          }
+        }
+      },
+      {
+        "name": "opening_balance_minor",
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "opening_date",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -115,25 +126,25 @@
       },
       {
         "name": "rows!: i64",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": "Expression"
       },
       {
         "name": "last: String",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Text",
         "origin": "Expression"
       },
       {
         "name": "posted!: i64",
-        "ordinal": 12,
+        "ordinal": 13,
         "type_info": "Integer",
         "origin": "Expression"
       },
       {
         "name": "snapshot: i64",
-        "ordinal": 13,
+        "ordinal": 14,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -157,11 +168,12 @@
       false,
       true,
       true,
+      true,
       false,
       true,
       false,
       true
     ]
   },
-  "hash": "fd4b4defd8b6fd76fbd13c1826392b7036bb06a64c763439eb7becf275198877"
+  "hash": "7659c6e6369e03a9165ff269884858c695baf0cd3fb32a2bd2d0a1fd4a13610c"
 }

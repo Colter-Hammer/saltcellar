@@ -58,6 +58,7 @@ export default defineConfig({
         'transactions.spec.ts',
         'undecided.spec.ts',
         'imports.spec.ts',
+        'manual-accounts.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -75,6 +76,7 @@ export default defineConfig({
         'transactions.spec.ts',
         'undecided.spec.ts',
         'imports.spec.ts',
+        'manual-accounts.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -117,11 +119,19 @@ export default defineConfig({
       dependencies: ['accounts-edit'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
-    // Last of all, Settings › Imports: it undoes the import and imports again.
+    // Then Settings › Imports: it undoes the import and imports again.
     {
       name: 'imports',
       testMatch: 'imports.spec.ts',
       dependencies: ['undecided'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Then a manual account, created and given a new balance, after every spec that reads the
+    // accounts.
+    {
+      name: 'manual-accounts',
+      testMatch: 'manual-accounts.spec.ts',
+      dependencies: ['imports'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

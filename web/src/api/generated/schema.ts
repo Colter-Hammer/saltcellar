@@ -14,7 +14,8 @@ export interface paths {
         /** `GET /api/v1/accounts`: every account in order, with its balances. */
         get: operations["getAccounts"];
         put?: never;
-        post?: never;
+        /** `POST /api/v1/accounts`: creates a manual account, last in the order. */
+        post: operations["addAccount"];
         delete?: never;
         options?: never;
         head?: never;
@@ -54,6 +55,26 @@ export interface paths {
         head?: never;
         /** `PATCH /api/v1/accounts/{id}`: edits an account. */
         patch: operations["changeAccount"];
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,
+         *     as a manual balance snapshot. A second one the same day replaces the first.
+         */
+        post: operations["updateAccountBalance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/categories": {
@@ -617,6 +638,12 @@ export interface components {
             /** @description Balances only: it holds balance snapshots and no transactions. */
             balances_only: boolean;
             closed: boolean;
+            /**
+             * Format: int64
+             * @description Its connection; null for an account with none. One with a connection gets its balance from
+             *     the bank and takes no manual balance.
+             */
+            connection_id: number | null;
             /** Format: int64 */
             id: number;
             /** @description Whether it counts in net worth. */
@@ -863,6 +890,14 @@ export interface components {
             id: number;
             name: string;
         };
+        /** @description What's in a manual account today. */
+        BalanceUpdate: {
+            /**
+             * Format: int64
+             * @description In minor units.
+             */
+            balance_minor: number;
+        };
         Category: {
             hidden: boolean;
             /** Format: int64 */
@@ -1073,6 +1108,19 @@ export interface components {
             /** Format: int32 */
             moved: number;
         };
+        /** @description A manual account: one with no connection, whose balance is entered by hand. */
+        NewAccount: {
+            /**
+             * Format: int64
+             * @description What's in it today, in minor units: its first balance, and its opening balance, dated the
+             *     day before *(agent)*.
+             */
+            balance_minor: number;
+            /** @description Unique among the accounts, ignoring case. */
+            name: string;
+            role: components["schemas"]["AccountRole"];
+            type: components["schemas"]["AccountType"];
+        };
         NewCategory: {
             /** Format: int64 */
             group_id: number;
@@ -1278,6 +1326,48 @@ export interface operations {
             };
         };
     };
+    addAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAccount"];
+            };
+        };
+        responses: {
+            /** @description The account is created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the name is empty, too long or taken by another account (any case). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     orderAccounts: {
         parameters: {
             query?: never;
@@ -1402,6 +1492,58 @@ export interface operations {
             };
             /** @description `validation_failed`: the name is empty, too long or taken by another account (any case). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateAccountBalance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BalanceUpdate"];
+            };
+        };
+        responses: {
+            /** @description The balance is recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `account_connected`: the account has a connection, so its balance comes from the bank. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

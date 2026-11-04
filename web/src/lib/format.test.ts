@@ -6,6 +6,7 @@ import {
   formatDate,
   formatInstantDay,
   formatMoney,
+  parseMoney,
   localeWeekStart,
   useFormatting,
   weekdayName,
@@ -221,5 +222,32 @@ describe('formatInstantDay', () => {
     const instant = '2026-10-30T02:30:00.000Z'
     expect(formatInstantDay(instant, 'America/Chicago', { locale: 'en-US' })).toBe('Oct 29, 2026')
     expect(formatInstantDay(instant, 'Europe/Paris', { locale: 'en-US' })).toBe('Oct 30, 2026')
+  })
+})
+
+describe('parseMoney', () => {
+  const usd = { currency: 'USD', locale: 'en-US' }
+  const eur = { currency: 'EUR', locale: 'de-DE' }
+
+  it("reads an amount in minor units, the locale's way", () => {
+    expect(parseMoney('42', usd)).toBe(4200)
+    expect(parseMoney('42.5', usd)).toBe(4250)
+    expect(parseMoney(' $1,234.56 ', usd)).toBe(123456)
+    expect(parseMoney('-12.05', usd)).toBe(-1205)
+    expect(parseMoney('\u221212.05', usd)).toBe(-1205)
+    expect(parseMoney('1.234,56 €', eur)).toBe(123456)
+    expect(parseMoney('12,5', eur)).toBe(1250)
+    expect(parseMoney('-0', usd)).toBe(0)
+    expect(parseMoney('1500', { currency: 'JPY', locale: 'ja-JP' })).toBe(1500)
+  })
+
+  it("refuses what isn't one", () => {
+    for (const typed of ['', 'abc', '12.345', '1,23', '1.2.3', '--1', '12-']) {
+      expect(parseMoney(typed, usd), typed).toBeNull()
+    }
+    // A German group mark where the decimal belongs.
+    expect(parseMoney('12.50', eur)).toBeNull()
+    expect(parseMoney('15.5', { currency: 'JPY', locale: 'ja-JP' })).toBeNull()
+    expect(parseMoney('99999999999999999', usd)).toBeNull()
   })
 })
