@@ -1,5 +1,5 @@
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
@@ -379,6 +379,10 @@ beforeEach(() => {
   }
   serverUp()
 })
+
+// Every test's app is unmounted after it, so a leftover one can't fetch from the next test's
+// fake server.
+enableAutoUnmount(afterEach)
 
 afterEach(() => {
   vi.unstubAllEnvs()

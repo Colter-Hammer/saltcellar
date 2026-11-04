@@ -35,6 +35,7 @@ CREATE TABLE users (                        -- M1. A login. All equal: no admin 
   remote_user    TEXT UNIQUE,               -- trusted-header mode: the header value that maps to this login
   display_locale TEXT,                      -- BCP 47; NULL = use the browser's locale
   week_start     INTEGER CHECK (week_start BETWEEN 0 AND 6), -- 0 = Sunday; NULL = from the locale
+  palette        TEXT,                      -- visual system palette id; NULL = the default (docs/spec/visual-system.md)
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   removed_at     TEXT                       -- removed by another login; kept so updated_by references stay valid
 ) STRICT;
@@ -260,7 +261,8 @@ CREATE TABLE category_groups (              -- M1. Container only; never holds t
   name       TEXT NOT NULL UNIQUE,
   kind       TEXT NOT NULL DEFAULT 'expense' CHECK (kind IN ('expense','income')),
   sort_order INTEGER NOT NULL DEFAULT 0,
-  hidden     INTEGER NOT NULL DEFAULT 0
+  hidden     INTEGER NOT NULL DEFAULT 0,
+  icon       TEXT                           -- a Lucide icon name; NULL = the generic one (docs/spec/visual-system.md)
 ) STRICT;
 
 CREATE TABLE categories (                   -- M1
