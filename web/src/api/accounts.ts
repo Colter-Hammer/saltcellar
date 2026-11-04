@@ -25,6 +25,7 @@ export function useAccount(id: MaybeRefOrGetter<number>) {
 
 type AccountList = components['schemas']['AccountList']
 export type AccountChange = components['schemas']['AccountChange']
+export type NewAccount = components['schemas']['NewAccount']
 
 /**
  * Every change to the accounts. Each one reloads them afterwards, whether it worked or not, and
@@ -43,6 +44,18 @@ export function useAccountEdits() {
     /** `PATCH /api/v1/accounts/{id}`: changes what's listed in `change`, nothing else. */
     change: (id: number, change: AccountChange) =>
       edit(call(client.PATCH('/api/v1/accounts/{id}', { params: { path: { id } }, body: change }))),
+    /** `POST /api/v1/accounts`: creates a manual account; resolves to it. */
+    create: (account: NewAccount) => edit(call(client.POST('/api/v1/accounts', { body: account }))),
+    /** `POST /api/v1/accounts/{id}/balance`: records what's in it today; `account_connected` if it syncs. */
+    updateBalance: (id: number, balanceMinor: number) =>
+      edit(
+        call(
+          client.POST('/api/v1/accounts/{id}/balance', {
+            params: { path: { id } },
+            body: { balance_minor: balanceMinor },
+          }),
+        ),
+      ),
     /** Saves `accounts`' order, shown at once. */
     order: (accounts: Account[]) => {
       queryClient.setQueryData<AccountList>(['accounts'], { accounts })

@@ -511,7 +511,7 @@ pub async fn commit(
             plan: &plan,
             file_name: body.file_name.trim(),
             imported_by: current.login.user_id,
-            today: today(&state).await?,
+            today: state.today().await?,
         },
     )
     .await
@@ -552,21 +552,6 @@ pub async fn commit(
             linked_transfers: plan.transfers.len() as u64,
         }),
     ))
-}
-
-/// Today in the household's timezone.
-async fn today(state: &AppState) -> Result<domain::Date, ApiError> {
-    // Behind the setup gate, so the household exists unless the database lost it.
-    let household = db::household(&state.pool)
-        .await?
-        .ok_or_else(|| ApiError::internal(&"setup is done but there's no household"))?;
-    let today = state
-        .now()
-        .in_tz(household.timezone.name())
-        .map_err(|error| ApiError::internal(&error))?
-        .date();
-    domain::Date::from_ymd(today.year(), today.month(), today.day())
-        .map_err(|error| ApiError::internal(&error))
 }
 
 /// The request's choices, by Actual id.

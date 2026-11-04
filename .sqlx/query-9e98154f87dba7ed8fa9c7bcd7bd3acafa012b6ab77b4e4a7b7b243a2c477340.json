@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT connection_id IS NOT NULL AS \"connected!: bool\" FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "connected!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9e98154f87dba7ed8fa9c7bcd7bd3acafa012b6ab77b4e4a7b7b243a2c477340"
+}

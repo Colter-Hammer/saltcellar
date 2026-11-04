@@ -20,6 +20,7 @@ function account(id: number, fields: Partial<Account> = {}): Account {
     closed: false,
     in_net_worth: true,
     balances_only: false,
+    connection_id: null,
     balance_minor: 0,
     app_balance_minor: 0,
     opening_balance_minor: 0,

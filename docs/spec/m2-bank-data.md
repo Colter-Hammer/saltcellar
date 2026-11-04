@@ -24,7 +24,7 @@ Provider: SimpleFIN Bridge ([ADR-0010](../adr/0010-simplefin-provider.md)). Term
 
 Accounts become editable (they were read-only in milestone 1): name, institution, type, role (budgeted / tracking), balances-only, in net worth, closed, order. Changing role or balances-only on an account with rows asks first, since it changes what counts toward budgets *(agent)*.
 
-**New account** (Accounts, + button): a **manual account** (name, type, role) that asks "What's in it today?"; the answer is its first manual balance snapshot and its opening balance is derived from it. Synced accounts aren't created here; they arrive through the connection.
+**New account** (Accounts, + button): a **manual account** (name, type, role) that asks "What's in it today?"; the answer is its first manual balance snapshot and its opening balance is derived from it. Synced accounts aren't created here; they arrive through the connection. The + opens the form at once, since it makes nothing else; Cash is the type chosen first *(agent)*. The opening balance is the answer itself, dated the day before today in the household's timezone *(agent)*. The new account goes last in the order *(agent)*.
 
 **New accounts prompt.** Every account the connection reports is recorded (`connection_accounts`). One that isn't linked yet waits at the top of Accounts as "N new accounts found", each with **Track · budgeted**, **Track · tracking** or **Ignore**. Nothing from it counts until decided. Tracking one creates its account (type guessed from the name, balances-only chosen at that moment *(agent)*), or links it to an existing one with **This is the same as…**, which moves the existing account (its history and opening balance) onto the new feed account. Ignored accounts are listed under **Ignored** and can be revived with **Start tracking…**.
 
@@ -162,7 +162,7 @@ Mainly for entering something on a synced account before the bank sends it (a ch
 - **Adoption:** step 5 above. After it, the row behaves like any synced row and the badge goes.
 - **Never matched:** a manual row on a synced account still unmatched 14 days after its date gets `not_seen_at_bank`; delete or keep. Never deleted automatically. Drift points at it too.
 - **Transfers:** **Transfer to…** writes a one-leg transfer (`matched_by = 'manual'`) whose other leg fills in when that account syncs. Otherwise a manual row pairs with a synced leg only as a **Transfer candidate** (milestone 3), never automatically.
-- **Manual balance snapshots:** only on accounts with no working sync: manual accounts, and balances-only accounts whose bank link is broken or gone. On a manual account with transactions they behave like bank snapshots (drift, accept as balance adjustment). Never on a syncing account.
+- **Manual balance snapshots:** only on accounts with no working sync: manual accounts, and balances-only accounts whose bank link is broken or gone. On a manual account with transactions they behave like bank snapshots (drift, accept as balance adjustment). Never on a syncing account. **Update balance** on the account's detail enters one, dated today; a second the same day replaces the first, as a bank's later refresh does *(agent)*. Until bank links exist, the rule is "no connection": the API refuses one on any account with `connection_id` set (`account_connected`), and the broken-link case arrives with balances-only sync health *(agent)*. An amount is typed the locale's way, its group marks only between groups of three, so "12.50" isn't twelve hundred in German *(agent)*.
 
 ## CSV and OFX/QFX import
 

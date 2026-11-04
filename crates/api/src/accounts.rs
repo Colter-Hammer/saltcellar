@@ -1,5 +1,6 @@
-//! Accounts (docs/spec/m1-ledger-import.md#accounts): read-only in milestone 1, where the Actual
-//! importer creates them.
+//! Accounts (docs/spec/m1-ledger-import.md#accounts): the Actual importer creates them in
+//! milestone 1; milestone 2 edits them and adds manual accounts with their manual balance
+//! snapshots (docs/spec/m2-bank-data.md#accounts).
 
 use std::collections::BTreeMap;
 
@@ -97,6 +98,10 @@ pub struct Account {
     in_net_worth: bool,
     /// Balances only: it holds balance snapshots and no transactions.
     balances_only: bool,
+    /// Its connection; null for an account with none. One with a connection gets its balance from
+    /// the bank and takes no manual balance.
+    #[schema(required = true)]
+    connection_id: Option<i64>,
     /// The balance shown, its latest balance snapshot, in minor units; null before it has one.
     #[schema(required = true)]
     balance_minor: Option<i64>,
@@ -128,6 +133,7 @@ impl From<db::AccountBalance> for Account {
             closed: account.closed,
             in_net_worth: account.in_net_worth,
             balances_only: !account.has_transactions,
+            connection_id: account.connection_id,
             balance_minor: account.snapshot.map(domain::Money::minor),
             app_balance_minor: account.app_balance.map(domain::Money::minor),
             opening_balance_minor: account.opening.map(|opening| opening.balance.minor()),
@@ -184,6 +190,104 @@ pub async fn get(State(state): State<AppState>, Id(id): Id) -> Result<Json<Accou
     Ok(Json(account.into()))
 }
 
+/// A manual account: one with no connection, whose balance is entered by hand.
+#[derive(Deserialize, ToSchema)]
+pub struct NewAccount {
+    /// Unique among the accounts, ignoring case.
+    name: String,
+    #[serde(rename = "type")]
+    kind: AccountType,
+    role: AccountRole,
+    /// What's in it today, in minor units: its first balance, and its opening balance, dated the
+    /// day before *(agent)*.
+    balance_minor: i64,
+}
+
+/// `POST /api/v1/accounts`: creates a manual account, last in the order.
+#[utoipa::path(
+    post,
+    path = "/api/v1/accounts",
+    operation_id = "addAccount",
+    request_body = NewAccount,
+    responses(
+        (status = 201, description = "The account is created.", body = Account),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 422, description = "`validation_failed`: the name is empty, too long or taken by another account (any case).", body = ErrorEnvelope),
+    ),
+)]
+pub async fn create(
+    State(state): State<AppState>,
+    Body(body): Body<NewAccount>,
+) -> Result<(StatusCode, Json<Account>), ApiError> {
+    let name = valid_name(&body.name)?;
+    let new = db::NewAccount {
+        name: name.clone(),
+        kind: body.kind.into(),
+        role: body.role.into(),
+        balance: domain::Money::from_minor(body.balance_minor),
+        today: state.today().await?,
+    };
+    let id = db::create_manual_account(&state.pool, &new)
+        .await
+        .map_err(|error| name_taken(error, Some(&name)))?;
+    let account = db::account_balance(&state.pool, id)
+        .await?
+        .ok_or_else(|| ApiError::internal(&"the new account is gone"))?;
+    Ok((StatusCode::CREATED, Json(account.into())))
+}
+
+/// What's in a manual account today.
+#[derive(Deserialize, ToSchema)]
+pub struct BalanceUpdate {
+    /// In minor units.
+    balance_minor: i64,
+}
+
+/// `POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,
+/// as a manual balance snapshot. A second one the same day replaces the first.
+#[utoipa::path(
+    post,
+    path = "/api/v1/accounts/{id}/balance",
+    operation_id = "updateAccountBalance",
+    params(("id" = i64, Path, description = "The account.")),
+    request_body = BalanceUpdate,
+    responses(
+        (status = 204, description = "The balance is recorded."),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 404, description = "`not_found`: there's no such account.", body = ErrorEnvelope),
+        (status = 409, description = "`account_connected`: the account has a connection, so its balance comes from the bank.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn update_balance(
+    State(state): State<AppState>,
+    Id(id): Id,
+    Body(body): Body<BalanceUpdate>,
+) -> Result<StatusCode, ApiError> {
+    let today = state.today().await?;
+    let balance = domain::Money::from_minor(body.balance_minor);
+    db::add_manual_snapshot(&state.pool, id, balance, today).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn valid_name(typed: &str) -> Result<domain::categories::Name, ApiError> {
+    domain::categories::Name::new(typed).map_err(|error| {
+        let fields = BTreeMap::from([("name".to_owned(), error.to_string())]);
+        ApiError::validation("Check the name.", fields)
+    })
+}
+
+/// A name taken by another account as the name field's error.
+fn name_taken(error: db::AccountError, name: Option<&domain::categories::Name>) -> ApiError {
+    match (error, name) {
+        (db::AccountError::NameTaken, Some(name)) => {
+            let message = format!("There's already an account called {name}.");
+            let fields = BTreeMap::from([("name".to_owned(), message)]);
+            ApiError::validation("Check the name.", fields)
+        }
+        (error, _) => error.into(),
+    }
+}
+
 /// What to change about an account; whatever is left out stays as it is.
 #[derive(Deserialize, ToSchema)]
 pub struct AccountChange {
@@ -218,16 +322,7 @@ pub async fn change(
     Id(id): Id,
     Body(body): Body<AccountChange>,
 ) -> Result<StatusCode, ApiError> {
-    let name = body
-        .name
-        .as_deref()
-        .map(|typed| {
-            domain::categories::Name::new(typed).map_err(|error| {
-                let fields = BTreeMap::from([("name".to_owned(), error.to_string())]);
-                ApiError::validation("Check the name.", fields)
-            })
-        })
-        .transpose()?;
+    let name = body.name.as_deref().map(valid_name).transpose()?;
     let change = db::AccountChange {
         name: name.clone(),
         institution: body
@@ -241,14 +336,7 @@ pub async fn change(
     };
     db::update_account(&state.pool, id, &change)
         .await
-        .map_err(|error| match (error, name) {
-            (db::AccountError::NameTaken, Some(name)) => {
-                let message = format!("There's already an account called {name}.");
-                let fields = BTreeMap::from([("name".to_owned(), message)]);
-                ApiError::validation("Check the name.", fields)
-            }
-            (error, _) => error.into(),
-        })?;
+        .map_err(|error| name_taken(error, name.as_ref()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -295,6 +383,11 @@ impl From<db::AccountError> for ApiError {
                 StatusCode::CONFLICT,
                 "accounts_changed",
                 "The accounts changed since this screen loaded. Reload and try again.",
+            ),
+            db::AccountError::Connected => ApiError::new(
+                StatusCode::CONFLICT,
+                "account_connected",
+                "This account has a bank connection, so its balance comes from the bank.",
             ),
             db::AccountError::Db(error) => error.into(),
         }

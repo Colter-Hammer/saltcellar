@@ -5,8 +5,14 @@
 // within its group, Budgeted / Tracking / Closed *(agent)*.
 // Phones list them in those groups; desktops show one table in the same order, closed ones marked
 // so *(agent)*. Each opens its detail. With none, the empty state.
+// The + button opens New account, a manual account's form, above the list; it's the only thing +
+// makes, since synced accounts arrive through the connection, so it opens the form straight away
+// *(agent)*. A created account shows in the list at once and the form closes.
+import { Plus } from '@lucide/vue'
 import { computed, ref } from 'vue'
-import { type Account, useAccountEdits, useAccounts } from '@/api/accounts'
+import { type Account, type NewAccount, useAccountEdits, useAccounts } from '@/api/accounts'
+import { ApiError } from '@/api/client'
+import NewAccountForm from '@/components/NewAccountForm.vue'
 import {
   describeAccount,
   dropAccount,
@@ -24,6 +30,27 @@ const accounts = useAccounts()
 const formatting = useFormatting()
 const edits = useAccountEdits()
 const problem = ref<string>()
+const adding = ref(false)
+const nameError = ref<string>()
+
+async function create(account: NewAccount) {
+  nameError.value = undefined
+  problem.value = undefined
+  try {
+    await edits.create(account)
+    adding.value = false
+  } catch (error) {
+    const name = error instanceof ApiError ? error.fields.name : undefined
+    if (name !== undefined) nameError.value = name
+    else problem.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+function stopAdding() {
+  adding.value = false
+  nameError.value = undefined
+  problem.value = undefined
+}
 
 async function saveOrder(order: Account[]) {
   problem.value = undefined
@@ -59,6 +86,24 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
     </p>
 
     <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
+
+    <NewAccountForm
+      v-if="adding"
+      :formatting="formatting"
+      :name-error="nameError"
+      @save="create"
+      @cancel="stopAdding"
+    />
+    <button
+      v-else-if="accounts.isSuccess.value"
+      type="button"
+      aria-label="New account"
+      title="New account"
+      class="inline-flex items-center gap-1 self-end rounded-md border px-3 py-2"
+      @click="adding = true"
+    >
+      <Plus class="size-4" aria-hidden="true" />
+    </button>
 
     <template v-if="empty">
       <p class="text-sm text-muted-foreground">No accounts yet.</p>

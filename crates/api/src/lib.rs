@@ -52,6 +52,8 @@ pub use reset::{IssueResetError, ResetLink, issue_password_reset};
         household::get,
         accounts::list,
         accounts::get,
+        accounts::create,
+        accounts::update_balance,
         accounts::change,
         accounts::order,
         transactions::list,
@@ -139,6 +141,21 @@ impl AppState {
         (self.clock)()
     }
 
+    /// Today in the household's timezone, by the state's clock.
+    async fn today(&self) -> Result<domain::Date, ApiError> {
+        // Behind the setup gate, so the household exists unless the database lost it.
+        let household = db::household(&self.pool)
+            .await?
+            .ok_or_else(|| ApiError::internal(&"setup is done but there's no household"))?;
+        let today = self
+            .now()
+            .in_tz(household.timezone.name())
+            .map_err(|error| ApiError::internal(&error))?
+            .date();
+        domain::Date::from_ymd(today.year(), today.month(), today.day())
+            .map_err(|error| ApiError::internal(&error))
+    }
+
     /// The code that claims the install, until setup is finished. The caller prints it to the log,
     /// the one secret ever logged on purpose.
     #[must_use]
@@ -166,9 +183,10 @@ pub fn router(state: AppState) -> Router {
         .route("/profile/palette", put(profile::change_palette))
         .route("/profile/password", post(profile::change_password))
         .route("/household", get(household::get))
-        .route("/accounts", get(accounts::list))
+        .route("/accounts", get(accounts::list).post(accounts::create))
         .route("/accounts/order", put(accounts::order))
         .route("/accounts/{id}", get(accounts::get).patch(accounts::change))
+        .route("/accounts/{id}/balance", post(accounts::update_balance))
         .route("/transactions", get(transactions::list))
         .route("/transactions/{id}", get(transactions::get))
         .route("/transactions/{id}/category", put(undecided::set_category))

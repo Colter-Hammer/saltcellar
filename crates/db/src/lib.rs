@@ -16,8 +16,9 @@ use std::time::Duration;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 pub use accounts::{
-    Account, AccountBalance, AccountChange, AccountError, account_balance, account_balances,
-    accounts, set_account_order, update_account,
+    Account, AccountBalance, AccountChange, AccountError, NewAccount, account_balance,
+    account_balances, accounts, add_manual_snapshot, create_manual_account, set_account_order,
+    update_account,
 };
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,

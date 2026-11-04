@@ -1,4 +1,4 @@
-//! Editing and ordering accounts through the API.
+//! Creating, editing and ordering accounts, and manual balances, through the API.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -110,4 +110,68 @@ async fn orders_accounts_only_by_listing_every_one_once() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert_eq!(names(&app).await, ["B", "A"]);
+}
+
+#[tokio::test]
+async fn a_manual_account_starts_from_whats_in_it_today_and_takes_new_balances() {
+    let app = set_up().await;
+    let wallet =
+        json!({"name": "Wallet", "type": "cash", "role": "budgeted", "balance_minor": 4200});
+    let (status, account) = call(&app, "POST", "/api/v1/accounts", &wallet).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(account["name"], "Wallet");
+    assert_eq!(account["connection_id"], Value::Null);
+    assert_eq!(account["balance_minor"], 4200);
+    // Today in Berlin is 2026-10-28; the opening balance is dated the day before.
+    assert_eq!(account["opening_balance_minor"], 4200);
+    assert_eq!(account["opening_date"], "2026-10-27");
+    assert_eq!(names(&app).await, ["Wallet"]);
+
+    let (status, body) = call(
+        &app,
+        "POST",
+        "/api/v1/accounts",
+        &json!({
+            "name": "WALLET", "type": "cash", "role": "budgeted", "balance_minor": 0,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body["error"]["fields"]["name"].is_string());
+
+    let id = account["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/accounts/{id}/balance");
+    let (status, _) = call(&app, "POST", &uri, &json!({"balance_minor": 3150})).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, account) = call(&app, "GET", &format!("/api/v1/accounts/{id}"), &Value::Null).await;
+    assert_eq!(account["balance_minor"], 3150);
+    // No rows, so the app's own balance is the opening one: drift of -10.50.
+    assert_eq!(account["app_balance_minor"], 4200);
+}
+
+#[tokio::test]
+async fn a_manual_balance_is_refused_on_a_connected_account() {
+    let app = set_up().await;
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO accounts (name, type, role, connection_id) VALUES ('Synced', 'checking', 'budgeted', 7)
+         RETURNING id",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .unwrap();
+    let body = json!({"balance_minor": 100});
+    let (status, error) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/accounts/{id}/balance"),
+        &body,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(error["error"]["code"], "account_connected");
+    let (_, account) = call(&app, "GET", &format!("/api/v1/accounts/{id}"), &Value::Null).await;
+    assert_eq!(account["connection_id"], 7);
+    assert_eq!(account["balance_minor"], Value::Null);
+    let (status, _) = call(&app, "POST", "/api/v1/accounts/999/balance", &body).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

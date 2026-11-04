@@ -117,6 +117,38 @@ export function formatMoney(
     .join('')
 }
 
+/**
+ * An amount as typed, in integer minor units, or `null` if it isn't one: digits with the locale's
+ * decimal mark and at most the currency's places, a leading minus, and the locale's group marks
+ * only between groups of three, so "12.50" isn't read as twelve hundred in German *(agent)*.
+ * Spaces and the currency's symbol are ignored.
+ */
+export function parseMoney(
+  text: string,
+  formatting: Pick<Formatting, 'currency' | 'locale'> = DEFAULT,
+): number | null {
+  const parts = new Intl.NumberFormat(formatting.locale, {
+    style: 'currency',
+    currency: formatting.currency,
+  }).formatToParts(-12345.6)
+  const mark = (type: Intl.NumberFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+  const places = parts.find((part) => part.type === 'fraction')?.value.length ?? 0
+  const [decimal, group, symbol] = [mark('decimal'), mark('group'), mark('currency')]
+  let typed = text.replace(/[\s\u00a0\u202f]/g, '').replace(/^[-\u2212]/, '-')
+  if (symbol) typed = typed.replace(symbol, '')
+  const escape = (literal: string) => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Group marks that are spaces were stripped with the rest.
+  const grouped = /\s/.test(group) || group === '' ? '' : `|\\d{1,3}(?:${escape(group)}\\d{3})+`
+  const fraction = places > 0 ? `(?:${escape(decimal)}(\\d{1,${String(places)}}))?` : ''
+  const match = new RegExp(`^(-?)(\\d+${grouped})${fraction}$`).exec(typed)
+  if (!match) return null
+  const [, sign = '', units = '', cents = ''] = match
+  const digits = (group ? units.replaceAll(group, '') : units) + cents.padEnd(places, '0')
+  const minor = Number(`${sign}${digits}`)
+  return Number.isSafeInteger(minor) ? (Object.is(minor, -0) ? 0 : minor) : null
+}
+
 const PLAIN_DATE = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /** A plain `YYYY-MM-DD` date, in the locale's medium style. */
