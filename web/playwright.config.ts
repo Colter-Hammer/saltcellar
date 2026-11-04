@@ -54,6 +54,7 @@ export default defineConfig({
         'categories.spec.ts',
         'import-commit.spec.ts',
         'accounts.spec.ts',
+        'accounts-edit.spec.ts',
         'transactions.spec.ts',
         'undecided.spec.ts',
         'imports.spec.ts',
@@ -70,6 +71,7 @@ export default defineConfig({
         'categories.spec.ts',
         'import-commit.spec.ts',
         'accounts.spec.ts',
+        'accounts-edit.spec.ts',
         'transactions.spec.ts',
         'undecided.spec.ts',
         'imports.spec.ts',
@@ -100,12 +102,19 @@ export default defineConfig({
       dependencies: ['import-commit'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
+    // Then editing an imported account, once the specs above have read the accounts as imported.
+    {
+      name: 'accounts-edit',
+      testMatch: 'accounts-edit.spec.ts',
+      dependencies: ['accounts', 'transactions'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
     // Last, From Actual, undecided: it sets categories on the imported rows, which the specs above
     // read.
     {
       name: 'undecided',
       testMatch: 'undecided.spec.ts',
-      dependencies: ['accounts', 'transactions'],
+      dependencies: ['accounts-edit'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     // Last of all, Settings › Imports: it undoes the import and imports again.

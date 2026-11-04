@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Settings › Categories (docs/spec/m1-ledger-import.md#categories): groups holding categories, to
-// add, rename, reorder, hide and delete. Desktop drags by the grip; every width also has Move up /
-// Move down in each row's menu *(agent)*. Hidden ones wait in a Hidden section at the foot.
-import { GripVertical } from '@lucide/vue'
+// add, rename, reorder, hide and delete. Every width drags a row by its grip (Up / Down on the grip
+// work too): the row lifts, the others slide to open its gap, and the order is saved once on drop.
+// Every row's menu also has Move up / Move down *(agent)*. Hidden ones wait in a Hidden section at
+// the foot.
 import { computed, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import {
@@ -15,22 +16,38 @@ import ActionMenu, { type Action } from '@/components/ActionMenu.vue'
 import GroupMark from '@/components/GroupMark.vue'
 import IconPicker from '@/components/IconPicker.vue'
 import NameForm from '@/components/NameForm.vue'
+import SortGrip from '@/components/SortGrip.vue'
 import {
   canMoveCategory,
   canMoveGroup,
-  dropCategory,
-  dropGroup,
+  describeSpot,
+  dropOnto,
   hiddenOnes,
   moveCategory,
   moveGroup,
   moveToGroup,
+  stepOnto,
 } from '@/lib/categories'
 import { groupIcon } from '@/lib/groups'
+import { useSortable } from '@/lib/sortable'
 
 const categories = useCategories()
 const edits = useCategoryEdits()
 
-const groups = computed(() => categories.data.value?.groups ?? [])
+const sortable = useSortable<CategoryGroup[]>({
+  model: () => categories.data.value?.groups ?? [],
+  drop: dropOnto,
+  step: stepOnto,
+  signature: (order) =>
+    order
+      .map((group) => `${String(group.id)}:${group.categories.map((c) => c.id).join()}`)
+      .join(' '),
+  describe: describeSpot,
+  save: (order) => attempt(() => edits.order(order)),
+})
+
+/** The groups as they stand, the lifted row already in its new place. */
+const groups = computed(() => sortable.shown.value)
 const shown = computed(() => groups.value.filter((group) => !group.hidden))
 const hidden = computed(() => hiddenOnes(groups.value))
 /** Start empty only lasts until a group exists: with none, a reload offers the choice again. */
@@ -181,48 +198,6 @@ async function deleteCategory(id: number) {
 async function hideInstead(id: number) {
   await attempt(() => edits.changeCategory(id, { hidden: true }))
 }
-
-// ── Dragging, on desktop ──
-
-let dragging: { kind: 'group' | 'category'; id: number } | null = null
-/** Where the drop put things: saved once the drag is over, so the list doesn't move under it. */
-let dropped: CategoryGroup[] | null = null
-
-function startDrag(event: DragEvent, kind: 'group' | 'category', id: number) {
-  dragging = { kind, id }
-  dropped = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', `${kind}:${String(id)}`)
-  }
-}
-
-/** A group dropped on a group lands in its place; a category dropped on a group goes to its end. */
-function dropOnGroup(groupId: number) {
-  const dragged = dragging
-  if (dragged === null) return
-  dropped =
-    dragged.kind === 'group'
-      ? dropGroup(groups.value, dragged.id, groupId)
-      : moveToGroup(groups.value, dragged.id, groupId)
-}
-
-/** A category dropped on a category takes its place; a group dropped there lands on its group. */
-function dropOnCategory(groupId: number, categoryId: number) {
-  const dragged = dragging
-  if (dragged === null) return
-  dropped =
-    dragged.kind === 'group'
-      ? dropGroup(groups.value, dragged.id, groupId)
-      : dropCategory(groups.value, dragged.id, categoryId)
-}
-
-function endDrag() {
-  const order = dropped
-  dragging = null
-  dropped = null
-  if (order !== null) void attempt(() => edits.order(order))
-}
 </script>
 
 <template>
@@ -275,23 +250,17 @@ function endDrag() {
         v-for="group in shown"
         :key="group.id"
         :aria-labelledby="`group-${group.id}`"
-        class="rounded-xl border"
+        class="rounded-xl border bg-background"
+        data-sort-kind="group"
+        :data-sort-id="group.id"
         :data-testid="`group-${group.name}`"
       >
-        <div
-          class="flex items-center gap-2 border-b bg-muted/50 p-2"
-          @dragover.prevent
-          @drop.prevent="dropOnGroup(group.id)"
-        >
-          <span
-            draggable="true"
-            :aria-label="`Drag ${group.name}`"
-            class="hidden cursor-grab text-muted-foreground lg:block"
-            @dragstart="startDrag($event, 'group', group.id)"
-            @dragend="endDrag"
-          >
-            <GripVertical class="size-4" aria-hidden="true" />
-          </span>
+        <div class="flex items-center gap-2 border-b bg-muted/50 p-2" data-sort-edge="start">
+          <SortGrip
+            :label="`Reorder ${group.name}`"
+            @pointerdown="sortable.start($event, 'group', group.id)"
+            @keydown="sortable.key($event, 'group', group.id)"
+          />
           <GroupMark :group="group.id" />
           <NameForm
             v-if="editing === `rename-group:${group.id}`"
@@ -333,19 +302,15 @@ function endDrag() {
           <template v-for="category in group.categories" :key="category.id">
             <li
               v-if="!category.hidden"
-              class="flex items-center gap-2 p-2"
-              @dragover.prevent
-              @drop.prevent.stop="dropOnCategory(group.id, category.id)"
+              class="flex items-center gap-2 bg-background p-2"
+              data-sort-kind="category"
+              :data-sort-id="category.id"
             >
-              <span
-                draggable="true"
-                :aria-label="`Drag ${category.name}`"
-                class="hidden cursor-grab text-muted-foreground lg:block"
-                @dragstart.stop="startDrag($event, 'category', category.id)"
-                @dragend="endDrag"
-              >
-                <GripVertical class="size-4" aria-hidden="true" />
-              </span>
+              <SortGrip
+                :label="`Reorder ${category.name}`"
+                @pointerdown="sortable.start($event, 'category', category.id)"
+                @keydown="sortable.key($event, 'category', category.id)"
+              />
               <GroupMark :category="category.id" dot-only />
               <NameForm
                 v-if="editing === `rename-category:${category.id}`"
@@ -365,7 +330,7 @@ function endDrag() {
               </template>
             </li>
           </template>
-          <li class="p-2">
+          <li class="p-2" data-sort-edge="end">
             <NameForm
               v-if="editing === `add-category:${group.id}`"
               :label="`New category in ${group.name}`"
@@ -480,5 +445,7 @@ function endDrag() {
         </ul>
       </section>
     </template>
+
+    <p role="status" class="sr-only">{{ sortable.announcement.value }}</p>
   </div>
 </template>

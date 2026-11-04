@@ -41,6 +41,50 @@
         }
       }
     },
+    "/api/v1/accounts/order": {
+      "put": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "`PUT /api/v1/accounts/order`: puts every account in order.",
+        "operationId": "orderAccounts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The order is saved."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`accounts_changed`: the order doesn't list every account exactly once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/accounts/{id}": {
       "get": {
         "tags": [
@@ -83,6 +127,70 @@
           },
           "404": {
             "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "`PATCH /api/v1/accounts/{id}`: edits an account.",
+        "operationId": "changeAccount",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The account.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The account is changed."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: the name is empty, too long or taken by another account (any case).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2037,6 +2145,7 @@
           "type",
           "role",
           "closed",
+          "in_net_worth",
           "balances_only",
           "balance_minor",
           "app_balance_minor",
@@ -2072,6 +2181,10 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "in_net_worth": {
+            "type": "boolean",
+            "description": "Whether it counts in net worth."
           },
           "institution": {
             "type": [
@@ -2128,6 +2241,64 @@
           "skip"
         ]
       },
+      "AccountChange": {
+        "type": "object",
+        "description": "What to change about an account; whatever is left out stays as it is.",
+        "properties": {
+          "balances_only": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "closed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "in_net_worth": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "institution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An empty one clears it *(agent)*."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Unique among the accounts, ignoring case."
+          },
+          "role": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "AccountList": {
         "type": "object",
         "required": [
@@ -2140,6 +2311,22 @@
               "$ref": "#/components/schemas/Account"
             },
             "description": "In order, closed ones included."
+          }
+        }
+      },
+      "AccountOrder": {
+        "type": "object",
+        "required": [
+          "accounts"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Every account's id exactly once, in order, closed ones included."
           }
         }
       },

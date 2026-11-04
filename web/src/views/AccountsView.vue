@@ -1,17 +1,51 @@
 <script setup lang="ts">
-// Accounts (docs/spec/m1-ledger-import.md#accounts), read-only: the Actual importer creates them.
-// Phones list them grouped Budgeted / Tracking / Closed; desktops show one table in the same order,
-// closed ones marked so *(agent)*. Each opens its detail. With none, the empty state.
-import { computed } from 'vue'
-import { useAccounts } from '@/api/accounts'
-import { groupAccounts, roleLabel, typeLabel } from '@/lib/accounts'
+// Accounts (docs/spec/m1-ledger-import.md#accounts, editable per docs/spec/m2-bank-data.md#accounts).
+// Their order is set here, on both widths, by dragging a row by its grip (or Up / Down on the grip):
+// the row lifts, the others slide to open its gap, and the order is saved once on drop. A row moves
+// within its group, Budgeted / Tracking / Closed *(agent)*.
+// Phones list them in those groups; desktops show one table in the same order, closed ones marked
+// so *(agent)*. Each opens its detail. With none, the empty state.
+import { computed, ref } from 'vue'
+import { type Account, useAccountEdits, useAccounts } from '@/api/accounts'
+import {
+  describeAccount,
+  dropAccount,
+  groupAccounts,
+  roleLabel,
+  stepAccount,
+  typeLabel,
+} from '@/lib/accounts'
 import Money from '@/components/Money.vue'
+import SortGrip from '@/components/SortGrip.vue'
 import { formatDate, useFormatting } from '@/lib/format'
+import { useSortable } from '@/lib/sortable'
 
 const accounts = useAccounts()
 const formatting = useFormatting()
+const edits = useAccountEdits()
+const problem = ref<string>()
 
-const list = computed(() => accounts.data.value?.accounts ?? [])
+async function saveOrder(order: Account[]) {
+  problem.value = undefined
+  try {
+    await edits.order(order)
+  } catch (error) {
+    problem.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+const sortable = useSortable<Account[]>({
+  model: () => accounts.data.value?.accounts ?? [],
+  drop: (order, drag, over) =>
+    over.kind === 'account' ? dropAccount(order, drag.id, over.id) : null,
+  step: (order, drag, by) => stepAccount(order, drag.id, by),
+  signature: (order) => order.map((account) => account.id).join(),
+  describe: (order, drag) => describeAccount(order, drag.id),
+  save: saveOrder,
+})
+
+/** The accounts as they stand, the lifted one already in its new place. */
+const list = computed(() => sortable.shown.value)
 const groups = computed(() => groupAccounts(list.value))
 /** The table's rows: the groups' order, so closed ones come last. */
 const rows = computed(() => groups.value.flatMap((group) => group.accounts))
@@ -23,6 +57,8 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
     <p v-if="accounts.isError.value" role="alert" class="text-sm text-destructive">
       {{ accounts.error.value?.message }}
     </p>
+
+    <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
 
     <template v-if="empty">
       <p class="text-sm text-muted-foreground">No accounts yet.</p>
@@ -48,10 +84,21 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
           {{ group.name }}
         </h2>
         <ul class="divide-y rounded-xl border">
-          <li v-for="account in group.accounts" :key="account.id">
+          <li
+            v-for="account in group.accounts"
+            :key="account.id"
+            data-sort-kind="account"
+            :data-sort-id="account.id"
+            class="flex items-center bg-background pl-1"
+          >
+            <SortGrip
+              :label="`Reorder ${account.name}`"
+              @pointerdown="sortable.start($event, 'account', account.id)"
+              @keydown="sortable.key($event, 'account', account.id)"
+            />
             <RouterLink
               :to="`/accounts/${String(account.id)}`"
-              class="flex items-center gap-3 px-4 py-3"
+              class="flex flex-1 items-center gap-3 py-3 pr-4 pl-2"
             >
               <span class="flex min-w-0 flex-1 flex-col">
                 <span class="truncate">{{ account.name }}</span>
@@ -77,8 +124,20 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
           </tr>
         </thead>
         <tbody class="divide-y">
-          <tr v-for="account in rows" :key="account.id" class="h-row-dense">
+          <tr
+            v-for="account in rows"
+            :key="account.id"
+            data-sort-kind="account"
+            :data-sort-id="account.id"
+            class="h-row-dense bg-background"
+          >
             <th scope="row" class="py-1 pr-3 text-left font-normal">
+              <SortGrip
+                :label="`Reorder ${account.name}`"
+                class="mr-2 align-middle"
+                @pointerdown="sortable.start($event, 'account', account.id)"
+                @keydown="sortable.key($event, 'account', account.id)"
+              />
               <RouterLink :to="`/accounts/${String(account.id)}`" class="hover:underline">
                 {{ account.name }}
               </RouterLink>
@@ -102,5 +161,7 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
         </tbody>
       </table>
     </template>
+
+    <p role="status" class="sr-only">{{ sortable.announcement.value }}</p>
   </div>
 </template>

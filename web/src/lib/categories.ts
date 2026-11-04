@@ -130,3 +130,62 @@ export function hiddenOnes<G extends Item, C extends Item>(groups: readonly Grou
       ),
   }
 }
+
+/** What is dragged or dropped on in Settings › Categories. */
+interface Spot {
+  kind: string
+  id: number
+  /** Dropped on the start or end of a group (its header, its foot) rather than on a row. */
+  edge?: 'start' | 'end'
+}
+
+/**
+ * The groups with `drag` dropped on `over`, or null if that's nowhere it goes: a group takes the
+ * place of the group it's dropped on (or holds the category it's dropped on); a category takes the
+ * place of the category it's dropped on, or goes to the start or end of the group whose header or
+ * foot it's dropped on *(agent)*.
+ */
+export function dropOnto<G extends Item, C extends Item>(
+  groups: readonly Group<G, C>[],
+  drag: Spot,
+  over: Spot,
+): Group<G, C>[] | null {
+  if (drag.kind === 'group' && over.kind === 'group') {
+    return drag.id === over.id ? null : dropGroup(groups, drag.id, over.id)
+  }
+  if (drag.kind !== 'category') return null
+  if (over.kind === 'category') {
+    return drag.id === over.id ? null : dropCategory(groups, drag.id, over.id)
+  }
+  if (over.kind !== 'group' || over.edge === undefined) return null
+  const first = groups
+    .find((group) => group.id === over.id)
+    ?.categories.find((category) => category.id !== drag.id && !category.hidden)
+  return moveToGroup(groups, drag.id, over.id, over.edge === 'start' ? first?.id : undefined)
+}
+
+/** The groups with `drag` moved one place up (-1) or down (1) among its siblings, or null. */
+export function stepOnto<G extends Item, C extends Item>(
+  groups: readonly Group<G, C>[],
+  drag: Spot,
+  by: -1 | 1,
+): Group<G, C>[] | null {
+  if (drag.kind === 'group') return step(groups, drag.id, by)
+  return canMoveCategory(groups, drag.id, by) ? moveCategory(groups, drag.id, by) : null
+}
+
+/** The place of `drag` for a screen reader: "Food, 2 of 5" or "Groceries, 1 of 3 in Food". */
+export function describeSpot<G extends Item & { name: string }, C extends Item & { name: string }>(
+  groups: readonly Group<G, C>[],
+  drag: Spot,
+): string {
+  const shown = groups.filter((group) => !group.hidden)
+  if (drag.kind === 'group') {
+    const at = shown.findIndex((group) => group.id === drag.id)
+    return `${shown[at]?.name ?? ''}, ${String(at + 1)} of ${String(shown.length)}`
+  }
+  const group = groupOf(groups, drag.id)
+  const siblings = group?.categories.filter((category) => !category.hidden) ?? []
+  const at = siblings.findIndex((category) => category.id === drag.id)
+  return `${siblings[at]?.name ?? ''}, ${String(at + 1)} of ${String(siblings.length)} in ${group?.name ?? ''}`
+}

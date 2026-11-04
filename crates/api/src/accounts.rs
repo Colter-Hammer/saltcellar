@@ -1,13 +1,15 @@
 //! Accounts (docs/spec/m1-ledger-import.md#accounts): read-only in milestone 1, where the Actual
 //! importer creates them.
 
+use std::collections::BTreeMap;
+
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::error::{ErrorEnvelope, Id};
+use crate::error::{Body, ErrorEnvelope, Id};
 use crate::{ApiError, AppState};
 
 /// What kind of account it is.
@@ -91,6 +93,8 @@ pub struct Account {
     kind: AccountType,
     role: AccountRole,
     closed: bool,
+    /// Whether it counts in net worth.
+    in_net_worth: bool,
     /// Balances only: it holds balance snapshots and no transactions.
     balances_only: bool,
     /// The balance shown, its latest balance snapshot, in minor units; null before it has one.
@@ -122,6 +126,7 @@ impl From<db::AccountBalance> for Account {
             kind: account.kind.into(),
             role: account.role.into(),
             closed: account.closed,
+            in_net_worth: account.in_net_worth,
             balances_only: !account.has_transactions,
             balance_minor: account.snapshot.map(domain::Money::minor),
             app_balance_minor: account.app_balance.map(domain::Money::minor),
@@ -177,4 +182,121 @@ pub async fn get(State(state): State<AppState>, Id(id): Id) -> Result<Json<Accou
         )
     })?;
     Ok(Json(account.into()))
+}
+
+/// What to change about an account; whatever is left out stays as it is.
+#[derive(Deserialize, ToSchema)]
+pub struct AccountChange {
+    /// Unique among the accounts, ignoring case.
+    name: Option<String>,
+    /// An empty one clears it *(agent)*.
+    institution: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<AccountType>,
+    role: Option<AccountRole>,
+    balances_only: Option<bool>,
+    in_net_worth: Option<bool>,
+    closed: Option<bool>,
+}
+
+/// `PATCH /api/v1/accounts/{id}`: edits an account.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/accounts/{id}",
+    operation_id = "changeAccount",
+    params(("id" = i64, Path, description = "The account.")),
+    request_body = AccountChange,
+    responses(
+        (status = 204, description = "The account is changed."),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 404, description = "`not_found`: there's no such account.", body = ErrorEnvelope),
+        (status = 422, description = "`validation_failed`: the name is empty, too long or taken by another account (any case).", body = ErrorEnvelope),
+    ),
+)]
+pub async fn change(
+    State(state): State<AppState>,
+    Id(id): Id,
+    Body(body): Body<AccountChange>,
+) -> Result<StatusCode, ApiError> {
+    let name = body
+        .name
+        .as_deref()
+        .map(|typed| {
+            domain::categories::Name::new(typed).map_err(|error| {
+                let fields = BTreeMap::from([("name".to_owned(), error.to_string())]);
+                ApiError::validation("Check the name.", fields)
+            })
+        })
+        .transpose()?;
+    let change = db::AccountChange {
+        name: name.clone(),
+        institution: body
+            .institution
+            .map(|typed| Some(typed.trim().to_owned()).filter(|text| !text.is_empty())),
+        kind: body.kind.map(Into::into),
+        role: body.role.map(Into::into),
+        balances_only: body.balances_only,
+        in_net_worth: body.in_net_worth,
+        closed: body.closed,
+    };
+    db::update_account(&state.pool, id, &change)
+        .await
+        .map_err(|error| match (error, name) {
+            (db::AccountError::NameTaken, Some(name)) => {
+                let message = format!("There's already an account called {name}.");
+                let fields = BTreeMap::from([("name".to_owned(), message)]);
+                ApiError::validation("Check the name.", fields)
+            }
+            (error, _) => error.into(),
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AccountOrder {
+    /// Every account's id exactly once, in order, closed ones included.
+    accounts: Vec<i64>,
+}
+
+/// `PUT /api/v1/accounts/order`: puts every account in order.
+#[utoipa::path(
+    put,
+    path = "/api/v1/accounts/order",
+    operation_id = "orderAccounts",
+    request_body = AccountOrder,
+    responses(
+        (status = 204, description = "The order is saved."),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 409, description = "`accounts_changed`: the order doesn't list every account exactly once.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn order(
+    State(state): State<AppState>,
+    Body(body): Body<AccountOrder>,
+) -> Result<StatusCode, ApiError> {
+    db::set_account_order(&state.pool, &body.accounts).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+impl From<db::AccountError> for ApiError {
+    fn from(error: db::AccountError) -> Self {
+        match error {
+            db::AccountError::NotFound => ApiError::new(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "There's no such account.",
+            ),
+            db::AccountError::NameTaken => ApiError::new(
+                StatusCode::CONFLICT,
+                "name_taken",
+                "Another account has that name.",
+            ),
+            db::AccountError::Order => ApiError::new(
+                StatusCode::CONFLICT,
+                "accounts_changed",
+                "The accounts changed since this screen loaded. Reload and try again.",
+            ),
+            db::AccountError::Db(error) => error.into(),
+        }
+    }
 }

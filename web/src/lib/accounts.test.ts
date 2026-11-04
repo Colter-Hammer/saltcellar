@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Account } from '@/api/accounts'
-import { groupAccounts, roleLabel, transactionsLink, typeLabel } from './accounts'
+import {
+  describeAccount,
+  dropAccount,
+  groupAccounts,
+  roleLabel,
+  stepAccount,
+  transactionsLink,
+  typeLabel,
+} from './accounts'
 
 function account(id: number, fields: Partial<Account> = {}): Account {
   return {
@@ -10,6 +18,7 @@ function account(id: number, fields: Partial<Account> = {}): Account {
     type: 'checking',
     role: 'budgeted',
     closed: false,
+    in_net_worth: true,
     balances_only: false,
     balance_minor: 0,
     app_balance_minor: 0,
@@ -66,5 +75,49 @@ describe('transactionsLink', () => {
 
   it('is none for a balances-only account', () => {
     expect(transactionsLink(account(7, { balances_only: true }))).toBeNull()
+  })
+})
+
+describe('ordering accounts', () => {
+  const ids = (accounts: Account[]) => accounts.map((a) => a.id)
+  const all = [
+    account(1),
+    account(2, { role: 'tracking' }),
+    account(3),
+    account(4, { closed: true }),
+    account(5),
+  ]
+  it('drops an account where another is, in its own group only', () => {
+    // Dragged up it lands before the one it's dropped on, dragged down after it.
+    expect(ids(dropAccount(all, 3, 1) ?? [])).toEqual([3, 2, 1, 4, 5])
+    expect(ids(dropAccount(all, 1, 5) ?? [])).toEqual([3, 2, 5, 4, 1])
+    expect(ids(dropAccount(all, 5, 1) ?? [])).toEqual([5, 2, 1, 4, 3])
+    // Tracking and closed accounts keep their slots.
+    expect(dropAccount(all, 1, 2)).toBeNull()
+    expect(dropAccount(all, 1, 4)).toBeNull()
+  })
+
+  it('drops nothing on itself or on nothing', () => {
+    expect(dropAccount(all, 1, 1)).toBeNull()
+    expect(dropAccount(all, 1, 99)).toBeNull()
+    expect(dropAccount(all, 99, 1)).toBeNull()
+  })
+
+  it('steps one place up or down in its group, and not past the ends', () => {
+    expect(ids(stepAccount(all, 3, -1) ?? [])).toEqual([3, 2, 1, 4, 5])
+    expect(ids(stepAccount(all, 1, 1) ?? [])).toEqual([3, 2, 1, 4, 5])
+    expect(stepAccount(all, 1, -1)).toBeNull()
+    expect(stepAccount(all, 5, 1)).toBeNull()
+    expect(stepAccount(all, 2, 1)).toBeNull()
+  })
+
+  it('steps closed accounts too', () => {
+    const closed = [account(1, { closed: true }), account(2, { closed: true })]
+    expect(ids(stepAccount(closed, 2, -1) ?? [])).toEqual([2, 1])
+  })
+
+  it('says where an account stands in its group', () => {
+    expect(describeAccount(all, 3)).toBe('Account 3, 2 of 3 in Budgeted')
+    expect(describeAccount(all, 4)).toBe('Account 4, 1 of 1 in Closed')
   })
 })

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET name = coalesce(?1, name),\n           institution = CASE WHEN ?2 THEN ?3 ELSE institution END,\n           type = coalesce(?4, type), role = coalesce(?5, role),\n           has_transactions = coalesce(?6, has_transactions),\n           in_net_worth = coalesce(?7, in_net_worth), closed = coalesce(?8, closed)\n         WHERE id = ?9",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "0823e580698543dbf6b65ff066613e82b4415ea9e46982db4fdecdefef079aea"
+}

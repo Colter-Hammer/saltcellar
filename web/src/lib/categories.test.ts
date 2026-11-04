@@ -3,11 +3,14 @@ import {
   canMoveCategory,
   canMoveGroup,
   dropCategory,
+  describeSpot,
   dropGroup,
+  dropOnto,
   hiddenOnes,
   moveCategory,
   moveGroup,
   moveToGroup,
+  stepOnto,
 } from './categories'
 
 const category = (id: number, hidden = false) => ({ id, hidden })
@@ -108,4 +111,69 @@ it("lists hidden groups, then hidden categories of shown groups, but not a hidde
   const hidden = hiddenOnes(groups)
   expect(ids(hidden.groups)).toEqual([2])
   expect(hidden.categories.map(({ category, group }) => [category.id, group.id])).toEqual([[13, 1]])
+})
+
+describe('dropping on what the pointer is over', () => {
+  const group = (id: number) => ({ kind: 'group', id })
+  const cat = (id: number) => ({ kind: 'category', id })
+
+  it('puts a group in the place of the group it is dropped on', () => {
+    expect(ids(dropOnto(groups, group(3), group(1)) ?? [])).toEqual([3, 1, 2])
+    expect(ids(dropOnto(groups, group(1), group(3)) ?? [])).toEqual([2, 3, 1])
+  })
+
+  it('leaves a group dropped on a category alone, so its group-mates are not mistaken for it', () => {
+    expect(dropOnto(groups, group(1), cat(31))).toBeNull()
+  })
+
+  it('puts a category in the place of the category it is dropped on, in any group', () => {
+    expect(order(dropOnto(groups, cat(14), cat(11)) ?? [])[0]).toEqual([1, [14, 11, 12, 13]])
+    expect(order(dropOnto(groups, cat(12), cat(31)) ?? [])[2]).toEqual([3, [12, 31]])
+  })
+
+  it('puts a category at the start or the end of the group whose header or foot it is on', () => {
+    expect(order(dropOnto(groups, cat(31), { ...group(1), edge: 'start' }) ?? [])[0]).toEqual([
+      1,
+      [31, 11, 12, 13, 14],
+    ])
+    expect(order(dropOnto(groups, cat(11), { ...group(1), edge: 'end' }) ?? [])[0]).toEqual([
+      1,
+      [12, 13, 14, 11],
+    ])
+  })
+
+  it('goes nowhere on a group without an edge, or on itself', () => {
+    expect(dropOnto(groups, cat(31), group(1))).toBeNull()
+    expect(dropOnto(groups, cat(11), cat(11))).toBeNull()
+    expect(dropOnto(groups, group(1), group(1))).toBeNull()
+  })
+})
+
+describe('stepping what has the keyboard', () => {
+  it('moves a group or a category one place, and not past the ends', () => {
+    expect(ids(stepOnto(groups, { kind: 'group', id: 3 }, -1) ?? [])).toEqual([3, 2, 1])
+    expect(stepOnto(groups, { kind: 'group', id: 1 }, -1)).toBeNull()
+    expect(order(stepOnto(groups, { kind: 'category', id: 14 }, -1) ?? [])[0]).toEqual([
+      1,
+      [11, 14, 13, 12],
+    ])
+    expect(stepOnto(groups, { kind: 'category', id: 31 }, 1)).toBeNull()
+  })
+})
+
+describe('saying where a row stands', () => {
+  const named = [
+    {
+      id: 1,
+      hidden: false,
+      name: 'Food',
+      categories: [{ id: 11, hidden: false, name: 'Groceries' }],
+    },
+    { id: 2, hidden: false, name: 'Fun', categories: [] },
+  ]
+
+  it('names it and its place', () => {
+    expect(describeSpot(named, { kind: 'group', id: 2 })).toBe('Fun, 2 of 2')
+    expect(describeSpot(named, { kind: 'category', id: 11 })).toBe('Groceries, 1 of 1 in Food')
+  })
 })

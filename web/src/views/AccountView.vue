@@ -1,10 +1,13 @@
 <script setup lang="ts">
 // An account's detail (docs/spec/m1-ledger-import.md#accounts): the balance shown (its latest
 // snapshot) with the app's own beside it, the opening balance and its date, the row count, and its
-// transactions. A balances-only account has only its balance.
-import { computed } from 'vue'
+// transactions. A balances-only account has only its balance. Edit opens the account's form
+// (docs/spec/m2-bank-data.md#accounts).
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAccount } from '@/api/accounts'
+import { useAccount, useAccountEdits, type AccountChange } from '@/api/accounts'
+import { ApiError } from '@/api/client'
+import AccountEditForm from '@/components/AccountEditForm.vue'
 import { roleLabel, transactionsLink, typeLabel } from '@/lib/accounts'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
@@ -12,6 +15,24 @@ import { formatDate, useFormatting } from '@/lib/format'
 const route = useRoute()
 const query = useAccount(() => Number(route.params.id))
 const formatting = useFormatting()
+const edits = useAccountEdits()
+
+const editing = ref(false)
+const nameError = ref<string>()
+const problem = ref<string>()
+
+async function save(change: AccountChange) {
+  nameError.value = undefined
+  problem.value = undefined
+  try {
+    await edits.change(Number(route.params.id), change)
+    editing.value = false
+  } catch (error) {
+    const name = error instanceof ApiError ? error.fields.name : undefined
+    if (name !== undefined) nameError.value = name
+    else problem.value = error instanceof Error ? error.message : String(error)
+  }
+}
 
 const account = computed(() => query.data.value)
 const link = computed(() => (account.value ? transactionsLink(account.value) : null))
@@ -50,6 +71,22 @@ const opening = computed(() => {
         <h2 id="account-name" class="text-lg font-medium">{{ account.name }}</h2>
         <p class="text-sm text-muted-foreground">{{ about }}</p>
       </div>
+      <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
+      <AccountEditForm
+        v-if="editing"
+        :account="account"
+        :name-error="nameError"
+        @save="save"
+        @cancel="((editing = false), (nameError = undefined), (problem = undefined))"
+      />
+      <button
+        v-else
+        type="button"
+        class="inline-flex items-center self-start rounded-md border px-3 py-2"
+        @click="editing = true"
+      >
+        Edit
+      </button>
 
       <dl
         aria-label="Figures"

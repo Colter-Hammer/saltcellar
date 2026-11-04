@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** `PUT /api/v1/accounts/order`: puts every account in order. */
+        put: operations["orderAccounts"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}": {
         parameters: {
             query?: never;
@@ -35,7 +52,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** `PATCH /api/v1/accounts/{id}`: edits an account. */
+        patch: operations["changeAccount"];
         trace?: never;
     };
     "/api/v1/categories": {
@@ -601,6 +619,8 @@ export interface components {
             closed: boolean;
             /** Format: int64 */
             id: number;
+            /** @description Whether it counts in net worth. */
+            in_net_worth: boolean;
             /** @description Null when none is known. */
             institution: string | null;
             /** @description `YYYY-MM-DD`, the date of its latest transaction; null without one. */
@@ -626,9 +646,25 @@ export interface components {
          * @enum {string}
          */
         AccountAction: "create" | "same" | "skip";
+        /** @description What to change about an account; whatever is left out stays as it is. */
+        AccountChange: {
+            balances_only?: boolean | null;
+            closed?: boolean | null;
+            in_net_worth?: boolean | null;
+            /** @description An empty one clears it *(agent)*. */
+            institution?: string | null;
+            /** @description Unique among the accounts, ignoring case. */
+            name?: string | null;
+            role?: components["schemas"]["AccountRole"] | null;
+            type?: components["schemas"]["AccountType"] | null;
+        };
         AccountList: {
             /** @description In order, closed ones included. */
             accounts: components["schemas"]["Account"][];
+        };
+        AccountOrder: {
+            /** @description Every account's id exactly once, in order, closed ones included. */
+            accounts: number[];
         };
         /**
          * @description Whether an account's activity counts toward budgets, or only its balance over time is shown.
@@ -1242,6 +1278,46 @@ export interface operations {
             };
         };
     };
+    orderAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountOrder"];
+            };
+        };
+        responses: {
+            /** @description The order is saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `accounts_changed`: the order doesn't list every account exactly once. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getAccount: {
         parameters: {
             query?: never;
@@ -1274,6 +1350,58 @@ export interface operations {
             };
             /** @description `not_found`: there's no such account. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountChange"];
+            };
+        };
+        responses: {
+            /** @description The account is changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: the name is empty, too long or taken by another account (any case). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
