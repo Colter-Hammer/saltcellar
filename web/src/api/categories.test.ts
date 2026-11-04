@@ -77,7 +77,9 @@ describe('the categories', () => {
     sent = []
     await edits.applyStarter()
     expect(await edits.addGroup('Pets', 'expense')).toBe(99)
+    await edits.addGroup('Vet', 'expense', 'dog')
     await edits.changeGroup(1, { name: 'Eating' })
+    await edits.changeGroup(1, { icon: 'coffee' })
     await edits.deleteGroup(2)
     expect(await edits.addCategory(1, 'Coffee')).toBe(99)
     await edits.changeCategory(11, { hidden: true })
@@ -88,7 +90,11 @@ describe('the categories', () => {
       reload,
       'POST /api/v1/category-groups {"name":"Pets","kind":"expense"}',
       reload,
+      'POST /api/v1/category-groups {"name":"Vet","kind":"expense","icon":"dog"}',
+      reload,
       'PATCH /api/v1/category-groups/1 {"name":"Eating"}',
+      reload,
+      'PATCH /api/v1/category-groups/1 {"icon":"coffee"}',
       reload,
       'DELETE /api/v1/category-groups/2',
       reload,

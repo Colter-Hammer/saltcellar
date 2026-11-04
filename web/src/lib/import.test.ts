@@ -7,6 +7,7 @@ import {
   commitRequest,
   describeDone,
   describeUpload,
+  chosenCategory,
   goesToCategory,
   LATER,
   offeredCategories,
@@ -316,5 +317,13 @@ describe('the commit', () => {
       '2 rows uncategorized',
       '0 linked transfers',
     ])
+  })
+})
+
+describe('chosenCategory', () => {
+  it('is the app category a choice goes to, or null', () => {
+    expect(chosenCategory(goesToCategory(12))).toBe(12)
+    expect(chosenCategory(LATER)).toBeNull()
+    expect(chosenCategory(TRANSFER)).toBeNull()
   })
 })

@@ -4,8 +4,16 @@
 import { computed, ref } from 'vue'
 import type { CategoryGroup } from '@/api/categories'
 import type { ActualCategory } from '@/api/imports'
+import GroupMark from '@/components/GroupMark.vue'
 import NewCategoryForm from '@/components/NewCategoryForm.vue'
-import { goesToCategory, LATER, NEW_CATEGORY, offeredCategories, TRANSFER } from '@/lib/import'
+import {
+  chosenCategory,
+  goesToCategory,
+  LATER,
+  NEW_CATEGORY,
+  offeredCategories,
+  TRANSFER,
+} from '@/lib/import'
 
 const props = defineProps<{
   category: ActualCategory
@@ -64,25 +72,28 @@ function created(category: number) {
     </td>
     <td role="cell" class="py-2 max-lg:mt-2 max-lg:block max-lg:p-0">
       <label :for="`${id}-goes-to`" class="sr-only">{{ category.name }} goes to</label>
-      <select
-        :id="`${id}-goes-to`"
-        :value="goesTo"
-        class="w-full rounded-md border bg-background px-2 py-1 lg:w-64"
-        @change="choose"
-      >
-        <optgroup v-for="group in offered" :key="group.id" :label="group.name">
-          <option
-            v-for="option in group.categories"
-            :key="option.id"
-            :value="goesToCategory(option.id)"
-          >
-            {{ option.name }}
-          </option>
-        </optgroup>
-        <option :value="TRANSFER">Transfer (not a category)</option>
-        <option :value="NEW_CATEGORY">+ New category…</option>
-        <option :value="LATER">Decide later</option>
-      </select>
+      <span class="flex items-center gap-1.5">
+        <GroupMark :category="chosenCategory(goesTo)" />
+        <select
+          :id="`${id}-goes-to`"
+          :value="goesTo"
+          class="w-full min-w-0 rounded-md border bg-background px-2 py-1 lg:w-64"
+          @change="choose"
+        >
+          <optgroup v-for="group in offered" :key="group.id" :label="group.name">
+            <option
+              v-for="option in group.categories"
+              :key="option.id"
+              :value="goesToCategory(option.id)"
+            >
+              {{ option.name }}
+            </option>
+          </optgroup>
+          <option :value="TRANSFER">Transfer (not a category)</option>
+          <option :value="NEW_CATEGORY">+ New category…</option>
+          <option :value="LATER">Decide later</option>
+        </select>
+      </span>
       <NewCategoryForm
         v-if="creating"
         :id="`${id}-new`"

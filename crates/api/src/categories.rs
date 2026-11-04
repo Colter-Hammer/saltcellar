@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use domain::categories::{GroupKind, GroupOrder, Name};
+use domain::categories::{GroupKind, GroupOrder, Icon, Name};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -51,6 +51,8 @@ pub struct CategoryGroup {
     id: i64,
     name: String,
     kind: CategoryGroupKind,
+    /// A Lucide icon name, like `heart-pulse`; null shows `folder`.
+    icon: Option<String>,
     /// A hidden group hides its categories with it.
     hidden: bool,
     /// In order, hidden ones included.
@@ -82,6 +84,7 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<CategoryList>, A
                 id: group.id,
                 name: group.name,
                 kind: group.kind.into(),
+                icon: group.icon,
                 hidden: group.hidden,
                 categories: group
                     .categories
@@ -119,6 +122,10 @@ pub async fn use_starter(State(state): State<AppState>) -> Result<StatusCode, Ap
 pub struct NewCategoryGroup {
     name: String,
     kind: CategoryGroupKind,
+    /// A Lucide icon name: 1–40 lowercase letters, digits and `-`. Left out, the group shows
+    /// `folder`.
+    #[serde(default)]
+    icon: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -127,7 +134,19 @@ pub struct NewCategory {
     name: String,
 }
 
-/// What a change to a group or a category sets; a field left out stays as it is.
+/// What a change to a group sets; a field left out stays as it is.
+#[derive(Deserialize, ToSchema)]
+pub struct CategoryGroupChange {
+    #[serde(default)]
+    name: Option<String>,
+    /// A Lucide icon name: 1–40 lowercase letters, digits and `-`.
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    hidden: Option<bool>,
+}
+
+/// What a change to a category sets; a field left out stays as it is.
 #[derive(Deserialize, ToSchema)]
 pub struct CategoryChange {
     #[serde(default)]
@@ -150,7 +169,7 @@ pub struct Created {
     responses(
         (status = 201, description = "The group is added.", body = Created),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
-        (status = 422, description = "`validation_failed`: the name is empty, too long or taken.", body = ErrorEnvelope),
+        (status = 422, description = "`validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name.", body = ErrorEnvelope),
     ),
 )]
 pub async fn add_group(
@@ -158,34 +177,37 @@ pub async fn add_group(
     Body(body): Body<NewCategoryGroup>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
     let name = valid_name(&body.name)?;
-    let id = db::add_group(&state.pool, &name, body.kind.into())
+    let icon = body.icon.as_deref().map(valid_icon).transpose()?;
+    let id = db::add_group(&state.pool, &name, body.kind.into(), icon.as_ref())
         .await
         .map_err(|error| Refused(error, Thing::Group))
         .map_err(|error| error.name_taken(Thing::Group, &name))?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
-/// `PATCH /api/v1/category-groups/{id}`: renames a group, hides it or shows it again.
+/// `PATCH /api/v1/category-groups/{id}`: renames a group, changes its icon, hides it or shows it
+/// again.
 #[utoipa::path(
     patch,
     path = "/api/v1/category-groups/{id}",
     operation_id = "changeCategoryGroup",
     params(("id" = i64, Path, description = "The group.")),
-    request_body = CategoryChange,
+    request_body = CategoryGroupChange,
     responses(
         (status = 204, description = "The group is changed."),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
         (status = 404, description = "`not_found`: there's no such group.", body = ErrorEnvelope),
-        (status = 422, description = "`validation_failed`: the name is empty, too long or taken.", body = ErrorEnvelope),
+        (status = 422, description = "`validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name.", body = ErrorEnvelope),
     ),
 )]
 pub async fn change_group(
     State(state): State<AppState>,
     Id(id): Id,
-    Body(body): Body<CategoryChange>,
+    Body(body): Body<CategoryGroupChange>,
 ) -> Result<StatusCode, ApiError> {
     let name = body.name.as_deref().map(valid_name).transpose()?;
-    db::update_group(&state.pool, id, name.as_ref(), body.hidden)
+    let icon = body.icon.as_deref().map(valid_icon).transpose()?;
+    db::update_group(&state.pool, id, name.as_ref(), icon.as_ref(), body.hidden)
         .await
         .map_err(|error| Refused(error, Thing::Group))
         .map_err(|error| match &name {
@@ -346,6 +368,15 @@ fn valid_name(typed: &str) -> Result<Name, ApiError> {
         let fields = BTreeMap::from([("name".to_owned(), error.to_string())]);
         ApiError::validation("Check the name.", fields)
     })
+}
+
+fn valid_icon(typed: &str) -> Result<Icon, ApiError> {
+    typed
+        .parse()
+        .map_err(|error: domain::categories::InvalidIcon| {
+            let fields = BTreeMap::from([("icon".to_owned(), error.to_string())]);
+            ApiError::validation("Check the icon.", fields)
+        })
 }
 
 #[derive(Clone, Copy)]

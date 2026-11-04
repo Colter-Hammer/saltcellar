@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // Pick one of the app's categories, grouped as Settings › Categories has them; hidden ones aren't
 // offered. Shared: From Actual, undecided uses it now, Review in milestone 3 will too *(agent)*.
-// The value is the category's id as text, or empty while none is picked.
+// The value is the category's id as text, or empty while none is picked. A native list can't draw
+// icons, so the picked category's group dot and icon sit beside it *(agent)*.
 import { computed } from 'vue'
 import { useCategories } from '@/api/categories'
+import GroupMark from '@/components/GroupMark.vue'
 import { offeredCategories } from '@/lib/import'
 
 defineProps<{
@@ -19,16 +21,23 @@ const groups = computed(() => offeredCategories(categories.data.value?.groups ??
 </script>
 
 <template>
-  <select
-    v-model="value"
-    :aria-label="label"
-    class="w-full max-w-64 rounded-md border bg-background px-2 py-1"
-  >
-    <option value="">{{ placeholder }}</option>
-    <optgroup v-for="group in groups" :key="group.id" :label="group.name">
-      <option v-for="category in group.categories" :key="category.id" :value="String(category.id)">
-        {{ category.name }}
-      </option>
-    </optgroup>
-  </select>
+  <span class="flex w-full max-w-64 items-center gap-1.5">
+    <GroupMark v-if="value !== ''" :category="Number(value)" />
+    <select
+      v-model="value"
+      :aria-label="label"
+      class="w-full min-w-0 rounded-md border bg-background px-2 py-1"
+    >
+      <option value="">{{ placeholder }}</option>
+      <optgroup v-for="group in groups" :key="group.id" :label="group.name">
+        <option
+          v-for="category in group.categories"
+          :key="category.id"
+          :value="String(category.id)"
+        >
+          {{ category.name }}
+        </option>
+      </optgroup>
+    </select>
+  </span>
 </template>

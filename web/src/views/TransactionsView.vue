@@ -10,6 +10,7 @@ import { FlexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/v
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { type TransactionRow, useTransactions } from '@/api/transactions'
+import GroupMark from '@/components/GroupMark.vue'
 import TransactionDetail from '@/components/TransactionDetail.vue'
 import TransactionFilters from '@/components/TransactionFilters.vue'
 import Money from '@/components/Money.vue'
@@ -73,7 +74,15 @@ const columns: ColumnDef<typeof features, TransactionRow>[] = [
         payeeLabel(row.original),
       ),
   },
-  { id: 'category', header: 'Category', cell: ({ row }) => categoryLabel(row.original) },
+  {
+    id: 'category',
+    header: 'Category',
+    cell: ({ row }) =>
+      h('span', { class: 'inline-flex items-center gap-1.5' }, [
+        h(GroupMark, { category: row.original.category_id }),
+        categoryLabel(row.original),
+      ]),
+  },
   { id: 'account', header: 'Account', cell: ({ row }) => row.original.account },
   {
     id: 'amount',
@@ -171,10 +180,12 @@ onBeforeUnmount(() => {
                     >
                   </span>
                   <span
-                    class="truncate text-xs"
+                    class="flex min-w-0 items-center gap-1.5 text-xs"
                     :class="isUncategorized(row) ? 'font-medium' : 'text-muted-foreground'"
-                    >{{ categoryLabel(row) }}</span
                   >
+                    <GroupMark :category="row.category_id" />
+                    <span class="truncate">{{ categoryLabel(row) }}</span>
+                  </span>
                 </span>
                 <span class="flex shrink-0 flex-col text-right">
                   <Money :minor="row.amount_minor" signed />

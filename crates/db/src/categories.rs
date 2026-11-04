@@ -1,7 +1,8 @@
 //! Category groups, categories and the starter set (docs/spec/m1-ledger-import.md#categories).
 
 use domain::categories::{
-    ALWAYS_REVIEW_PAYEES, GroupKind, GroupOrder, Name, OrderError, STARTER_GROUPS, check_order,
+    ALWAYS_REVIEW_PAYEES, GroupKind, GroupOrder, Icon, Name, OrderError, STARTER_GROUPS,
+    check_order,
 };
 use sqlx::SqliteConnection;
 
@@ -13,6 +14,8 @@ pub struct Group {
     pub id: i64,
     pub name: String,
     pub kind: GroupKind,
+    /// A Lucide icon name; `None` shows `folder`.
+    pub icon: Option<String>,
     pub hidden: bool,
     pub categories: Vec<Category>,
 }
@@ -61,7 +64,7 @@ impl From<sqlx::Error> for CategoryError {
 /// If the database fails or holds a group kind the app doesn't know.
 pub async fn category_groups(pool: &SqlitePool) -> Result<Vec<Group>, Error> {
     let groups = sqlx::query!(
-        r#"SELECT id AS "id!: i64", name, kind, hidden AS "hidden: bool"
+        r#"SELECT id AS "id!: i64", name, kind, icon, hidden AS "hidden: bool"
            FROM category_groups ORDER BY sort_order, id"#
     )
     .fetch_all(pool)
@@ -83,6 +86,7 @@ pub async fn category_groups(pool: &SqlitePool) -> Result<Vec<Group>, Error> {
                 id: group.id,
                 name: group.name,
                 kind,
+                icon: group.icon,
                 hidden: group.hidden,
                 categories: categories
                     .iter()
@@ -115,10 +119,11 @@ pub async fn use_starter_categories(pool: &SqlitePool) -> Result<(), CategoryErr
     for (group_order, group) in (0_i64..).zip(STARTER_GROUPS) {
         let kind = group.kind.as_str();
         let group_id = sqlx::query_scalar!(
-            r#"INSERT INTO category_groups (name, kind, sort_order) VALUES (?, ?, ?)
+            r#"INSERT INTO category_groups (name, kind, icon, sort_order) VALUES (?, ?, ?, ?)
                RETURNING id AS "id!: i64""#,
             group.name,
             kind,
+            group.icon,
             group_order
         )
         .fetch_one(&mut *tx)
@@ -146,7 +151,7 @@ pub async fn use_starter_categories(pool: &SqlitePool) -> Result<(), CategoryErr
     Ok(())
 }
 
-/// Adds a group at the end.
+/// Adds a group at the end; `None` for the icon shows `folder`.
 ///
 /// # Errors
 /// [`CategoryError::NameTaken`] if another group has the name; otherwise only if the database
@@ -155,22 +160,26 @@ pub async fn add_group(
     pool: &SqlitePool,
     name: &Name,
     kind: GroupKind,
+    icon: Option<&Icon>,
 ) -> Result<i64, CategoryError> {
     let name = name.as_str();
     let kind = kind.as_str();
+    let icon = icon.map(Icon::as_str);
     let id = sqlx::query_scalar!(
-        r#"INSERT INTO category_groups (name, kind, sort_order)
-           VALUES (?, ?, (SELECT coalesce(max(sort_order) + 1, 0) FROM category_groups))
+        r#"INSERT INTO category_groups (name, kind, icon, sort_order)
+           VALUES (?, ?, ?, (SELECT coalesce(max(sort_order) + 1, 0) FROM category_groups))
            RETURNING id AS "id!: i64""#,
         name,
-        kind
+        kind,
+        icon
     )
     .fetch_one(pool)
     .await?;
     Ok(id)
 }
 
-/// Renames a group, hides it or shows it again; `None` leaves that part as it is.
+/// Renames a group, changes its icon, hides it or shows it again; `None` leaves that part as it
+/// is.
 ///
 /// # Errors
 /// [`CategoryError::NotFound`] if there's no such group, [`CategoryError::NameTaken`] if another
@@ -179,12 +188,17 @@ pub async fn update_group(
     pool: &SqlitePool,
     id: i64,
     name: Option<&Name>,
+    icon: Option<&Icon>,
     hidden: Option<bool>,
 ) -> Result<(), CategoryError> {
     let name = name.map(Name::as_str);
+    let icon = icon.map(Icon::as_str);
     let updated = sqlx::query!(
-        "UPDATE category_groups SET name = coalesce(?, name), hidden = coalesce(?, hidden) WHERE id = ?",
+        "UPDATE category_groups
+         SET name = coalesce(?, name), icon = coalesce(?, icon), hidden = coalesce(?, hidden)
+         WHERE id = ?",
         name,
+        icon,
         hidden,
         id
     )
@@ -409,6 +423,7 @@ mod tests {
         for (group, starter) in groups.iter().zip(STARTER_GROUPS) {
             assert_eq!(group.name, starter.name);
             assert_eq!(group.kind, starter.kind);
+            assert_eq!(group.icon.as_deref(), Some(starter.icon));
             assert!(!group.hidden);
             let names: Vec<&str> = group.categories.iter().map(|c| c.name.as_str()).collect();
             assert_eq!(names, starter.categories);
@@ -434,7 +449,7 @@ mod tests {
     #[tokio::test]
     async fn the_starter_set_is_refused_once_there_is_a_group() {
         let (_dir, pool) = migrated().await;
-        add_group(&pool, &name("Bills"), GroupKind::Expense)
+        add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
         let error = use_starter_categories(&pool).await.unwrap_err();
@@ -466,10 +481,10 @@ mod tests {
     #[tokio::test]
     async fn groups_and_categories_are_added_at_the_end() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
-        let pay = add_group(&pool, &name("Pay"), GroupKind::Income)
+        let pay = add_group(&pool, &name("Pay"), GroupKind::Income, None)
             .await
             .unwrap();
         add_category(&pool, bills, &name("Water")).await.unwrap();
@@ -492,22 +507,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn names_are_unique_among_groups_and_within_a_group() {
+    async fn a_group_keeps_its_icon_until_it_gets_another() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let icon = |name: &str| name.parse::<Icon>().unwrap();
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
-        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense)
+        let pets = add_group(&pool, &name("Pets"), GroupKind::Expense, Some(&icon("dog")))
+            .await
+            .unwrap();
+        let icons = async || -> Vec<Option<String>> {
+            category_groups(&pool)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|g| g.icon)
+                .collect()
+        };
+        assert_eq!(icons().await, [None, Some("dog".to_owned())]);
+
+        update_group(&pool, bills, None, Some(&icon("receipt")), None)
+            .await
+            .unwrap();
+        update_group(&pool, pets, Some(&name("Animals")), None, Some(true))
+            .await
+            .unwrap();
+        assert_eq!(
+            icons().await,
+            [Some("receipt".to_owned()), Some("dog".to_owned())]
+        );
+    }
+
+    #[tokio::test]
+    async fn names_are_unique_among_groups_and_within_a_group() {
+        let (_dir, pool) = migrated().await;
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
+            .await
+            .unwrap();
+        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense, None)
             .await
             .unwrap();
         add_category(&pool, bills, &name("Water")).await.unwrap();
         let power = add_category(&pool, bills, &name("Power")).await.unwrap();
 
         let taken = [
-            add_group(&pool, &name("Bills"), GroupKind::Income)
+            add_group(&pool, &name("Bills"), GroupKind::Income, None)
                 .await
                 .map(|_| ()),
-            update_group(&pool, fun, Some(&name("Bills")), None).await,
+            update_group(&pool, fun, Some(&name("Bills")), None, None).await,
             add_category(&pool, bills, &name("Water")).await.map(|_| ()),
             update_category(&pool, power, Some(&name("Water")), None).await,
         ];
@@ -522,11 +569,11 @@ mod tests {
     #[tokio::test]
     async fn renaming_and_hiding_change_only_what_they_say() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
         let water = add_category(&pool, bills, &name("Water")).await.unwrap();
-        update_group(&pool, bills, Some(&name("Home")), None)
+        update_group(&pool, bills, Some(&name("Home")), None, None)
             .await
             .unwrap();
         update_category(&pool, water, None, Some(true))
@@ -536,7 +583,9 @@ mod tests {
             outline(&pool).await,
             [("Home".to_owned(), vec!["Water*".to_owned()])]
         );
-        update_group(&pool, bills, None, Some(true)).await.unwrap();
+        update_group(&pool, bills, None, None, Some(true))
+            .await
+            .unwrap();
         update_category(&pool, water, Some(&name("Sewer")), Some(false))
             .await
             .unwrap();
@@ -550,7 +599,7 @@ mod tests {
     async fn changing_or_deleting_what_isnt_there_is_not_found() {
         let (_dir, pool) = migrated().await;
         let results = [
-            update_group(&pool, 9, Some(&name("X")), None).await,
+            update_group(&pool, 9, Some(&name("X")), None, None).await,
             update_category(&pool, 9, None, Some(true)).await,
             delete_group(&pool, 9).await,
             delete_category(&pool, 9).await,
@@ -564,7 +613,7 @@ mod tests {
     #[tokio::test]
     async fn a_group_cant_be_deleted_while_it_holds_categories() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
         let water = add_category(&pool, bills, &name("Water")).await.unwrap();
@@ -582,7 +631,7 @@ mod tests {
     #[tokio::test]
     async fn the_schema_itself_refuses_deleting_a_group_that_holds_categories() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
         add_category(&pool, bills, &name("Water")).await.unwrap();
@@ -609,10 +658,10 @@ mod tests {
     #[tokio::test]
     async fn the_order_is_saved_and_moves_categories_between_groups() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
-        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense)
+        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense, None)
             .await
             .unwrap();
         let water = add_category(&pool, bills, &name("Water")).await.unwrap();
@@ -645,10 +694,10 @@ mod tests {
     #[tokio::test]
     async fn an_order_that_puts_a_category_in_two_groups_changes_nothing() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
-        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense)
+        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense, None)
             .await
             .unwrap();
         let water = add_category(&pool, bills, &name("Water")).await.unwrap();
@@ -674,10 +723,10 @@ mod tests {
     #[tokio::test]
     async fn moving_a_category_onto_a_name_taken_in_its_new_group_changes_nothing() {
         let (_dir, pool) = migrated().await;
-        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense)
+        let bills = add_group(&pool, &name("Bills"), GroupKind::Expense, None)
             .await
             .unwrap();
-        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense)
+        let fun = add_group(&pool, &name("Fun"), GroupKind::Expense, None)
             .await
             .unwrap();
         let water = add_category(&pool, bills, &name("Water")).await.unwrap();

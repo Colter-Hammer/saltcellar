@@ -421,7 +421,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed`: the name is empty, too long or taken.",
+            "description": "`validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name.",
             "content": {
               "application/json": {
                 "schema": {
@@ -492,7 +492,7 @@
         "tags": [
           "categories"
         ],
-        "summary": "`PATCH /api/v1/category-groups/{id}`: renames a group, hides it or shows it again.",
+        "summary": "`PATCH /api/v1/category-groups/{id}`: renames a group, changes its icon, hides it or shows it\nagain.",
         "operationId": "changeCategoryGroup",
         "parameters": [
           {
@@ -510,7 +510,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CategoryChange"
+                "$ref": "#/components/schemas/CategoryGroupChange"
               }
             }
           },
@@ -541,7 +541,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed`: the name is empty, too long or taken.",
+            "description": "`validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2572,7 +2572,7 @@
       },
       "CategoryChange": {
         "type": "object",
-        "description": "What a change to a group or a category sets; a field left out stays as it is.",
+        "description": "What a change to a category sets; a field left out stays as it is.",
         "properties": {
           "hidden": {
             "type": [
@@ -2609,6 +2609,13 @@
             "type": "boolean",
             "description": "A hidden group hides its categories with it."
           },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Lucide icon name, like `heart-pulse`; null shows `folder`."
+          },
           "id": {
             "type": "integer",
             "format": "int64"
@@ -2618,6 +2625,31 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "CategoryGroupChange": {
+        "type": "object",
+        "description": "What a change to a group sets; a field left out stays as it is.",
+        "properties": {
+          "hidden": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Lucide icon name: 1–40 lowercase letters, digits and `-`."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -3097,6 +3129,13 @@
           "kind"
         ],
         "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Lucide icon name: 1–40 lowercase letters, digits and `-`. Left out, the group shows\n`folder`."
+          },
           "kind": {
             "$ref": "#/components/schemas/CategoryGroupKind"
           },

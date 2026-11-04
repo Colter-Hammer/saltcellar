@@ -161,6 +161,11 @@ export function goesToCategory(id: number): string {
   return `category:${String(id)}`
 }
 
+/** The app category a choice goes to, or null for Decide later and Transfer. */
+export function chosenCategory(goesTo: string): number | null {
+  return goesTo.startsWith('category:') ? Number(goesTo.slice('category:'.length)) : null
+}
+
 /** The app's categories the picker offers, by group: hidden ones aren't *(agent)*. */
 export function offeredCategories(
   groups: readonly CategoryGroup[],
@@ -250,7 +255,7 @@ export function commitRequest(
   })
   const categories = usedCategories(plan, accountChoices).map(({ category }) => {
     const goesTo = categoryChoices[category.id] ?? LATER
-    const id = goesTo.startsWith('category:') ? Number(goesTo.slice('category:'.length)) : null
+    const id = chosenCategory(goesTo)
     return {
       actual_id: category.id,
       goes_to: id === null ? (goesTo === TRANSFER ? 'transfer' : 'later') : 'category',
