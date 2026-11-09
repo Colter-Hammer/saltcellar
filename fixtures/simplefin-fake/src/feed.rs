@@ -84,6 +84,8 @@ const fn posted(
 
 struct Account {
     id: &'static str,
+    /// `None`: the fake's own currency.
+    currency: Option<&'static str>,
     conn_id: &'static str,
     name: &'static str,
     balance: &'static str,
@@ -133,7 +135,7 @@ fn scenario_row(scenario: Scenario, day: u32) -> Option<Row> {
     }
 }
 
-fn accounts(scenario: Scenario, day: u32) -> Vec<Account> {
+fn accounts(scenario: Scenario, day: u32, currency: &str) -> Vec<Account> {
     let mut checking = vec![
         posted(
             "TRN-demo-pay-1",
@@ -190,6 +192,7 @@ fn accounts(scenario: Scenario, day: u32) -> Vec<Account> {
     let mut all = vec![
         Account {
             id: "ACT-demo-checking",
+            currency: None,
             conn_id: "CON-demo-1",
             name: "Demo Everyday Checking",
             balance: "1157.58",
@@ -197,6 +200,7 @@ fn accounts(scenario: Scenario, day: u32) -> Vec<Account> {
         },
         Account {
             id: "ACT-demo-card",
+            currency: None,
             conn_id: "CON-demo-1",
             name: "Demo Rewards Card",
             balance: if scenario == Scenario::WrongSign {
@@ -208,6 +212,7 @@ fn accounts(scenario: Scenario, day: u32) -> Vec<Account> {
         },
         Account {
             id: "ACT-demo-savings",
+            currency: None,
             conn_id: "CON-demo-2",
             name: "Demo Savings",
             balance: "5003.18",
@@ -217,12 +222,33 @@ fn accounts(scenario: Scenario, day: u32) -> Vec<Account> {
     if scenario == Scenario::AccountMissing {
         all.retain(|account| account.id != "ACT-demo-savings");
     }
+    if scenario == Scenario::ForeignCurrency {
+        all.push(travel(currency));
+    }
     all
 }
 
+/// The foreign-currency scenario's extra account: a currency other than the fake's own.
+fn travel(currency: &str) -> Account {
+    Account {
+        id: "ACT-demo-travel",
+        currency: Some(if currency == "CAD" { "USD" } else { "CAD" }),
+        conn_id: "CON-demo-2",
+        name: "Demo Travel Card",
+        balance: "-80.00",
+        rows: vec![posted(
+            "TRN-demo-travel-1",
+            4,
+            "-80.00",
+            "DEMO RAIL TICKETS",
+            "Demo Rail",
+        )],
+    }
+}
+
 /// The body of `GET /accounts` for `scenario` on `day`, as the query asks for it.
-pub fn response(scenario: Scenario, day: u32, query: &Query) -> Value {
-    let accounts = accounts(scenario, day);
+pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str) -> Value {
+    let accounts = accounts(scenario, day, currency);
     let needs_auth = scenario == Scenario::NeedsAuth;
     let errors: Vec<Value> = match scenario {
         Scenario::NeedsAuth => vec![json!({
@@ -260,7 +286,7 @@ pub fn response(scenario: Scenario, day: u32, query: &Query) -> Value {
                     "id": account.id,
                     "conn_id": account.conn_id,
                     "name": account.name,
-                    "currency": "USD",
+                    "currency": account.currency.unwrap_or(currency),
                     "balance": account.balance,
                     "available-balance": account.balance,
                     "balance-date": balance_date,
@@ -272,7 +298,7 @@ pub fn response(scenario: Scenario, day: u32, query: &Query) -> Value {
                     "id": account.id,
                     "org": { "name": "Demo Bank", "sfin-url": "https://bridge.example.test/simplefin" },
                     "name": account.name,
-                    "currency": "USD",
+                    "currency": account.currency.unwrap_or(currency),
                     "balance": account.balance,
                     "available-balance": account.balance,
                     "balance-date": balance_date,

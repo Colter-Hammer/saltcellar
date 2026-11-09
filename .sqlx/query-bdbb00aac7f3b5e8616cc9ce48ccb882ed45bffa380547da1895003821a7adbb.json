@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT ca.external_account_id, ca.provider_name, ca.institution, ca.currency,\n             ca.decision, ca.account_id,\n             (SELECT old.account_id FROM connection_accounts old\n               WHERE ca.decision = 'pending'\n                 AND old.connection_id = ca.connection_id AND old.decision = 'tracked'\n                 AND old.provider_name = ca.provider_name AND old.institution IS ca.institution\n                 AND old.last_seen_at < (SELECT MAX(n.last_seen_at) FROM connection_accounts n\n                                         WHERE n.connection_id = ca.connection_id)\n               ORDER BY old.last_seen_at DESC LIMIT 1) AS \"same_as: i64\"\n           FROM connection_accounts ca\n           WHERE ca.connection_id = (SELECT id FROM connections ORDER BY id LIMIT 1)\n           ORDER BY ca.first_seen_at, ca.rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "external_account_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "external_account_id"
+          }
+        }
+      },
+      {
+        "name": "provider_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "provider_name"
+          }
+        }
+      },
+      {
+        "name": "institution",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "institution"
+          }
+        }
+      },
+      {
+        "name": "currency",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "name": "decision",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "decision"
+          }
+        }
+      },
+      {
+        "name": "account_id",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "same_as: i64",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "account_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "bdbb00aac7f3b5e8616cc9ce48ccb882ed45bffa380547da1895003821a7adbb"
+}

@@ -1,6 +1,6 @@
 [package]
 name = "simplefin"
-description = "SimpleFIN Bridge: the secret key, the sealed access URL, and claiming a setup token."
+description = "SimpleFIN Bridge: the secret key, the sealed access URL, claiming a setup token and reading the feed."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,12 +11,13 @@ publish.workspace = true
 base64.workspace = true
 chacha20poly1305.workspace = true
 getrandom.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 ureq.workspace = true
 
 [dev-dependencies]
 simplefin-fake.workspace = true
-serde_json.workspace = true
 tokio.workspace = true
 
 [lints]

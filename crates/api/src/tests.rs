@@ -1223,5 +1223,6 @@ mod accounts;
 mod bank;
 #[path = "tests/categories.rs"]
 mod categories;
+mod connection_accounts;
 mod import;
 mod undo;

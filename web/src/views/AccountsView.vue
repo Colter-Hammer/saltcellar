@@ -8,11 +8,19 @@
 // The + button opens New account, a manual account's form, above the list; it's the only thing +
 // makes, since synced accounts arrive through the connection, so it opens the form straight away
 // *(agent)*. A created account shows in the list at once and the form closes.
+// Above everything, the new accounts prompt: what the bank connection reports, waiting to be
+// tracked or ignored.
 import { Plus } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { type Account, type NewAccount, useAccountEdits, useAccounts } from '@/api/accounts'
 import { ApiError } from '@/api/client'
+import {
+  type TrackFeedAccount,
+  useConnectionAccounts,
+  useFeedAccountDecisions,
+} from '@/api/connectionAccounts'
 import NewAccountForm from '@/components/NewAccountForm.vue'
+import NewAccountsPrompt from '@/components/NewAccountsPrompt.vue'
 import {
   describeAccount,
   dropAccount,
@@ -32,6 +40,20 @@ const edits = useAccountEdits()
 const problem = ref<string>()
 const adding = ref(false)
 const nameError = ref<string>()
+const prompt = useConnectionAccounts()
+const decisions = useFeedAccountDecisions()
+
+async function decide(request: () => Promise<unknown>) {
+  problem.value = undefined
+  try {
+    await request()
+  } catch (error) {
+    problem.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+const track = (id: string, how: TrackFeedAccount) => decide(() => decisions.track(id, how))
+const ignore = (id: string) => decide(() => decisions.ignore(id))
 
 async function create(account: NewAccount) {
   nameError.value = undefined
@@ -86,6 +108,14 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
     </p>
 
     <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
+
+    <NewAccountsPrompt
+      v-if="prompt.data.value"
+      :prompt="prompt.data.value"
+      :accounts="list"
+      @track="track"
+      @ignore="ignore"
+    />
 
     <NewAccountForm
       v-if="adding"

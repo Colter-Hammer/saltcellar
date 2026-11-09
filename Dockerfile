@@ -27,6 +27,17 @@ RUN cargo chef cook --release --locked --bin budget --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --locked --bin budget && mkdir /data
 
+# --- The fake SimpleFIN Bridge, for the e2e tests only (`--target simplefin-fake`) ---
+# Built from the cooked dependencies above; the app image (the last stage) never holds it.
+FROM rust AS fake-build
+RUN cargo build --release --locked -p simplefin-fake
+
+FROM gcr.io/distroless/cc-debian13:nonroot AS simplefin-fake
+COPY --from=fake-build /src/target/release/simplefin-fake /app/simplefin-fake
+USER nonroot
+EXPOSE 8190
+ENTRYPOINT ["/app/simplefin-fake"]
+
 # --- The runtime: no shell, no package manager, a non-root user (65532) ---
 FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app

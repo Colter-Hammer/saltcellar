@@ -14,7 +14,9 @@ It prints a setup token and the `BUDGET_SIMPLEFIN_CLAIM_HOSTS` value the app nee
 BUDGET_SECRET_KEY=$(openssl rand -base64 32) BUDGET_SIMPLEFIN_CLAIM_HOSTS=127.0.0.1:8190 just dev-api
 ```
 
-Paste the token in Settings › Bank connection & sync. `POST /_fake/token` mints another one (each is good for one claim, like the real thing), `POST /_fake/next-day` moves the scenarios that change over time on a day, and `POST /_fake/scenario/<name>` switches scenario.
+Paste the token in Settings › Bank connection & sync. `POST /_fake/token` mints another one (each is good for one claim, like the real thing), `POST /_fake/next-day` moves the scenarios that change over time on a day, `POST /_fake/scenario/<name>` switches scenario, and `POST /_fake/currency/<code>` sets the currency its accounts report.
+
+Its accounts report USD; a household in another currency refuses them, so start it with `--currency <code>` (the household's). `--public-host <host:port>` puts that address in the URLs it hands out instead of its own, for when the app reaches it by another name: the e2e tests run it as `bridge:8190` beside the app's container.
 
 ## In a test
 
@@ -23,6 +25,7 @@ let server = simplefin_fake::FakeServer::start(simplefin_fake::Scenario::Steady)
 server.setup_token();   // base64 of a claim URL, good for one claim
 server.host();          // "127.0.0.1:PORT", for the claim-hosts setting
 server.next_day();      // the scenarios that change over time move on
+server.set_currency("EUR"); // what its accounts report (USD until set)
 server.requests();      // everything the server saw (a refused token makes none)
 ```
 
@@ -49,5 +52,6 @@ server.requests();      // everything the server saw (a refused token makes none
 | `missing-data` | `act.missingdata` for the card, which comes without rows. |
 | `account-missing` | The savings account isn't in the response, and the error list is empty. |
 | `wrong-sign` | The card's balance is reported positive although it owes money. |
+| `foreign-currency` | A fourth account, `ACT-demo-travel` (Demo Travel Card) at the second bank, reports CAD (USD when the fake's currency is CAD). |
 
 A later issue that needs another scenario adds it to `Scenario` and to this table.

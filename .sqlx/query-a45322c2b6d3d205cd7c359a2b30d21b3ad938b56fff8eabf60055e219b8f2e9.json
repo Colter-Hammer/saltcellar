@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connection_accounts SET decision = 'ignored', account_id = NULL\n             WHERE account_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a45322c2b6d3d205cd7c359a2b30d21b3ad938b56fff8eabf60055e219b8f2e9"
+}

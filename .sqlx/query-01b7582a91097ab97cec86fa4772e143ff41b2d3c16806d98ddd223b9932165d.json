@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connection_accounts SET decision = 'ignored'\n         WHERE connection_id = ? AND external_account_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "01b7582a91097ab97cec86fa4772e143ff41b2d3c16806d98ddd223b9932165d"
+}

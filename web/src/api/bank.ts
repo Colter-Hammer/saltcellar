@@ -14,7 +14,8 @@ export function useBankConnection() {
 
 /**
  * `PUT /api/v1/bank-connection`: claims a setup token, a new connection or a replacement for the
- * existing one, and resolves to the connection. Throws an ApiError: `validation_failed` naming
+ * existing one, and resolves to the connection. The claim also reads the connection's accounts
+ * into the new accounts prompt. Throws an ApiError: `validation_failed` naming
  * `setup_token` if it isn't a setup token (nothing was asked of SimpleFIN), `secret_key_missing`,
  * `token_refused` if SimpleFIN won't take it, or `bridge_unavailable`.
  */
@@ -23,8 +24,13 @@ export function useClaimSetupToken() {
   return useMutation({
     mutationFn: (setupToken: string) =>
       call(client.PUT('/api/v1/bank-connection', { body: { setup_token: setupToken } })),
-    onSuccess: (connection) => {
+    onSuccess: async (connection) => {
       queryClient.setQueryData(['bank-connection'], connection)
+      // The claim read the connection's accounts: the prompt fills, and some may have attached.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['connection-accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+      ])
     },
   })
 }

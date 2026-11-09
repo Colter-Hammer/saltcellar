@@ -4,6 +4,7 @@ mod accounts;
 mod auth;
 mod categories;
 mod connection;
+mod connection_accounts;
 mod household;
 mod imports;
 mod profile;
@@ -32,6 +33,11 @@ pub use categories::{
 pub use connection::{
     Connection, ConnectionStatus, connection, connection_secret, disconnect, save_connection,
     set_connection_status,
+};
+pub use connection_accounts::{
+    ConnectionAccount, FeedDecision, Recorded, ReportedAccount, Track, TrackError,
+    connection_accounts, ignore_connection_account, record_connection_accounts,
+    track_connection_account,
 };
 pub use household::{Household, household};
 pub use imports::{
@@ -193,6 +199,7 @@ mod tests {
                 "balance_snapshots",
                 "categories",
                 "category_groups",
+                "connection_accounts",
                 "connections",
                 "household",
                 "import_batch_rows",

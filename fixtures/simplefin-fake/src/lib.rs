@@ -45,11 +45,14 @@ pub enum Scenario {
     AccountMissing,
     /// The card's balance is reported positive while its rows say it owes money.
     WrongSign,
+    /// A fourth account, `ACT-demo-travel` at the second bank, reports its money in another
+    /// currency (CAD, or USD when the fake's own currency is CAD).
+    ForeignCurrency,
 }
 
 impl Scenario {
     /// Every scenario, in the order the README lists them.
-    pub const ALL: [Scenario; 10] = [
+    pub const ALL: [Scenario; 11] = [
         Scenario::Steady,
         Scenario::PendingPosts,
         Scenario::PendingAmountChanges,
@@ -60,6 +63,7 @@ impl Scenario {
         Scenario::MissingData,
         Scenario::AccountMissing,
         Scenario::WrongSign,
+        Scenario::ForeignCurrency,
     ];
 
     /// The name used on the command line and in the README.
@@ -76,6 +80,7 @@ impl Scenario {
             Scenario::MissingData => "missing-data",
             Scenario::AccountMissing => "account-missing",
             Scenario::WrongSign => "wrong-sign",
+            Scenario::ForeignCurrency => "foreign-currency",
         }
     }
 
@@ -105,6 +110,8 @@ struct Inner {
     /// `user:pass` logins the claims issued, and whether each still works.
     logins: BTreeMap<String, bool>,
     minted: u32,
+    /// The currency every account reports (but the foreign one), `USD` unless set.
+    currency: String,
 }
 
 #[derive(Debug, Clone)]
@@ -159,12 +166,26 @@ impl FakeServer {
     /// # Errors
     /// If `listen` can't be bound.
     pub async fn start_on(listen: SocketAddr, scenario: Scenario) -> std::io::Result<FakeServer> {
+        FakeServer::start_as(listen, None, scenario).await
+    }
+
+    /// Starts on `listen`, putting `public_host` (`host:port`) in the claim URLs and access URLs
+    /// it hands out instead of its own address: the name the app reaches it by, as in a container
+    /// network.
+    ///
+    /// # Errors
+    /// If `listen` can't be bound.
+    pub async fn start_as(
+        listen: SocketAddr,
+        public_host: Option<String>,
+        scenario: Scenario,
+    ) -> std::io::Result<FakeServer> {
         let listener = tokio::net::TcpListener::bind(listen).await?;
         let addr = listener.local_addr()?;
-        let host = if addr.ip().is_unspecified() {
-            format!("127.0.0.1:{}", addr.port())
-        } else {
-            addr.to_string()
+        let host = match public_host {
+            Some(host) => host,
+            None if addr.ip().is_unspecified() => format!("127.0.0.1:{}", addr.port()),
+            None => addr.to_string(),
         };
         let shared = Shared {
             inner: Arc::new(Mutex::new(Inner {
@@ -174,6 +195,7 @@ impl FakeServer {
                 tokens: BTreeSet::new(),
                 logins: BTreeMap::new(),
                 minted: 0,
+                currency: "USD".to_owned(),
             })),
             host: host.into(),
         };
@@ -183,6 +205,7 @@ impl FakeServer {
             .route("/_fake/next-day", post(next_day))
             .route("/_fake/scenario/{name}", post(set_scenario))
             .route("/_fake/token", post(mint_token))
+            .route("/_fake/currency/{code}", post(set_currency))
             .with_state(shared.clone());
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
@@ -219,6 +242,12 @@ impl FakeServer {
         let mut inner = self.shared.lock();
         inner.scenario = scenario;
         inner.day = 0;
+    }
+
+    /// Makes every account report `currency` (an ISO 4217 code), so the feed matches a
+    /// household's; the foreign-currency scenario's extra account still differs.
+    pub fn set_currency(&self, currency: &str) {
+        currency.clone_into(&mut self.shared.lock().currency);
     }
 
     /// Moves a day on, for the scenarios that change over time.
@@ -280,9 +309,9 @@ async fn accounts(
     if !allowed {
         return (StatusCode::FORBIDDEN, "Forbidden").into_response();
     }
-    let (scenario, day) = {
+    let (scenario, day, currency) = {
         let inner = shared.lock();
-        (inner.scenario, inner.day)
+        (inner.scenario, inner.day, inner.currency.clone())
     };
     match scenario {
         Scenario::Revoked => return (StatusCode::FORBIDDEN, "Forbidden").into_response(),
@@ -292,7 +321,7 @@ async fn accounts(
         _ => {}
     }
     let query = feed::Query::parse(query.as_deref().unwrap_or_default());
-    let body = feed::response(scenario, day, &query);
+    let body = feed::response(scenario, day, &query, &currency);
     (
         [(header::CONTENT_TYPE, "application/json")],
         body.to_string(),
@@ -312,5 +341,13 @@ async fn set_scenario(State(shared): State<Shared>, Path(name): Path<String>) ->
     let mut inner = shared.lock();
     inner.scenario = scenario;
     inner.day = 0;
+    StatusCode::NO_CONTENT
+}
+
+async fn set_currency(State(shared): State<Shared>, Path(code): Path<String>) -> StatusCode {
+    if code.len() != 3 || !code.bytes().all(|b| b.is_ascii_uppercase()) {
+        return StatusCode::NOT_FOUND;
+    }
+    shared.lock().currency = code;
     StatusCode::NO_CONTENT
 }

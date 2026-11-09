@@ -15,7 +15,7 @@ The rules every agent follows when it builds an implementation issue, so a brief
 - Regenerate API files with `just gen-api`; never edit generated files by hand.
 - Migrations are numbered in order (`ls migrations/`); add one only when the work needs it.
 - Write transactions in `db` start with `pool.begin_with("BEGIN IMMEDIATE")`, never a plain `begin()` (see `db::connect`).
-- If port 8080 is taken, run the dev API with `BUDGET_LISTEN=127.0.0.1:8090`. e2e uses 8180 and 8181.
+- If port 8080 is taken, run the dev API with `BUDGET_LISTEN=127.0.0.1:8090`. e2e uses 8180, 8181 and 8182 (its fake SimpleFIN Bridge).
 - Playwright tests that need imported data run after the `import-commit` project.
 
 ## Check

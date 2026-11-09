@@ -1,6 +1,6 @@
 //! Settings › Bank connection & sync, the connection part
 //! (docs/spec/m2-bank-data.md#the-connection): claiming a setup token, replacing it and
-//! disconnecting.
+//! disconnecting. A claim reads the connection's accounts at once, for the new accounts prompt.
 //!
 //! The access URL is a secret: it exists in memory only between the claim and its sealing, and
 //! no response, log line or error here carries it.
@@ -97,7 +97,10 @@ pub struct SetupToken {
 /// `PUT /api/v1/bank-connection`: claims a setup token, stores the access URL it answers sealed
 /// with `BUDGET_SECRET_KEY`, and makes it the household's connection: a new one, or the existing
 /// one with its secret replaced and its pause cleared, keeping its accounts. A token that isn't
-/// one is refused before any request is made; so is every claim without the secret key.
+/// one is refused before any request is made; so is every claim without the secret key. Once
+/// claimed, one request lists the connection's accounts, which wait in the new accounts prompt
+/// (or attach at once to an imported account with the same provider id); if that request fails,
+/// the claim still stands.
 #[utoipa::path(
     put,
     path = "/api/v1/bank-connection",
@@ -134,9 +137,70 @@ pub async fn claim(
         .map_err(|error| ApiError::internal(&error))?
         .map_err(claim_refused)?;
     let sealed = simplefin::seal(&key, &claimed).map_err(|error| ApiError::internal(&error))?;
-    db::save_connection(&state.pool, &sealed).await?;
+    let connection_id = db::save_connection(&state.pool, &sealed).await?;
     tracing::info!("bank connection claimed");
+    look_for_accounts(&state, connection_id, claimed).await?;
     Ok(Json(current(&state).await?))
+}
+
+/// How far back the first request reaches: the first half of the 90-day back-fill, which
+/// never asks for more than 45 days at once *(agent)*.
+const FIRST_WINDOW_DAYS: i64 = 45;
+
+/// Lists the connection's accounts and records them for the new accounts prompt. The Bridge
+/// turning the access URL down pauses the connection; any other failure is logged and leaves
+/// the prompt as it was *(agent)*.
+async fn look_for_accounts(
+    state: &AppState,
+    connection_id: i64,
+    access: simplefin::AccessUrl,
+) -> Result<(), ApiError> {
+    let start = state.now().as_second() - FIRST_WINDOW_DAYS * 86_400;
+    let fetched = tokio::task::spawn_blocking(move || simplefin::fetch_accounts(&access, start))
+        .await
+        .map_err(|error| ApiError::internal(&error))?;
+    let accounts = match fetched {
+        Ok(accounts) => accounts,
+        Err(error) => {
+            let status = match error {
+                simplefin::FetchError::Revoked => Some(db::ConnectionStatus::TokenRevoked),
+                simplefin::FetchError::Unpaid => Some(db::ConnectionStatus::Unpaid),
+                _ => None,
+            };
+            if let Some(status) = status {
+                db::set_connection_status(&state.pool, status, state.now()).await?;
+            }
+            tracing::warn!(%error, "the connection's accounts couldn't be read");
+            return Ok(());
+        }
+    };
+    let household = db::household(&state.pool)
+        .await?
+        .ok_or_else(|| ApiError::internal(&"setup is done but there's no household"))?;
+    let reported: Vec<db::ReportedAccount> = accounts
+        .into_iter()
+        .map(|account| db::ReportedAccount {
+            external_id: account.id,
+            name: account.name,
+            institution: account.institution,
+            currency: account.currency,
+        })
+        .collect();
+    let recorded = db::record_connection_accounts(
+        &state.pool,
+        connection_id,
+        &reported,
+        household.currency.code(),
+        state.now(),
+    )
+    .await?;
+    tracing::info!(
+        new = recorded.new,
+        attached = recorded.attached,
+        refused = recorded.refused.len(),
+        "the connection's accounts were read"
+    );
+    Ok(())
 }
 
 fn claim_refused(error: ClaimError) -> ApiError {
