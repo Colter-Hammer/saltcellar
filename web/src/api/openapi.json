@@ -317,6 +317,128 @@
         }
       }
     },
+    "/api/v1/bank-connection": {
+      "get": {
+        "tags": [
+          "bank"
+        ],
+        "summary": "`GET /api/v1/bank-connection`: whether the secret key is set and what the connection is.",
+        "operationId": "getBankConnection",
+        "responses": {
+          "200": {
+            "description": "The connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "bank"
+        ],
+        "summary": "`PUT /api/v1/bank-connection`: claims a setup token, stores the access URL it answers sealed\nwith `BUDGET_SECRET_KEY`, and makes it the household's connection: a new one, or the existing\none with its secret replaced and its pause cleared, keeping its accounts. A token that isn't\none is refused before any request is made; so is every claim without the secret key.",
+        "operationId": "claimSetupToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupToken"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Claimed; the connection now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`secret_key_missing`: `BUDGET_SECRET_KEY` isn't set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` with `setup_token` if it isn't a setup token; `token_refused` if SimpleFIN won't take it (already used, or not one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`bridge_unavailable`: SimpleFIN couldn't be reached or answered something unexpected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "bank"
+        ],
+        "summary": "`DELETE /api/v1/bank-connection`: disconnects. The secret is deleted and syncing stops; the\naccounts and their rows stay, and become manual accounts. Disconnecting when there is no\nconnection does nothing.",
+        "operationId": "disconnectBank",
+        "responses": {
+          "204": {
+            "description": "Disconnected."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/categories": {
       "get": {
         "tags": [
@@ -2875,6 +2997,30 @@
           }
         }
       },
+      "BankConnection": {
+        "type": "object",
+        "description": "The bank connection screen's state.",
+        "required": [
+          "secret_key_set"
+        ],
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Connection",
+                "description": "Null until a setup token is claimed, and again after Disconnect."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "secret_key_set": {
+            "type": "boolean",
+            "description": "Whether `BUDGET_SECRET_KEY` is set. Without it no setup token can be claimed."
+          }
+        }
+      },
       "Category": {
         "type": "object",
         "required": [
@@ -3120,6 +3266,38 @@
             "description": "As typed: case, spaces and dashes don't matter."
           }
         }
+      },
+      "Connection": {
+        "type": "object",
+        "description": "The household's one bank connection. Its secret is never part of this.",
+        "required": [
+          "label",
+          "status",
+          "paused"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "What to call it, like `SimpleFIN Bridge`."
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "True for every status but `ok`: syncing is paused."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectionStatus"
+          }
+        }
+      },
+      "ConnectionStatus": {
+        "type": "string",
+        "description": "Where the connection stands. Anything but `ok` pauses syncing until a new setup token is\npasted.",
+        "enum": [
+          "ok",
+          "token_revoked",
+          "unpaid",
+          "key_mismatch"
+        ]
       },
       "Created": {
         "type": "object",
@@ -3559,6 +3737,19 @@
           "done": {
             "type": "boolean",
             "description": "Whether setup is finished. Until it is, the app shows only the setup wizard."
+          }
+        }
+      },
+      "SetupToken": {
+        "type": "object",
+        "description": "A pasted setup token.",
+        "required": [
+          "setup_token"
+        ],
+        "properties": {
+          "setup_token": {
+            "type": "string",
+            "description": "The token from SimpleFIN Bridge: base64 of a claim URL, or the claim URL itself."
           }
         }
       },

@@ -51,6 +51,15 @@ interface FakeServer {
   edited: number
   /** What each `POST /api/v1/imports/{id}/undo` was sent. */
   undone: { id: number; confirm: boolean }[]
+  /** The bank connection, as `GET /api/v1/bank-connection` shows it. */
+  bank: {
+    keySet: boolean
+    connection: { label: string; status: string; paused: boolean } | null
+    /** The setup tokens `PUT /api/v1/bank-connection` was sent. */
+    claimed: string[]
+    /** How many times `DELETE /api/v1/bank-connection` was sent. */
+    disconnected: number
+  }
 }
 
 let server: FakeServer
@@ -81,6 +90,7 @@ async function answer(request: Request): Promise<Response> {
     const found = server.accounts.find((a) => `/api/v1/accounts/${String(a.id)}` === path)
     return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
   }
+  if (path === '/api/v1/bank-connection') return bank(request)
   if (path.startsWith('/api/v1/undecided')) return undecided(request, path)
   if (path.startsWith('/api/v1/imports') && !path.startsWith('/api/v1/imports/actual')) {
     return imports(request, path)
@@ -136,6 +146,29 @@ async function answer(request: Request): Promise<Response> {
     { error: { code: 'not_found', message: "There's nothing at this address." } },
     { status: 404 },
   )
+}
+
+async function bank(request: Request): Promise<Response> {
+  if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
+  const shown = () =>
+    Response.json({ secret_key_set: server.bank.keySet, connection: server.bank.connection })
+  if (request.method === 'DELETE') {
+    server.bank.disconnected += 1
+    server.bank.connection = null
+    return new Response(null, { status: 204 })
+  }
+  if (request.method === 'PUT') {
+    const { setup_token: token } = (await request.json()) as { setup_token: string }
+    server.bank.claimed.push(token)
+    if (!server.bank.keySet) {
+      return error(409, 'secret_key_missing', 'Bank sync needs BUDGET_SECRET_KEY.')
+    }
+    if (token === 'nonsense')
+      return invalid({ setup_token: "That doesn't look like a setup token." })
+    if (token === 'used') return error(422, 'token_refused', "SimpleFIN didn't accept that token.")
+    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'ok', paused: false }
+  }
+  return shown()
 }
 
 async function imports(request: Request, path: string): Promise<Response> {
@@ -397,6 +430,7 @@ beforeEach(() => {
     batches: [],
     edited: 0,
     undone: [],
+    bank: { keySet: true, connection: null, claimed: [], disconnected: 0 },
   }
   serverUp()
   os.dark = false
@@ -868,18 +902,109 @@ describe('logging out', () => {
 })
 
 describe('Settings', () => {
-  it('lists Profile, Categories and Imports, and opens Profile', async () => {
+  it('lists Profile, Categories, Bank connection & sync and Imports, and opens Profile', async () => {
     const { router, wrapper } = await open('/settings')
     const links = wrapper.get('main').findAll('a')
     expect(links.map((a) => [a.text(), a.attributes('href')])).toEqual([
       ['Profile', '/settings/profile'],
       ['Categories', '/categories'],
+      ['Bank connection & sync', '/settings/bank'],
       ['Imports', '/settings/imports'],
     ])
     await links[0]?.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/settings/profile')
     expect(wrapper.get('h1').text()).toBe('Profile')
+  })
+})
+
+describe('Settings › Bank connection & sync', () => {
+  const buttons = (wrapper: Wrapper) =>
+    wrapper
+      .get('main')
+      .findAll('button')
+      .map((b) => b.text())
+  const paste = async (wrapper: Wrapper, token: string) => {
+    await wrapper.get('input[name="setup_token"]').setValue(token)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+  }
+
+  it('says there is no secret key, and offers no way to claim', async () => {
+    server.bank.keySet = false
+    const { wrapper } = await open('/settings/bank')
+    expect(wrapper.get('h1').text()).toBe('Bank connection & sync')
+    expect(wrapper.get('[data-testid="key-missing"]').text()).toContain('BUDGET_SECRET_KEY')
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(server.bank.claimed).toEqual([])
+  })
+
+  it('claims a pasted token and shows connected', async () => {
+    const { wrapper } = await open('/settings/bank')
+    expect(wrapper.find('[data-testid="connection-state"]').exists()).toBe(false)
+    await paste(wrapper, 'c2V0dXA=')
+    expect(server.bank.claimed).toEqual(['c2V0dXA='])
+    expect(wrapper.get('[data-testid="connection-state"]').text()).toBe(
+      'SimpleFIN Bridge · connected',
+    )
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(buttons(wrapper)).toEqual(['Replace setup token…', 'Disconnect'])
+  })
+
+  it('names what is wrong with a token', async () => {
+    const { wrapper } = await open('/settings/bank')
+    await paste(wrapper, 'nonsense')
+    expect(wrapper.get('#setup_token-error').text()).toBe("That doesn't look like a setup token.")
+    await paste(wrapper, 'used')
+    expect(wrapper.get('[role="alert"]').text()).toBe("SimpleFIN didn't accept that token.")
+    expect(wrapper.find('[data-testid="connection-state"]').exists()).toBe(false)
+  })
+
+  it('replaces the token from a form that Cancel closes', async () => {
+    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'ok', paused: false }
+    const { wrapper } = await open('/settings/bank')
+    await wrapper.findAll('main button')[0]?.trigger('click')
+    expect(wrapper.find('form').exists()).toBe(true)
+    await wrapper
+      .findAll('main button')
+      .find((b) => b.text() === 'Cancel')
+      ?.trigger('click')
+    expect(wrapper.find('form').exists()).toBe(false)
+
+    await wrapper.findAll('main button')[0]?.trigger('click')
+    await paste(wrapper, 'bmV3')
+    expect(server.bank.claimed).toEqual(['bmV3'])
+    expect(wrapper.find('form').exists()).toBe(false)
+  })
+
+  it('shows a paused connection with the way out', async () => {
+    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'key_mismatch', paused: true }
+    const { wrapper } = await open('/settings/bank')
+    expect(wrapper.get('[data-testid="connection-state"]').text()).toBe(
+      'SimpleFIN Bridge · Sync paused',
+    )
+    expect(wrapper.get('main').text()).toContain('The secret key changed. Paste a new setup token.')
+    expect(wrapper.find('form').exists()).toBe(true)
+  })
+
+  it('asks before disconnecting, and then the accounts are left alone', async () => {
+    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'ok', paused: false }
+    const { wrapper } = await open('/settings/bank')
+    await wrapper.findAll('main button')[1]?.trigger('click')
+    expect(wrapper.get('[role="alert"]').text()).toContain('accounts and transactions stay')
+    expect(server.bank.disconnected).toBe(0)
+    await wrapper
+      .findAll('main button')
+      .find((b) => b.text() === 'Cancel')
+      ?.trigger('click')
+    expect(buttons(wrapper)).toEqual(['Replace setup token…', 'Disconnect'])
+
+    await wrapper.findAll('main button')[1]?.trigger('click')
+    await wrapper.findAll('main button')[0]?.trigger('click')
+    await flushPromises()
+    expect(server.bank.disconnected).toBe(1)
+    expect(wrapper.find('[data-testid="connection-state"]').exists()).toBe(false)
+    expect(wrapper.find('form').exists()).toBe(true)
   })
 })
 

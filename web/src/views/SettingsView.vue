@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Settings: one entry per page of settings.
-import { FolderTree, History, UserRound } from '@lucide/vue'
+import { FolderTree, History, Landmark, UserRound } from '@lucide/vue'
 
 const pages = [
   { to: '/settings/profile', label: 'Profile', icon: UserRound },
   { to: '/categories', label: 'Categories', icon: FolderTree },
+  { to: '/settings/bank', label: 'Bank connection & sync', icon: Landmark },
   { to: '/settings/imports', label: 'Imports', icon: History },
 ]
 </script>

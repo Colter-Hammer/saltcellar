@@ -152,10 +152,12 @@ async fn a_manual_account_starts_from_whats_in_it_today_and_takes_new_balances()
 #[tokio::test]
 async fn a_manual_balance_is_refused_on_a_connected_account() {
     let app = set_up().await;
+    let connection = db::save_connection(&app.pool, b"sealed").await.unwrap();
     let id: i64 = sqlx::query_scalar(
-        "INSERT INTO accounts (name, type, role, connection_id) VALUES ('Synced', 'checking', 'budgeted', 7)
+        "INSERT INTO accounts (name, type, role, connection_id) VALUES ('Synced', 'checking', 'budgeted', ?)
          RETURNING id",
     )
+    .bind(connection)
     .fetch_one(&app.pool)
     .await
     .unwrap();
@@ -170,7 +172,7 @@ async fn a_manual_balance_is_refused_on_a_connected_account() {
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(error["error"]["code"], "account_connected");
     let (_, account) = call(&app, "GET", &format!("/api/v1/accounts/{id}"), &Value::Null).await;
-    assert_eq!(account["connection_id"], 7);
+    assert_eq!(account["connection_id"], connection);
     assert_eq!(account["balance_minor"], Value::Null);
     let (status, _) = call(&app, "POST", "/api/v1/accounts/999/balance", &body).await;
     assert_eq!(status, StatusCode::NOT_FOUND);

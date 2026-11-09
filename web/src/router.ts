@@ -5,6 +5,7 @@ import { isSetupDone } from '@/api/setup'
 import type { Tab } from '@/lib/nav'
 import AccountsView from '@/views/AccountsView.vue'
 import AccountView from '@/views/AccountView.vue'
+import BankConnectionView from '@/views/BankConnectionView.vue'
 import CategoriesView from '@/views/CategoriesView.vue'
 import ImportsView from '@/views/ImportsView.vue'
 import ImportView from '@/views/ImportView.vue'
@@ -68,6 +69,11 @@ export function createAppRouter(history: RouterHistory): Router {
         path: '/settings/profile',
         component: ProfileView,
         meta: { title: 'Profile', tab: 'more' },
+      },
+      {
+        path: '/settings/bank',
+        component: BankConnectionView,
+        meta: { title: 'Bank connection & sync', tab: 'more' },
       },
       {
         path: '/settings/imports',

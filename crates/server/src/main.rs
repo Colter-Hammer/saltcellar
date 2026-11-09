@@ -106,7 +106,16 @@ async fn run(config: Config) -> Result<(), StartError> {
         .map_err(|error| StartError::DataDir(config.data_dir.display().to_string(), error))?;
     let pool = db::connect(&config.data_dir.join(db::FILE_NAME)).await?;
     db::migrate(&pool).await?;
-    let state = api::AppState::load(pool.clone(), &config.data_dir).await?;
+    if !config.bank.claim_policy.hosts().is_empty() {
+        tracing::warn!(
+            hosts = ?config.bank.claim_policy.hosts(),
+            "BUDGET_SIMPLEFIN_CLAIM_HOSTS is set: setup tokens may point only at these hosts (a development setting)"
+        );
+    }
+    let state = api::AppState::load(pool.clone(), &config.data_dir)
+        .await?
+        .with_bank(config.bank.clone())
+        .await?;
 
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await

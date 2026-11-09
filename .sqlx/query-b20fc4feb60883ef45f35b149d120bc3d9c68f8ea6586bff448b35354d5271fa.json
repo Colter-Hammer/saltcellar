@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET connection_id = NULL WHERE connection_id IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "b20fc4feb60883ef45f35b149d120bc3d9c68f8ea6586bff448b35354d5271fa"
+}
