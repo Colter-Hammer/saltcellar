@@ -3,7 +3,8 @@
 // log in E2E_APP_LOGS, where the setup test finds the setup code, and a command that runs `budget`
 // in it in E2E_APP_EXEC, for the reset link. The milestone smoke tests in e2e/smoke/ claim a fresh
 // install of their own, at E2E_SMOKE_BASE_URL with its log in E2E_SMOKE_APP_LOGS, so they run
-// beside the rest without sharing its state.
+// beside the rest without sharing its state. Beside the main install runs a fake SimpleFIN Bridge
+// it can claim, whose setup tokens the tests mint at E2E_BRIDGE_URL.
 import { defineConfig, devices } from '@playwright/test'
 import { STORAGE_STATE } from './e2e/login-state.js'
 
@@ -59,6 +60,7 @@ export default defineConfig({
         'undecided.spec.ts',
         'imports.spec.ts',
         'manual-accounts.spec.ts',
+        'new-accounts.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -77,6 +79,7 @@ export default defineConfig({
         'undecided.spec.ts',
         'imports.spec.ts',
         'manual-accounts.spec.ts',
+        'new-accounts.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -132,6 +135,13 @@ export default defineConfig({
       name: 'manual-accounts',
       testMatch: 'manual-accounts.spec.ts',
       dependencies: ['imports'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Last, the bank connection: claiming the fake Bridge brings new accounts to Accounts.
+    {
+      name: 'new-accounts',
+      testMatch: 'new-accounts.spec.ts',
+      dependencies: ['manual-accounts'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

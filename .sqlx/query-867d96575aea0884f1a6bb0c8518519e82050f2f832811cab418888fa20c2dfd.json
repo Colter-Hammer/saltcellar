@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT a.id AS \"id!: i64\" FROM accounts a, connection_accounts ca\n               WHERE ca.connection_id = ?1 AND ca.external_account_id = ?2\n                 AND ca.decision = 'pending'\n                 AND a.external_account_id = ?2\n                 AND (a.connection_id IS NULL OR a.connection_id = ?1)\n                 AND NOT EXISTS (SELECT 1 FROM connection_accounts o WHERE o.account_id = a.id)\n               ORDER BY a.id LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "867d96575aea0884f1a6bb0c8518519e82050f2f832811cab418888fa20c2dfd"
+}

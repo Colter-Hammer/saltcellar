@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM connection_accounts\n                 WHERE connection_id = ? AND external_account_id = ?) AS \"known!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "known!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cd8db000fd0c336b493ec23b707e1b045369b58eb6aacbcbfa52e7e3894aad4f"
+}

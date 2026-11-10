@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET connection_id = ?, external_account_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "c9bf9b8879143b4fca17ca8437c0a3f62ead2e0b1cc003b5ec43e4ed7ea65fc9"
+}

@@ -1,0 +1,18 @@
+# The e2e tests' additions to compose.yaml (`just e2e`), never a deployment: a fake SimpleFIN
+# Bridge beside the app, reached by the app as bridge:8190 and by the tests on localhost, and the
+# app set to claim from it with a throwaway secret key. Its accounts report EUR, the currency the
+# setup test picks.
+
+services:
+  budget:
+    environment:
+      BUDGET_SECRET_KEY: ${E2E_SECRET_KEY:?a throwaway key}
+      BUDGET_SIMPLEFIN_CLAIM_HOSTS: bridge:8190
+  bridge:
+    image: ${BRIDGE_IMAGE:-saltcellar-fake:e2e}
+    build:
+      context: .
+      target: simplefin-fake
+    command: ["--listen", "0.0.0.0:8190", "--public-host", "bridge:8190", "--currency", "EUR"]
+    ports:
+      - "127.0.0.1:${E2E_BRIDGE_PORT:-8182}:8190"

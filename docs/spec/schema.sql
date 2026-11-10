@@ -126,10 +126,13 @@ CREATE TABLE connection_accounts (
   connection_id       INTEGER NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
   external_account_id TEXT NOT NULL,
   provider_name       TEXT NOT NULL,
-  institution         TEXT,
+  institution         TEXT,                 -- the name of its bank link in the feed
+  currency            TEXT NOT NULL,        -- as the feed reports it; one not the household's is never tracked *(agent)*
   decision            TEXT NOT NULL DEFAULT 'pending' CHECK (decision IN ('pending','tracked','ignored')),
   account_id          INTEGER UNIQUE REFERENCES accounts(id),
   first_seen_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  last_seen_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                        -- the last response it was in; older than the newest one = it stopped arriving *(agent)*
   PRIMARY KEY (connection_id, external_account_id),
   CHECK ((decision = 'tracked') = (account_id IS NOT NULL))
 ) STRICT;

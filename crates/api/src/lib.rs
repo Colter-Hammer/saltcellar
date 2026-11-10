@@ -5,6 +5,7 @@ mod auth;
 mod bank;
 mod batches;
 mod categories;
+mod connection_accounts;
 mod error;
 mod health;
 mod household;
@@ -61,6 +62,9 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         bank::get,
         bank::claim,
         bank::disconnect,
+        connection_accounts::list,
+        connection_accounts::track,
+        connection_accounts::ignore,
         transactions::list,
         transactions::get,
         transactions::tags,
@@ -245,6 +249,15 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/bank-connection",
             get(bank::get).put(bank::claim).delete(bank::disconnect),
+        )
+        .route("/connection-accounts", get(connection_accounts::list))
+        .route(
+            "/connection-accounts/{external_account_id}/track",
+            post(connection_accounts::track),
+        )
+        .route(
+            "/connection-accounts/{external_account_id}/ignore",
+            post(connection_accounts::ignore),
         )
         .route("/transactions", get(transactions::list))
         .route("/transactions/{id}", get(transactions::get))

@@ -160,6 +160,15 @@ pub async fn undo_import(
     .await?
     .rows_affected();
 
+    // A feed account attached to one of them waits in the new accounts prompt again *(agent)*.
+    sqlx::query!(
+        "UPDATE connection_accounts SET decision = 'pending', account_id = NULL
+         WHERE account_id IN (SELECT id FROM accounts WHERE created_by_batch_id = ?
+           AND NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = accounts.id))",
+        batch_id
+    )
+    .execute(&mut *tx)
+    .await?;
     // Its snapshots go with the accounts (ON DELETE CASCADE).
     let accounts_deleted = sqlx::query!(
         "DELETE FROM accounts WHERE created_by_batch_id = ?

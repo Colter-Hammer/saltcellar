@@ -8,7 +8,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::Value;
-use simplefin::{ClaimError, ClaimPolicy, ClaimUrl, claim};
+use simplefin::{AccessUrl, ClaimError, ClaimPolicy, ClaimUrl, FetchError, claim, fetch_accounts};
 use simplefin_fake::{FakeServer, NOW, Scenario};
 
 /// Claims a fresh token on `server`; returns the access URL's text.
@@ -283,6 +283,104 @@ async fn the_failure_scenarios_say_what_they_say() {
     };
     assert_eq!(card(&steady), "-229.00");
     assert_eq!(card(&wrong), "229.00");
+}
+
+/// The accounts `fetch_accounts` reads from `access`, by id and currency.
+async fn fetched(access: &str) -> Result<Vec<(String, String)>, FetchError> {
+    let access = AccessUrl::new(access.to_owned());
+    let accounts = tokio::task::spawn_blocking(move || fetch_accounts(&access, NOW - 45 * 86_400))
+        .await
+        .unwrap()?;
+    Ok(accounts.into_iter().map(|a| (a.id, a.currency)).collect())
+}
+
+#[tokio::test]
+async fn fetching_reads_every_account_with_its_bank() {
+    let server = FakeServer::start(Scenario::Steady).await.unwrap();
+    let access = AccessUrl::new(claimed(&server).await);
+    let accounts = tokio::task::spawn_blocking(move || fetch_accounts(&access, NOW - 45 * 86_400))
+        .await
+        .unwrap()
+        .unwrap();
+    let read: Vec<(&str, &str, Option<&str>)> = accounts
+        .iter()
+        .map(|a| (a.id.as_str(), a.name.as_str(), a.institution.as_deref()))
+        .collect();
+    assert_eq!(
+        read,
+        [
+            (
+                "ACT-demo-checking",
+                "Demo Everyday Checking",
+                Some("First Demo Bank")
+            ),
+            (
+                "ACT-demo-card",
+                "Demo Rewards Card",
+                Some("First Demo Bank")
+            ),
+            (
+                "ACT-demo-savings",
+                "Demo Savings",
+                Some("Demo Credit Union")
+            ),
+        ]
+    );
+    let query = &server.requests()[1].query;
+    assert_eq!(
+        query,
+        &format!("version=2&pending=1&start-date={}", NOW - 45 * 86_400)
+    );
+}
+
+#[tokio::test]
+async fn fetching_says_why_the_bridge_refused() {
+    let server = FakeServer::start(Scenario::Revoked).await.unwrap();
+    let access = claimed(&server).await;
+    assert_eq!(fetched(&access).await.unwrap_err(), FetchError::Revoked);
+    server.set_scenario(Scenario::Unpaid);
+    assert_eq!(fetched(&access).await.unwrap_err(), FetchError::Unpaid);
+    server.set_scenario(Scenario::Steady);
+    let forged = access.replace("demo-pass-1", "wrong");
+    assert_eq!(fetched(&forged).await.unwrap_err(), FetchError::Revoked);
+    drop(server);
+    assert_eq!(fetched(&access).await.unwrap_err(), FetchError::Unreachable);
+}
+
+#[tokio::test]
+async fn the_currency_is_the_fake_s_but_the_foreign_account_s() {
+    let server = FakeServer::start(Scenario::ForeignCurrency).await.unwrap();
+    let access = claimed(&server).await;
+    let currencies = fetched(&access).await.unwrap();
+    assert_eq!(currencies.len(), 4);
+    assert!(currencies[..3].iter().all(|(_, c)| c == "USD"));
+    assert_eq!(
+        currencies[3],
+        ("ACT-demo-travel".to_owned(), "CAD".to_owned())
+    );
+
+    server.set_currency("EUR");
+    let currencies = fetched(&access).await.unwrap();
+    assert!(currencies[..3].iter().all(|(_, c)| c == "EUR"));
+    assert_eq!(currencies[3].1, "CAD");
+    server.set_currency("CAD");
+    assert_eq!(fetched(&access).await.unwrap()[3].1, "USD");
+}
+
+#[tokio::test]
+async fn a_public_host_goes_in_the_urls_it_hands_out() {
+    let server = FakeServer::start_as(
+        "127.0.0.1:0".parse().unwrap(),
+        Some("bridge:8190".to_owned()),
+        Scenario::Steady,
+    )
+    .await
+    .unwrap();
+    assert_eq!(server.host(), "bridge:8190");
+    assert_eq!(
+        STANDARD.decode(server.setup_token()).unwrap(),
+        b"http://bridge:8190/claim/demo-token-1"
+    );
 }
 
 #[test]

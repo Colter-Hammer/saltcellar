@@ -32,6 +32,14 @@ Accounts become editable (they were read-only in milestone 1): name, institution
 - A bank re-link or a new setup token can bring new account ids. The new ids arrive in the prompt with **This is the same as…** pre-filled when the name and institution match a tracked account whose old id has stopped arriving *(agent)*.
 - A manual account that later appears through the connection is linked with **This is the same as…**: the back-fill adopts its rows (below), unmatched manual rows inside the back-fill window get the `not_seen_at_bank` flag, older manual rows stay, and manual balance entry stops.
 
+Details of the prompt *(agent)*:
+
+- **When it fills:** right after a claim (or a replaced token), one request lists the connection's accounts (`start-date` 45 days back, the first half of the back-fill); a sync fills it from then on. If that request fails the claim still stands: a 403 or 402 pauses the connection as a sync would, anything else is logged.
+- **Tracking** opens a small form: the role (the button pressed chooses it first; **Start tracking…** starts at budgeted), **Balances only** (ticked when the name says investment or loan), and **This is the same as…** (a new account, or any open account). A new account takes the bank's name, made unique with a number (`Demo Savings 2`), and its bank as the institution; it has no opening balance until the back-fill. Linking keeps the existing account's name and history and takes the role and balances-only chosen; the feed account it had, if any, becomes ignored.
+- **Another currency:** the account is recorded, listed under **Can't be tracked** with why ("… reports its money in CAD, and this household keeps EUR, so it can't be tracked."), and tracking it is refused (`foreign_currency`).
+- **Re-attaching:** an account with the provider id and no feed account of its own (the Actual import's, or one a disconnect left) attaches as tracked, keeping its role. Undoing the import that made such an account puts its feed account back in the prompt.
+- **Stopped arriving** means absent from the newest response (`connection_accounts.last_seen_at` older than the newest).
+
 **Balances-only accounts** (investments, loans): only their balance is synced; any transactions the feed sends for them are ignored.
 
 ## The connection

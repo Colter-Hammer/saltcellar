@@ -90,7 +90,10 @@ export interface paths {
          * `PUT /api/v1/bank-connection`: claims a setup token, stores the access URL it answers sealed
          *     with `BUDGET_SECRET_KEY`, and makes it the household's connection: a new one, or the existing
          *     one with its secret replaced and its pause cleared, keeping its accounts. A token that isn't
-         *     one is refused before any request is made; so is every claim without the secret key.
+         *     one is refused before any request is made; so is every claim without the secret key. Once
+         *     claimed, one request lists the connection's accounts, which wait in the new accounts prompt
+         *     (or attach at once to an imported account with the same provider id); if that request fails,
+         *     the claim still stands.
          */
         put: operations["claimSetupToken"];
         post?: never;
@@ -214,6 +217,63 @@ export interface paths {
          *     again.
          */
         patch: operations["changeCategoryGroup"];
+        trace?: never;
+    };
+    "/api/v1/connection-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/connection-accounts`: the connection's accounts that aren't tracked. */
+        get: operations["getConnectionAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connection-accounts/{external_account_id}/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/connection-accounts/{external_account_id}/ignore`: ignores a waiting feed
+         *     account. It is listed under Ignored, and can be tracked later.
+         */
+        post: operations["ignoreConnectionAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connection-accounts/{external_account_id}/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/connection-accounts/{external_account_id}/track`: tracks a waiting or ignored
+         *     feed account.
+         */
+        post: operations["trackConnectionAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/health": {
@@ -1021,6 +1081,15 @@ export interface components {
             paused: boolean;
             status: components["schemas"]["ConnectionStatus"];
         };
+        /** @description The new accounts prompt's state. */
+        ConnectionAccounts: {
+            /** @description Ignored; each can be revived. */
+            ignored: components["schemas"]["FeedAccount"][];
+            /** @description Waiting for a decision, in the order first seen. */
+            pending: components["schemas"]["FeedAccount"][];
+            /** @description In another currency than the household's. */
+            refused: components["schemas"]["RefusedAccount"][];
+        };
         /**
          * @description Where the connection stands. Anything but `ok` pauses syncing until a new setup token is
          *     pasted.
@@ -1052,6 +1121,26 @@ export interface components {
         /** @description The body of every error response. */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** @description An account the connection reports that isn't tracked. */
+        FeedAccount: {
+            /**
+             * @description What tracking it suggests for balances only: true when its name says investment or loan
+             *     *(agent)*.
+             */
+            balances_only_suggested: boolean;
+            /** @description The provider's account id. */
+            external_account_id: string;
+            /** @description Its bank, as the feed names it; null when it doesn't. */
+            institution: string | null;
+            /** @description As the bank names it. */
+            name: string;
+            /**
+             * Format: int64
+             * @description The tracked account it is likely the same as: one with the same name and bank whose own
+             *     provider id has stopped arriving. Null when there's none.
+             */
+            same_as_account_id: number | null;
         };
         FinishSetup: {
             /** @description The setup code again, as typed. */
@@ -1199,6 +1288,16 @@ export interface components {
              */
             week_start?: number | null;
         };
+        /** @description An account in another currency than the household's: recorded, never tracked. */
+        RefusedAccount: {
+            /** @description ISO 4217, as the feed reports it. */
+            currency: string;
+            external_account_id: string;
+            institution: string | null;
+            /** @description Why it can't be tracked, to show as is. */
+            message: string;
+            name: string;
+        };
         Session: {
             display_name: string;
             username: string;
@@ -1235,6 +1334,27 @@ export interface components {
         TagList: {
             /** @description By name, ignoring case. */
             tags: components["schemas"]["Tag"][];
+        };
+        /** @description How to track a feed account. */
+        TrackFeedAccount: {
+            /** @description Only its balance is kept; transactions the feed sends for it are ignored. */
+            balances_only: boolean;
+            role: components["schemas"]["AccountRole"];
+            /**
+             * Format: int64
+             * @description The account it is the same as, which moves onto it with its history and opening balance.
+             *     Left out or null: a new account is made, named as the bank names it, of the type its name
+             *     suggests.
+             */
+            same_as_account_id?: number | null;
+        };
+        /** @description What tracking made or linked. */
+        Tracked: {
+            /**
+             * Format: int64
+             * @description The account that now gets the feed.
+             */
+            account_id: number;
         };
         /** @description A transaction in full. */
         Transaction: components["schemas"]["TransactionRow"] & {
@@ -2110,6 +2230,146 @@ export interface operations {
                 };
             };
             /** @description `validation_failed`: the name is empty, too long or taken, or the icon isn't an icon name. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getConnectionAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Waiting, ignored and refused; all empty without a connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionAccounts"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    ignoreConnectionAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider's account id. */
+                external_account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ignored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: the connection hasn't reported it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `already_tracked`: it is tracked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    trackConnectionAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider's account id. */
+                external_account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackFeedAccount"];
+            };
+        };
+        responses: {
+            /** @description Tracked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tracked"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: the connection hasn't reported it, or the account to link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `already_tracked`: it is tracked already. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `foreign_currency`: its currency isn't the household's. */
             422: {
                 headers: {
                     [name: string]: unknown;

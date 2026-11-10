@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connection_accounts SET decision = 'tracked', account_id = ?\n         WHERE connection_id = ? AND external_account_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "4eda8c37c695109d41630ca42f25c7b8a0b0554b3c9391acf00a5cff9ff606c8"
+}
