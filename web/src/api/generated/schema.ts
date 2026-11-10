@@ -92,8 +92,8 @@ export interface paths {
          *     one with its secret replaced and its pause cleared, keeping its accounts. A token that isn't
          *     one is refused before any request is made; so is every claim without the secret key. Once
          *     claimed, one request lists the connection's accounts, which wait in the new accounts prompt
-         *     (or attach at once to an imported account with the same provider id); if that request fails,
-         *     the claim still stands.
+         *     (or attach at once to an imported account with the same provider id, which is then
+         *     back-filled); if a request fails, the claim still stands.
          */
         put: operations["claimSetupToken"];
         post?: never;
@@ -103,6 +103,27 @@ export interface paths {
          *     connection does nothing.
          */
         delete: operations["disconnectBank"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-connection/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/bank-connection/sync`: Sync now. Runs a sync and answers how it went; while one
+         *     is running, waits for it and answers that one instead of asking the Bridge again. A run the
+         *     Bridge failed still answers 200, with the run's error.
+         */
+        post: operations["syncNow"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -267,7 +288,8 @@ export interface paths {
         put?: never;
         /**
          * `POST /api/v1/connection-accounts/{external_account_id}/track`: tracks a waiting or ignored
-         *     feed account.
+         *     feed account, then back-fills it: its last 90 days of rows arrive before this answers. If the
+         *     back-fill fails it is tried again on the next sync, and the account is tracked all the same.
          */
         post: operations["trackConnectionAccount"];
         delete?: never;
@@ -1077,6 +1099,7 @@ export interface components {
         Connection: {
             /** @description What to call it, like `SimpleFIN Bridge`. */
             label: string;
+            last_sync: components["schemas"]["SyncRun"] | null;
             /** @description True for every status but `ok`: syncing is paused. */
             paused: boolean;
             status: components["schemas"]["ConnectionStatus"];
@@ -1322,6 +1345,35 @@ export interface components {
             /** Format: int64 */
             category_id: number;
             memo: string | null;
+        };
+        /** @description One sync run, as the screen shows it. */
+        SyncRun: {
+            /**
+             * Format: int64
+             * @description Rows it added.
+             */
+            added: number;
+            /** @description Why the whole run failed, to show as is; null when it didn't. */
+            error: string | null;
+            /** @description Null while it runs. */
+            finished_at: string | null;
+            /**
+             * Format: int64
+             * @description Bridge requests it made.
+             */
+            requests: number;
+            /** @description RFC 3339. */
+            started_at: string;
+            /**
+             * @description What started it: `manual` (Sync now), `backfill` (tracking an account), `scheduled`,
+             *     `retry` or `catch_up`.
+             */
+            trigger: string;
+            /**
+             * Format: int64
+             * @description Rows whose amount, date, status or bank text it changed.
+             */
+            updated: number;
         };
         /** @description A tag, as the tag filter offers it. */
         Tag: {
@@ -1833,6 +1885,44 @@ export interface operations {
             };
             /** @description `login_required`: no live session. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    syncNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, finished. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRun"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

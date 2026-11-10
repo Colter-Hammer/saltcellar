@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE sync_runs\n         SET finished_at = ?, requests = ?, added = ?, updated = ?, error_code = ?, error = ?\n         WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "de444ae2c7736753cf4f922b10bcecd0ef36a6169176ad74fcc6131270df2c9a"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connections SET last_sync_at = ?, last_error = ?\n         WHERE id = (SELECT connection_id FROM sync_runs WHERE id = ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d508268cb6247fed66b97524c7ffb1b0312f3c5ad54ad2bb91f626d9e493ca25"
+}

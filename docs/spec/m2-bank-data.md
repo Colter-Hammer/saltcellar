@@ -70,6 +70,7 @@ Details of the claim *(agent)*:
 
 - **Daily sync, Sync now, retries, catch-up:** `start-date` = now − 30 days.
 - **First connection (back-fill):** 90 days as two requests of 45 days each; older history comes from the Actual import or files. No request ever asks for more than 45 days.
+- **Back-fill details** *(agent)*: the newer half has no `end-date`, like every other request; the older half ends where the newer starts (`end-date`, exclusive), so it alone carries one. An account is back-filled when it is tracked (the Track request answers once its rows are in), and after a claim for accounts attached at once; `connection_accounts.backfilled_at` records it done, so one moved onto a new id is back-filled again. While any tracked account still needs it, a run makes the back-fill's two requests: the newer half serves every tracked account, the older only those. A back-fill that fails is retried by the next sync, and tracking stands.
 - Around 2–4 requests a day in normal use.
 
 ### Reading the feed
@@ -107,7 +108,7 @@ What the protocol and the live Bridge actually do, so code doesn't rediscover it
 - **Request budget:** the app makes at most **12** Bridge requests in any rolling 24 hours, across every trigger (scheduled, manual, retry, catch-up, back-fill), half the Bridge's limit of 24. One is always held back for the scheduled sync. At the cap, Sync now reads "Sync limit reached, try again after 3:40 pm". Counted from `sync_runs.requests`.
 - **Retries:** only transient failures, at about +20 minutes and +2 hours, all accounts in one request, counted against the cap; then wait for the next day.
 - **Catch-up:** on startup, if the last successful scheduled sync is over 20 hours old, a catch-up sync runs a few minutes after boot; the next scheduled run still happens.
-- **One at a time:** a second trigger (another login, a retry, a catch-up) joins the running sync; never a second Bridge call.
+- **One at a time:** a second trigger (another login, a retry, a catch-up) joins the running sync; never a second Bridge call. A back-fill for a newly tracked account waits for the running sync and then runs, since that sync didn't include it *(agent)*.
 - **Partial failure:** accounts that succeeded commit; each failed account keeps its last data and shows "Last updated Oct 21 · needs attention". A failed account, or one missing from the response, doesn't count toward pending retirement, `not_seen_at_bank` or drift for that run.
 - **Stale and needs attention:** after a successful sync, an account whose `balance-date` is more than **2 days** old is **stale** ("data is 3 days old"; quiet, no retry); more than **5 days**, it **needs attention** with the reconnect button. A tracked account missing from responses for more than 5 days also needs attention *(agent)*.
 - **Paused:** while the connection is `token_revoked` or `unpaid`, no scheduled calls; a banner on every screen: "Bank sync stopped. Get a new setup token from SimpleFIN and paste it in Settings" (or "SimpleFIN subscription unpaid"). Replacing the token clears it.
@@ -227,6 +228,7 @@ Actual may itself have been syncing from SimpleFIN, so its accounts and rows can
 - **Banks:** one row per bank link with its accounts count, state (ok, balances only, stale with "bank hasn't updated in 4 days", needs reconnecting with **Fix at SimpleFIN ↗**) and last refresh.
 - **Recent syncs:** the run history, newest first.
 - **Keep raw bank responses for troubleshooting** checkbox.
+- Until the run history lands, the screen shows the last run in a line ("Last sync: 3 rows added, 1 row updated", "No changes", or the run's error) under the connection *(agent)*.
 
 ## Configuration added
 

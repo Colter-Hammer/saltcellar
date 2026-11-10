@@ -138,7 +138,8 @@ pub struct Tracked {
 }
 
 /// `POST /api/v1/connection-accounts/{external_account_id}/track`: tracks a waiting or ignored
-/// feed account.
+/// feed account, then back-fills it: its last 90 days of rows arrive before this answers. If the
+/// back-fill fails it is tried again on the next sync, and the account is tracked all the same.
 #[utoipa::path(
     post,
     path = "/api/v1/connection-accounts/{external_account_id}/track",
@@ -167,6 +168,9 @@ pub async fn track(
     let account_id = db::track_connection_account(&state.pool, &external_id, &track, household)
         .await
         .map_err(|error| refused(error, household))?;
+    if let Err(error) = crate::sync::backfill(&state).await {
+        tracing::warn!(code = error.code(), "the back-fill after tracking failed");
+    }
     Ok(Json(Tracked { account_id }))
 }
 

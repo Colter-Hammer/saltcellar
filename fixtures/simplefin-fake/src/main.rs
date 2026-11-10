@@ -78,6 +78,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    server.follow_system_clock();
     if let Some(currency) = currency {
         server.set_currency(&currency);
     }

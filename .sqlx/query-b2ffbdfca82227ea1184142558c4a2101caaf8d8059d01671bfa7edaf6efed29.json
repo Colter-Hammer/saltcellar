@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO sync_account_results\n               (sync_run_id, account_id, ok, error_code, error, provider_balance_date)\n             VALUES (?, ?, ?, ?, ?, ?)\n             ON CONFLICT (sync_run_id, account_id) DO UPDATE SET\n               ok = excluded.ok, error_code = excluded.error_code, error = excluded.error,\n               provider_balance_date = excluded.provider_balance_date",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "b2ffbdfca82227ea1184142558c4a2101caaf8d8059d01671bfa7edaf6efed29"
+}

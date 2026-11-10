@@ -10,5 +10,5 @@ mod feed;
 mod secret;
 
 pub use claim::{AccessUrl, ClaimError, ClaimPolicy, ClaimUrl, TokenError, claim};
-pub use feed::{FeedAccount, FetchError, fetch_accounts};
+pub use feed::{Feed, FeedAccount, FeedProblem, FetchError, fetch, fetch_accounts};
 pub use secret::{KeyError, OpenError, SealError, SecretKey, open, seal};

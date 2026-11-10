@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connection_accounts SET backfilled_at = ?\n             WHERE connection_id = ? AND external_account_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "2af2182c423f8e1a6bee8c72f8b696d2d80faecd3a2f34036c1d80fcc7d5896b"
+}

@@ -27,6 +27,7 @@ server.host();          // "127.0.0.1:PORT", for the claim-hosts setting
 server.next_day();      // the scenarios that change over time move on
 server.set_currency("EUR"); // what its accounts report (USD until set)
 server.requests();      // everything the server saw (a refused token makes none)
+server.follow_system_clock(); // dates count back from the real time, not NOW
 ```
 
 ## What it speaks
@@ -36,7 +37,8 @@ server.requests();      // everything the server saw (a refused token makes none
   - `version=2` gives the v2 shape (`errlist`, `connections`, `accounts` with `conn_id`); without it, the v1 shape (`errors`, `org`).
   - `pending=1` includes pending rows (`"pending": true`); without it they are left out.
   - `start-date=<epoch seconds>` drops rows whose `transacted_at` is before it, cut at the exact second.
-- The fake's "now" is fixed at 2026-10-28 09:00:00 UTC (`simplefin_fake::NOW`). Two banks (`CON-demo-1`, `CON-demo-2`), three accounts: `ACT-demo-checking` and `ACT-demo-card` at the first, `ACT-demo-savings` at the second.
+  - `end-date=<epoch seconds>` drops rows whose `transacted_at` is at or after it.
+- In a test the fake's "now" is fixed at 2026-10-28 09:00:00 UTC (`simplefin_fake::NOW`); `server.follow_system_clock()` counts every date back from the real time instead, which the binary always does, so an app on the real clock finds the rows inside its windows *(agent)*. Two banks (`CON-demo-1`, `CON-demo-2`), three accounts: `ACT-demo-checking` and `ACT-demo-card` at the first, `ACT-demo-savings` at the second.
 
 ## Scenarios
 

@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { call, client } from './client'
+import type { components } from './generated/schema'
+
+/** One sync run, as Settings › Bank connection & sync shows it. */
+export type SyncRun = components['schemas']['SyncRun']
 
 /**
  * `GET /api/v1/bank-connection`: whether the server has its secret key, and the household's bank
@@ -50,5 +54,31 @@ export function useDisconnectBank() {
         }),
       ),
     onSuccess: () => queryClient.invalidateQueries(),
+  })
+}
+
+/**
+ * `POST /api/v1/bank-connection/sync`: Sync now. Resolves to the run once it has finished (the
+ * running one, if a sync was already going); a run the Bridge failed resolves too, with its
+ * `error`. Throws an ApiError `not_connected` or `sync_paused`. The rows, accounts and the
+ * connection reload either way.
+ */
+export function useSyncNow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      call(
+        client.POST('/api/v1/bank-connection/sync', {
+          // Every mutating request is JSON, body or not (docs/spec/foundations.md#http-api).
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['bank-connection'] }),
+        queryClient.invalidateQueries({ queryKey: ['connection-accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+      ]),
   })
 }

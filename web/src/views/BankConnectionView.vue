@@ -1,18 +1,21 @@
 <script setup lang="ts">
-// Settings › Bank connection & sync, the connection part
-// (docs/spec/m2-bank-data.md#the-connection): paste a setup token to claim it, replace it, or
-// disconnect. The access URL it yields is never shown; the server keeps it sealed.
+// Settings › Bank connection & sync (docs/spec/m2-bank-data.md#the-connection): paste a setup
+// token to claim it, replace it, or disconnect; Sync now, and what the last sync did. The access
+// URL it yields is never shown; the server keeps it sealed.
 import { computed, ref } from 'vue'
-import { useBankConnection, useClaimSetupToken, useDisconnectBank } from '@/api/bank'
+import { useBankConnection, useClaimSetupToken, useDisconnectBank, useSyncNow } from '@/api/bank'
 import { ApiError } from '@/api/client'
 import FormField from '@/components/FormField.vue'
+import { runSummary } from '@/lib/sync'
 
 const bank = useBankConnection()
 const claim = useClaimSetupToken()
 const disconnect = useDisconnectBank()
+const syncNow = useSyncNow()
 
 const connection = computed(() => bank.data.value?.connection ?? null)
 const keySet = computed(() => bank.data.value?.secret_key_set ?? false)
+const lastSync = computed(() => connection.value?.last_sync ?? null)
 
 /** What a paused connection says, and what to do about it. */
 const PAUSED: Record<string, string> = {
@@ -55,6 +58,17 @@ function cancelReplace() {
   failure.value = ''
 }
 
+const syncFailure = ref('')
+
+async function sync() {
+  syncFailure.value = ''
+  try {
+    await syncNow.mutateAsync()
+  } catch (error) {
+    syncFailure.value = error instanceof Error ? error.message : 'Something went wrong.'
+  }
+}
+
 async function confirmDisconnect() {
   failure.value = ''
   try {
@@ -78,9 +92,25 @@ async function confirmDisconnect() {
         <h2 id="connection-heading" class="font-semibold">Connection</h2>
 
         <template v-if="connection">
-          <p v-if="!connection.paused" data-testid="connection-state">
-            {{ connection.label }} · connected
-          </p>
+          <template v-if="!connection.paused">
+            <p data-testid="connection-state">{{ connection.label }} · connected</p>
+            <p v-if="lastSync" data-testid="last-sync" class="text-sm text-muted-foreground">
+              Last sync: {{ runSummary(lastSync) }}
+            </p>
+            <div class="flex flex-col items-start gap-2">
+              <button
+                type="button"
+                class="rounded-md border px-3 py-2 disabled:opacity-50"
+                :disabled="syncNow.isPending.value"
+                @click="sync"
+              >
+                {{ syncNow.isPending.value ? 'Syncing…' : 'Sync now' }}
+              </button>
+              <p v-if="syncFailure" role="alert" class="text-sm text-destructive">
+                {{ syncFailure }}
+              </p>
+            </div>
+          </template>
           <template v-else>
             <p data-testid="connection-state">{{ connection.label }} · Sync paused</p>
             <p role="status" class="text-sm text-muted-foreground">
