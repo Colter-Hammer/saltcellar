@@ -13,7 +13,9 @@ all-features = true
 [advisories]
 # Every RustSec advisory fails, unmaintained and unsound included. Ignoring one needs an entry with a reason.
 yanked = "deny"
-ignore = []
+ignore = [
+  { id = "RUSTSEC-2026-0459", reason = "C SQLite CVE-2026-119375, fixed in libsqlite3-sys 0.39; sqlx 0.9 pins 0.37. Remove when sqlx allows 0.39 (ignored 2026-11-10)." },
+]
 
 [licenses]
 # Permissive licences compatible with AGPL-3.0, only those in use (an unused one warns).
