@@ -28,7 +28,7 @@ test('enter, edit, delete and undo, and transfer', async ({ page }) => {
 
   // Its detail opens, with the manual badge and its category.
   const detail = page.getByRole('complementary', { name: 'Fake Bakery' })
-  await expect(detail.getByText('Manual', { exact: true })).toBeVisible()
+  await expect(detail.getByRole('paragraph').getByText('Manual', { exact: true })).toBeVisible()
   await expect(detail.getByLabel('Details')).toContainText('Groceries')
   await expect(detail.getByText('−€12.50')).toBeVisible()
   await detail.getByRole('button', { name: 'Close' }).click()
