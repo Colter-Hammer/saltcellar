@@ -2577,7 +2577,7 @@
         "tags": [
           "manual"
         ],
-        "summary": "`DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted, with\nits tags and its transfer. The screen's **Undo** enters it again *(agent)*.",
+        "summary": "`DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted,\nwith its tags and its transfer (the screen's **Undo** enters it again *(agent)*), or a row from\nthe bank (docs/spec/m2-bank-data.md#deleting-a-synced-row). A bank row's id is kept, so the\nnext sync doesn't bring it back; the screen warns first and suggests excluding it from budgets\ninstead. A row from a file without a bank id is undone with its import instead.",
         "operationId": "deleteTransaction",
         "parameters": [
           {
@@ -2616,7 +2616,7 @@
             }
           },
           "409": {
-            "description": "`not_manual`: it came from the bank or a file, or a bank row has adopted it.",
+            "description": "`not_manual`: it came from a file and has no bank id.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2690,6 +2690,69 @@
           },
           "422": {
             "description": "`validation_failed`: there's no such category.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}/excluded": {
+      "put": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "`PUT /api/v1/transactions/{id}/excluded`: excludes a transaction from budgets, or counts it\nagain. Offered in place of deleting a row from the bank\n(docs/spec/m2-bank-data.md#deleting-a-synced-row).",
+        "operationId": "setTransactionExcluded",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Excluded"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction, changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3832,6 +3895,19 @@
           }
         }
       },
+      "Excluded": {
+        "type": "object",
+        "description": "Whether a transaction counts in budgets.",
+        "required": [
+          "excluded"
+        ],
+        "properties": {
+          "excluded": {
+            "type": "boolean",
+            "description": "True: left out of budgets. False: counted again."
+          }
+        }
+      },
       "FeedAccount": {
         "type": "object",
         "description": "An account the connection reports that isn't tracked.",
@@ -4556,7 +4632,8 @@
               "source",
               "categorization_reason",
               "import_batch",
-              "undecided"
+              "undecided",
+              "excluded"
             ],
             "properties": {
               "categorization_reason": {
@@ -4565,6 +4642,10 @@
                   "null"
                 ],
                 "description": "How it got its category, in words; null when nothing gave it one."
+              },
+              "excluded": {
+                "type": "boolean",
+                "description": "Excluded from budgets: `PUT /api/v1/transactions/{id}/excluded` sets it."
               },
               "import_batch": {
                 "oneOf": [

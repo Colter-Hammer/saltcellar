@@ -356,12 +356,13 @@ CREATE INDEX idx_txn_date          ON transactions(date);   -- M1: the list newe
 
 CREATE TABLE dropped_transactions (         -- M2. Pending rows the bank dropped; kept 30 days.
   id           INTEGER PRIMARY KEY,
-  account_id   INTEGER NOT NULL REFERENCES accounts(id),
+  account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, -- *(agent)*
   snapshot     TEXT NOT NULL,               -- JSON of the row with its splits and tags, enough to restore it
   user_edited  INTEGER NOT NULL,            -- 1 = listed under "Recently dropped by bank", undoable
   dropped_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   restored_at  TEXT                         -- *(agent)*
 ) STRICT;
+CREATE INDEX idx_dropped_at ON dropped_transactions(dropped_at); -- *(agent)*
 
 CREATE TABLE deleted_bank_rows (            -- M2. Sync skips these ids so the daily window doesn't bring them back.
   account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

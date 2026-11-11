@@ -120,6 +120,8 @@ pub struct TransactionDetail {
     pub batch: Option<BatchRef>,
     /// Whether it's one of the **From Actual, undecided** rows, which can be given a category.
     pub undecided: bool,
+    /// Excluded from budgets.
+    pub excluded: bool,
 }
 
 /// Transaction `id` in full; `None` if there's no such transaction.
@@ -135,7 +137,8 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
         return Ok(None);
     };
     let more = sqlx::query!(
-        r#"SELECT memo, source, categorization_reason
+        r#"SELECT memo, source, categorization_reason,
+             exclude_from_budget AS "excluded!: bool"
            FROM transactions WHERE id = ?"#,
         id
     )
@@ -191,7 +194,34 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
         categorization_reason: more.categorization_reason,
         batch,
         undecided,
+        excluded: more.excluded,
     }))
+}
+
+/// Excludes transaction `id` from budgets, or counts it again, for login `user_id` at `now`.
+/// Resolves to false when there's no such transaction.
+///
+/// # Errors
+/// If the database fails.
+pub async fn set_excluded(
+    pool: &SqlitePool,
+    id: i64,
+    excluded: bool,
+    user_id: i64,
+    now: jiff::Timestamp,
+) -> Result<bool, Error> {
+    let at = crate::stamp(now);
+    let done = sqlx::query!(
+        "UPDATE transactions SET exclude_from_budget = ?, updated_at = ?, updated_by = ?
+         WHERE id = ?",
+        excluded,
+        at,
+        user_id,
+        id
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
 }
 
 /// Up to `limit` rows newest first that `filter` lets through, only transaction `only` if given,

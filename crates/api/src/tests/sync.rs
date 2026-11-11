@@ -9,10 +9,10 @@ use simplefin_fake::{FakeServer, NOW, Scenario};
 use super::{App, get, post, send, set_up_with_bank, with};
 use crate::{BankConfig, ClaimPolicy, SecretKey};
 
-const DAY: i64 = 86_400;
+pub(super) const DAY: i64 = 86_400;
 
 /// An install in EUR, claimed against a fake Bridge whose accounts report EUR.
-async fn claimed_app(scenario: Scenario) -> (FakeServer, App) {
+pub(super) async fn claimed_app(scenario: Scenario) -> (FakeServer, App) {
     let server = FakeServer::start(scenario).await.unwrap();
     server.set_currency("EUR");
     let key = base64::engine::general_purpose::STANDARD.encode([7_u8; 32]);
@@ -32,7 +32,7 @@ async fn claimed_app(scenario: Scenario) -> (FakeServer, App) {
     (server, app)
 }
 
-async fn track(app: &App, id: &str, balances_only: bool) -> i64 {
+pub(super) async fn track(app: &App, id: &str, balances_only: bool) -> i64 {
     let uri = format!("/api/v1/connection-accounts/{id}/track");
     let body = json!({ "role": "budgeted", "balances_only": balances_only });
     let (status, tracked) = send(app.router.clone(), with(&app.cookie, post(&uri, &body))).await;
@@ -40,7 +40,7 @@ async fn track(app: &App, id: &str, balances_only: bool) -> i64 {
     tracked["account_id"].as_i64().unwrap()
 }
 
-async fn sync_now(app: &App) -> (StatusCode, Value) {
+pub(super) async fn sync_now(app: &App) -> (StatusCode, Value) {
     let request = post("/api/v1/bank-connection/sync", &json!({}));
     send(app.router.clone(), with(&app.cookie, request)).await
 }
@@ -57,7 +57,7 @@ fn feed_queries(server: &FakeServer, skip: usize) -> Vec<String> {
 }
 
 /// `(external id, date, amount, status, source)` of an account's rows, by id.
-async fn rows(app: &App, account: i64) -> Vec<(String, String, i64, String, String)> {
+pub(super) async fn rows(app: &App, account: i64) -> Vec<(String, String, i64, String, String)> {
     sqlx::query_as(
         "SELECT external_id, date, amount_minor, status, source FROM transactions
          WHERE account_id = ? ORDER BY external_id",
@@ -69,7 +69,7 @@ async fn rows(app: &App, account: i64) -> Vec<(String, String, i64, String, Stri
 }
 
 /// The UTC date `days` before the fake's now.
-fn days_ago(days: i64) -> String {
+pub(super) fn days_ago(days: i64) -> String {
     jiff::Timestamp::from_second(NOW - days * DAY)
         .unwrap()
         .to_zoned(jiff::tz::TimeZone::UTC)

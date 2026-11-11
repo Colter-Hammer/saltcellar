@@ -11,6 +11,7 @@ mod manual;
 mod profile;
 mod reset;
 mod sync;
+mod synced_rows;
 mod transactions;
 mod undecided;
 
@@ -57,12 +58,13 @@ pub use profile::{
 pub use reset::{UseReset, issue_password_reset, password_reset, use_password_reset};
 pub use sqlx::SqlitePool;
 pub use sync::{
-    AccountResult, Applied, FeedLink, RunEnd, SyncRun, SyncTrigger, apply_synced_rows,
-    finish_sync_run, latest_sync_run, mark_backfilled, start_sync_run, tracked_feed_accounts,
+    AccountResult, FeedLink, RunEnd, SyncRun, SyncTrigger, finish_sync_run, latest_sync_run,
+    mark_backfilled, start_sync_run, tracked_feed_accounts,
 };
+pub use synced_rows::{Applied, DeleteBankRowError, apply_synced_rows, delete_bank_row};
 pub use transactions::{
-    BatchRef, Filter, SplitLine, Tag, TransactionDetail, TransactionPage, TransactionRow, tags,
-    transaction, transactions,
+    BatchRef, Filter, SplitLine, Tag, TransactionDetail, TransactionPage, TransactionRow,
+    set_excluded, tags, transaction, transactions,
 };
 pub use undecided::{
     DecideError, Decision, UndecidedGroup, decide_group, decide_row, undecided_groups,
@@ -212,6 +214,7 @@ mod tests {
                 "connection_accounts",
                 "connections",
                 "deleted_bank_rows",
+                "dropped_transactions",
                 "household",
                 "import_batch_rows",
                 "import_batches",

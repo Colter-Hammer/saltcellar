@@ -36,6 +36,7 @@ const row: Transaction = {
   categorization_reason: 'Set by Sam',
   import_batch: null,
   undecided: false,
+  excluded: false,
 }
 
 describe('the entry form', () => {

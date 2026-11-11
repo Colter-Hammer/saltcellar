@@ -129,6 +129,14 @@ Each row in the response is matched to a stored row in this order; the first ste
 
 "Similar description" *(agent)*: after the shared normalization (below), one text starts with the other, or they share their first word and their first 8 characters *(agent)*. Pending text is often truncated.
 
+Details of matching *(agent)*:
+
+- **What a run matches against:** every row the run's response(s) held for the account (both back-fill halves together), applied once per run and only for an account that succeeded. Stored candidates are the account's rows dated from a week before the earliest incoming row, plus any carrying an incoming id.
+- **Order:** step 1 for every row first; then the rest oldest first (by date, then id), each stored row taken at most once, so several pending rows posting at once pair oldest with oldest. "Several, none exact" in step 2 inserts without trying steps 3 and 4.
+- **Step 3** compares a pending row only with pending rows and a posted one only with posted, and needs the stored row to have a bank id; the flagged row points at the oldest candidate.
+- **Step 4 ties:** the nearest date wins, then a similar description; candidates equally good that are copies of each other (same date and normalized text) are taken one per bank row; equally good ones that differ are a tie, flagged against the first.
+- Matching code is `domain::matching`; the writes are `db::apply_synced_rows`.
+
 Live behaviour behind these rules: at the banks observed, a pending row normally **keeps its id** when it posts (step 1), usually within a day, at most three; a new id appeared only when the amount changed (a restaurant tip), with the same `transacted_at`, which step 2 catches. No posted id was re-issued in the observation period, but other banks do it, so step 3 stays.
 
 **Adopting** a row (steps 4 and 5) gives it the provider id and `source = 'provider'`; from then on sync owns its amount, date, status and text. The household's category, memo, payee, splits and tags stay.
@@ -145,9 +153,17 @@ Live behaviour behind these rules: at the banks observed, a pending row normally
 - **Posted rows missing:** never deleted automatically. A posted provider row whose date lies inside the fetch window, at least 5 days after its start *(agent: the margin covers rows transacted before the window that posted inside it)*, and that hasn't been returned for 7 days while its account kept succeeding, gets the quiet `not_seen_at_bank` flag; the household deletes or keeps it.
 - **Missing accounts:** an account missing from a successful response counts as failed for that run (error code `absent` *(agent)*): its data stays, its rows' miss counts don't move.
 
+Details *(agent)*:
+
+- **Edited**, for a removed pending row: categorized by hand, changed by a login (`updated_by`), or given a memo, a split, a tag or exclude-from-budget. Unedited removed rows are kept in `dropped_transactions` too, with `user_edited = 0`, so they aren't listed. Listing and undoing them, and the 30-day cleanup, aren't built yet.
+- **The fetch window** for `not_seen_at_bank` is the earliest window that brought the account's rows that run (the back-fill's older half when it ran). The flag is only set on a row with no other flag, and goes when the bank sends the row again.
+- A removed or deleted row that another row is flagged a possible duplicate of leaves that row unflagged.
+
 ### Deleting a synced row
 
 Allowed, with a warning that the bank still has it and a suggestion to exclude it from budgets instead. Its id goes into `deleted_bank_rows`, so the daily window never brings it back.
+
+Details *(agent)*: **Delete** is in the transaction's detail panel for rows from the bank; it opens the warning with **Exclude from budgets instead** (hidden once excluded), **Delete** and **Cancel**. There is no Undo, since the row can't be entered again. The API deletes any row with a bank id this way (an Actual row with one included), and refuses a file row without one (`not_manual`: undo its import instead). Excluding is `PUT /api/v1/transactions/{id}/excluded`; the detail shows **In budgets: Counted / Excluded** with **Count it again**.
 
 ### Payees for synced rows *(agent)*
 

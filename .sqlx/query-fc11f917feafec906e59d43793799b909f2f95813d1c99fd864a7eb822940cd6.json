@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO dropped_transactions (account_id, snapshot, user_edited, dropped_at)\n           SELECT t.account_id,\n             json_object(\n               'transaction', json_object(\n                 'id', t.id, 'date', t.date, 'amount_minor', t.amount_minor,\n                 'status', t.status, 'payee_id', t.payee_id,\n                 'raw_description', t.raw_description, 'bank_category', t.bank_category,\n                 'memo', t.memo, 'category_id', t.category_id,\n                 'exclude_from_budget', t.exclude_from_budget,\n                 'categorized_by', t.categorized_by,\n                 'categorization_reason', t.categorization_reason, 'source', t.source,\n                 'external_id', t.external_id, 'dedupe_key', t.dedupe_key,\n                 'last_seen_at', t.last_seen_at, 'sync_flag', t.sync_flag,\n                 'created_at', t.created_at, 'updated_at', t.updated_at,\n                 'updated_by', t.updated_by),\n               'splits', json((SELECT json_group_array(json_object(\n                   'category_id', s.category_id, 'amount_minor', s.amount_minor,\n                   'memo', s.memo))\n                 FROM transaction_splits s WHERE s.transaction_id = t.id)),\n               'tags', json((SELECT json_group_array(g.tag_id)\n                 FROM transaction_tags g WHERE g.transaction_id = t.id))),\n             t.categorized_by IS 'user' OR t.updated_by IS NOT NULL OR t.memo IS NOT NULL\n               OR t.exclude_from_budget = 1\n               OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)\n               OR EXISTS (SELECT 1 FROM transaction_tags g WHERE g.transaction_id = t.id),\n             ?\n           FROM transactions t WHERE t.id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "fc11f917feafec906e59d43793799b909f2f95813d1c99fd864a7eb822940cd6"
+}

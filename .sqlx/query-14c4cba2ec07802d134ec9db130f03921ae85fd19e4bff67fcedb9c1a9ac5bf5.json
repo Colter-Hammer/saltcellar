@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!: i64\", date, amount_minor, status, raw_description,\n                 EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)\n                   AS \"split!: bool\"\n               FROM transactions t WHERE account_id = ? AND external_id = ?",
+  "query": "SELECT id AS \"id!: i64\", external_id, date, amount_minor, status, raw_description,\n             source\n           FROM transactions\n           WHERE account_id = ?\n             AND (date >= ? OR external_id IN (SELECT value FROM json_each(?)))",
   "describe": {
     "columns": [
       {
@@ -15,8 +15,19 @@
         }
       },
       {
-        "name": "date",
+        "name": "external_id",
         "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "external_id"
+          }
+        }
+      },
+      {
+        "name": "date",
+        "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -27,7 +38,7 @@
       },
       {
         "name": "amount_minor",
-        "ordinal": 2,
+        "ordinal": 3,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -38,7 +49,7 @@
       },
       {
         "name": "status",
-        "ordinal": 3,
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +60,7 @@
       },
       {
         "name": "raw_description",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -59,17 +70,23 @@
         }
       },
       {
-        "name": "split!: bool",
-        "ordinal": 5,
-        "type_info": "Integer",
-        "origin": "Expression"
+        "name": "source",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "source"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
+      true,
       false,
       false,
       false,
@@ -77,5 +94,5 @@
       false
     ]
   },
-  "hash": "da6cb353c32320cfb18bc6b200944cca71ffc3c306f6044c94d20052d847f26d"
+  "hash": "14c4cba2ec07802d134ec9db130f03921ae85fd19e4bff67fcedb9c1a9ac5bf5"
 }

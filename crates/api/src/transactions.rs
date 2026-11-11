@@ -3,13 +3,14 @@
 //! by its query; the tags are listed for its tag filter.
 
 use axum::Json;
-use axum::extract::{Query, State};
+use axum::extract::{Extension, Query, State};
 use axum::http::StatusCode;
 use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::error::{ErrorEnvelope, Id};
+use crate::error::{Body, ErrorEnvelope, Id};
+use crate::session::Current;
 use crate::{ApiError, AppState};
 
 /// How many rows a page has unless asked for fewer or more *(agent)*.
@@ -339,6 +340,8 @@ pub struct Transaction {
     /// One of the rows waiting in **From Actual, undecided**: it can be given a category with
     /// `PUT /api/v1/transactions/{id}/category`.
     undecided: bool,
+    /// Excluded from budgets: `PUT /api/v1/transactions/{id}/excluded` sets it.
+    excluded: bool,
 }
 
 impl From<db::TransactionDetail> for Transaction {
@@ -364,6 +367,7 @@ impl From<db::TransactionDetail> for Transaction {
                 imported_at: batch.imported_at.to_string(),
             }),
             undecided: detail.undecided,
+            excluded: detail.excluded,
         }
     }
 }
@@ -389,4 +393,50 @@ pub async fn get(State(state): State<AppState>, Id(id): Id) -> Result<Json<Trans
         )
     })?;
     Ok(Json(detail.into()))
+}
+
+/// Whether a transaction counts in budgets.
+#[derive(Deserialize, ToSchema)]
+pub struct Excluded {
+    /// True: left out of budgets. False: counted again.
+    excluded: bool,
+}
+
+/// `PUT /api/v1/transactions/{id}/excluded`: excludes a transaction from budgets, or counts it
+/// again. Offered in place of deleting a row from the bank
+/// (docs/spec/m2-bank-data.md#deleting-a-synced-row).
+#[utoipa::path(
+    put,
+    path = "/api/v1/transactions/{id}/excluded",
+    operation_id = "setTransactionExcluded",
+    params(("id" = i64, Path, description = "The transaction.")),
+    request_body = Excluded,
+    responses(
+        (status = 200, description = "The transaction, changed.", body = Transaction),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 404, description = "`not_found`: there's no such transaction.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn set_excluded(
+    State(state): State<AppState>,
+    Extension(current): Extension<Current>,
+    Id(id): Id,
+    Body(body): Body<Excluded>,
+) -> Result<Json<Transaction>, ApiError> {
+    let found = db::set_excluded(
+        &state.pool,
+        id,
+        body.excluded,
+        current.login.user_id,
+        state.now(),
+    )
+    .await?;
+    if !found {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "There's no such transaction.",
+        ));
+    }
+    get(State(state), Id(id)).await
 }

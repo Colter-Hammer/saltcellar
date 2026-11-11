@@ -32,6 +32,13 @@ pub enum Scenario {
     PendingAmountChanges,
     /// A posted row; from day 1 the same row under a new id.
     IdReissued,
+    /// Two equal posted rows a day apart; from day 1 both under new ids, so neither new id can
+    /// be told apart.
+    IdsReissuedTogether,
+    /// A pending row (a hotel deposit); from day 1 it is gone, never posted.
+    PendingDropped,
+    /// A posted row ten days old; from day 1 the bank stops sending it.
+    PostedDropped,
     /// The second bank's link needs re-authorizing: `con.auth` in the error list, its accounts
     /// with a `balance-date` six days old.
     NeedsAuth,
@@ -52,11 +59,14 @@ pub enum Scenario {
 
 impl Scenario {
     /// Every scenario, in the order the README lists them.
-    pub const ALL: [Scenario; 11] = [
+    pub const ALL: [Scenario; 14] = [
         Scenario::Steady,
         Scenario::PendingPosts,
         Scenario::PendingAmountChanges,
         Scenario::IdReissued,
+        Scenario::IdsReissuedTogether,
+        Scenario::PendingDropped,
+        Scenario::PostedDropped,
         Scenario::NeedsAuth,
         Scenario::Revoked,
         Scenario::Unpaid,
@@ -74,6 +84,9 @@ impl Scenario {
             Scenario::PendingPosts => "pending-posts",
             Scenario::PendingAmountChanges => "pending-amount-changes",
             Scenario::IdReissued => "id-reissued",
+            Scenario::IdsReissuedTogether => "ids-reissued-together",
+            Scenario::PendingDropped => "pending-dropped",
+            Scenario::PostedDropped => "posted-dropped",
             Scenario::NeedsAuth => "needs-auth",
             Scenario::Revoked => "revoked",
             Scenario::Unpaid => "unpaid",

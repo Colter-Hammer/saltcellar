@@ -55,6 +55,7 @@ test('the imported transactions, on a desktop and a phone, and one opened', asyn
     'Tags',
     'Status',
     'Source',
+    'In budgets',
     'Categorized',
     'Import',
   ])

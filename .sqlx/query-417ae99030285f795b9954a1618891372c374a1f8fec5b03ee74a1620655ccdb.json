@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n         SET external_id = ?, source = 'provider', date = ?, amount_minor = ?, status = ?,\n             raw_description = ?, dedupe_key = ?, last_seen_at = ?, pending_miss_count = 0,\n             updated_at = CASE WHEN ? THEN ? ELSE updated_at END,\n             sync_flag = CASE WHEN ? THEN 'amount_changed_split'\n                              WHEN sync_flag = 'not_seen_at_bank' THEN NULL\n                              ELSE sync_flag END\n         WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "417ae99030285f795b9954a1618891372c374a1f8fec5b03ee74a1620655ccdb"
+}

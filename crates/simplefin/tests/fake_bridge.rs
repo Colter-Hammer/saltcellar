@@ -274,6 +274,59 @@ async fn an_id_is_reissued() {
 }
 
 #[tokio::test]
+async fn two_ids_are_reissued_together() {
+    let (_, day0) = scenario_feed(Scenario::IdsReissuedTogether, 0).await;
+    let (_, day1) = scenario_feed(Scenario::IdsReissuedTogether, 1).await;
+    let parking = |body: &Value| {
+        let mut found: Vec<(String, Value, Value)> = rows(body, "ACT-demo-checking")
+            .into_iter()
+            .filter(|r| r["description"] == "DEMO PARKING")
+            .map(|r| {
+                (
+                    r["id"].as_str().unwrap().to_owned(),
+                    r["amount"].clone(),
+                    r["posted"].clone(),
+                )
+            })
+            .collect();
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        found
+    };
+    let (before, after) = (parking(&day0), parking(&day1));
+    assert_eq!(
+        before.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(),
+        ["TRN-demo-park-1", "TRN-demo-park-2"]
+    );
+    assert_eq!(
+        after.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(),
+        ["TRN-demo-park-3", "TRN-demo-park-4"]
+    );
+    for (old, new) in before.iter().zip(&after) {
+        assert_eq!((&old.1, &old.2), (&new.1, &new.2));
+    }
+}
+
+#[tokio::test]
+async fn a_pending_row_and_a_posted_row_stop_coming() {
+    let (_, day0) = scenario_feed(Scenario::PendingDropped, 0).await;
+    let (_, day1) = scenario_feed(Scenario::PendingDropped, 1).await;
+    let hold = |body: &Value| {
+        rows(body, "ACT-demo-checking")
+            .into_iter()
+            .find(|r| r["id"] == "TRN-demo-hold-1")
+            .cloned()
+    };
+    assert_eq!(hold(&day0).unwrap()["pending"], true);
+    assert_eq!(hold(&day1), None);
+
+    let (_, day0) = scenario_feed(Scenario::PostedDropped, 0).await;
+    let (_, day1) = scenario_feed(Scenario::PostedDropped, 1).await;
+    let gym = "TRN-demo-gym-1".to_owned();
+    assert!(ids(&rows(&day0, "ACT-demo-checking")).contains(&gym));
+    assert!(!ids(&rows(&day1, "ACT-demo-checking")).contains(&gym));
+}
+
+#[tokio::test]
 async fn the_failure_scenarios_say_what_they_say() {
     let (status, needs_auth) = scenario_feed(Scenario::NeedsAuth, 0).await;
     assert_eq!(status, 200);

@@ -1,17 +1,20 @@
 //! The sync engine (docs/spec/m2-bank-data.md#the-request and #sync-runs): one run asks the
-//! Bridge for every account at once, reads each tracked account's rows and upserts them, and
-//! records the run with a result per account. A newly tracked account is back-filled: 90 days as
+//! Bridge for every account at once, reads each tracked account's rows, matches them to the
+//! stored ones (`db::apply_synced_rows`) for every account that succeeded, and records the run
+//! with a result per account. A failed or missing account keeps its last data and no miss counts
+//! move. A newly tracked account is back-filled: 90 days as
 //! two 45-day requests. Otherwise a run asks for the last 30 days.
 //!
 //! One run at a time: Sync now while a run is going joins it, and never makes a second request.
 //! The cooldown and the request cap arrive with the schedule.
 
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use domain::feed::{self, Window};
+use domain::feed::{self, SyncedRow, Window};
 use jiff::Timestamp;
 use serde::Serialize;
 use simplefin::{AccessUrl, Feed, FetchError};
@@ -175,7 +178,9 @@ async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<(), ApiError>
     let started = state.now();
     let run_id = db::start_sync_run(&state.pool, connection_id, trigger, started).await?;
     let mut end = db::RunEnd::default();
-    let mut results: BTreeMap<i64, db::AccountResult> = BTreeMap::new();
+    // Each account's rows over every request, applied once the responses are in, so matching
+    // and the rows the bank stopped sending see the run's whole response.
+    let mut read: BTreeMap<i64, Read> = BTreeMap::new();
     for (n, request) in plan(&links, started.as_second()).into_iter().enumerate() {
         end.requests += 1;
         let url = access.clone();
@@ -195,20 +200,30 @@ async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<(), ApiError>
             record_accounts(state, connection_id, &feed, household.currency.code()).await?;
         }
         for link in request.accounts {
-            let result = apply(state, link, &feed, household.currency, &mut end).await?;
-            // A failure in either request stands for the run.
-            results
-                .entry(link.account_id)
-                .and_modify(|kept| {
-                    if kept.ok {
-                        *kept = result.clone();
-                    }
-                })
-                .or_insert(result);
+            let account = read_account(link, &feed, household.currency, window.start);
+            match read.entry(link.account_id) {
+                Entry::Vacant(entry) => {
+                    entry.insert(account);
+                }
+                // A failure in either request stands for the run.
+                Entry::Occupied(mut entry) => entry.get_mut().join(account),
+            }
         }
     }
+    for (account_id, account) in &read {
+        let (true, Some(rows)) = (account.result.ok, &account.rows) else {
+            continue;
+        };
+        let window_start = feed::utc_date(account.window_start)
+            .ok_or_else(|| ApiError::internal(&"a sync window starts off the calendar"))?;
+        let applied =
+            db::apply_synced_rows(&state.pool, *account_id, rows, window_start, state.now())
+                .await?;
+        end.added += applied.added;
+        end.updated += applied.updated;
+    }
+    let results: Vec<db::AccountResult> = read.into_values().map(|a| a.result).collect();
     let finished = state.now();
-    let results: Vec<db::AccountResult> = results.into_values().collect();
     db::finish_sync_run(&state.pool, run_id, &end, &results, finished).await?;
     if end.error_code.is_none() {
         let done: Vec<String> = links
@@ -280,27 +295,57 @@ async fn record_accounts(
     Ok(())
 }
 
-/// Reads one tracked account out of the feed and upserts its rows; resolves to how it fared.
-async fn apply(
-    state: &AppState,
+/// What a run read for one account.
+struct Read {
+    result: db::AccountResult,
+    /// Its rows; `None` for a balances-only account, whose rows are ignored.
+    rows: Option<Vec<SyncedRow>>,
+    /// Epoch seconds: where the earliest request that brought its rows started.
+    window_start: i64,
+}
+
+impl Read {
+    /// Adds what another request of the same run read for the account. A failure stands.
+    fn join(&mut self, other: Read) {
+        if !self.result.ok {
+            return;
+        }
+        if !other.result.ok {
+            *self = other;
+            return;
+        }
+        if let (Some(rows), Some(more)) = (&mut self.rows, other.rows) {
+            rows.extend(more);
+        }
+        self.window_start = self.window_start.min(other.window_start);
+    }
+}
+
+/// Reads one tracked account out of the feed of a request whose window started at
+/// `window_start`.
+fn read_account(
     link: &db::FeedLink,
     feed: &Feed,
     currency: domain::Currency,
-    end: &mut db::RunEnd,
-) -> Result<db::AccountResult, ApiError> {
-    let failed = |code: &str, message: String, balance_date| db::AccountResult {
-        account_id: link.account_id,
-        ok: false,
-        error_code: Some(code.to_owned()),
-        error: Some(feed::sanitize_message(&message)),
-        balance_date,
+    window_start: i64,
+) -> Read {
+    let failed = |code: &str, message: String, balance_date| Read {
+        result: db::AccountResult {
+            account_id: link.account_id,
+            ok: false,
+            error_code: Some(code.to_owned()),
+            error: Some(feed::sanitize_message(&message)),
+            balance_date,
+        },
+        rows: None,
+        window_start,
     };
     let Some(account) = feed.accounts.iter().find(|a| a.id == link.external_id) else {
-        return Ok(failed(
+        return failed(
             "absent",
             "The bank didn't send this account this time.".to_owned(),
             None,
-        ));
+        );
     };
     let balance_date = account
         .balance_date
@@ -311,23 +356,25 @@ async fn apply(
             || (p.account_id.is_none() && p.bank_link.is_some() && p.bank_link == account.bank_link)
     });
     if let Some(problem) = problem {
-        return Ok(failed(&problem.code, problem.message.clone(), balance_date));
+        return failed(&problem.code, problem.message.clone(), balance_date);
     }
-    if !link.balances_only {
-        let rows = match feed::read_rows(&account.rows, currency) {
-            Ok(rows) => rows,
-            Err(error) => return Ok(failed(error.code(), error.to_string(), balance_date)),
-        };
-        let applied =
-            db::apply_synced_rows(&state.pool, link.account_id, &rows, state.now()).await?;
-        end.added += applied.added;
-        end.updated += applied.updated;
+    let rows = if link.balances_only {
+        None
+    } else {
+        match feed::read_rows(&account.rows, currency) {
+            Ok(rows) => Some(rows),
+            Err(error) => return failed(error.code(), error.to_string(), balance_date),
+        }
+    };
+    Read {
+        result: db::AccountResult {
+            account_id: link.account_id,
+            ok: true,
+            error_code: None,
+            error: None,
+            balance_date,
+        },
+        rows,
+        window_start,
     }
-    Ok(db::AccountResult {
-        account_id: link.account_id,
-        ok: true,
-        error_code: None,
-        error: None,
-        balance_date,
-    })
 }

@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET pending_miss_count = pending_miss_count + 1\n           WHERE account_id = ? AND status = 'pending' AND external_id IS NOT NULL\n             AND external_id NOT IN (SELECT value FROM json_each(?))\n           RETURNING id AS \"id!: i64\", pending_miss_count",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "pending_miss_count",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "pending_miss_count"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "7f16c1c0eadfd9c9b51b222a52cb382c91f052bc27192f259a7a272650e6ef85"
+}

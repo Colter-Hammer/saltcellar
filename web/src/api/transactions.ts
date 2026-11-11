@@ -73,7 +73,8 @@ export function usePayees() {
 }
 
 /**
- * Entering, editing and deleting manual transactions. Each reloads the transactions, payees, tags
+ * Entering, editing and deleting manual transactions, deleting rows from the bank and excluding
+ * any row from budgets. Each reloads the transactions, payees, tags
  * and accounts afterwards, whether it worked or not, and throws an ApiError when it didn't: a
  * `validation_failed` names the fields.
  */
@@ -99,13 +100,26 @@ export function useManualEdits() {
       edit(
         call(client.PUT('/api/v1/transactions/{id}', { params: { path: { id } }, body: entry })),
       ),
-    /** `DELETE /api/v1/transactions/{id}`, marked JSON as every changing request must be. */
+    /**
+     * `DELETE /api/v1/transactions/{id}`, marked JSON as every changing request must be. A row from
+     * the bank is gone for good: the next sync skips its id.
+     */
     remove: (id: number) =>
       edit(
         call(
           client.DELETE('/api/v1/transactions/{id}', {
             params: { path: { id } },
             headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ),
+    /** `PUT /api/v1/transactions/{id}/excluded`: leaves it out of budgets, or counts it again. */
+    exclude: (id: number, excluded: boolean) =>
+      edit(
+        call(
+          client.PUT('/api/v1/transactions/{id}/excluded', {
+            params: { path: { id } },
+            body: { excluded },
           }),
         ),
       ),

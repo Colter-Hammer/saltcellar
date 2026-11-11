@@ -295,6 +295,18 @@ async function transactions(request: Request, path: string): Promise<Response> {
     })
   }
   const found = server.transactions.find((t) => `/api/v1/transactions/${String(t.id)}` === path)
+  if (found !== undefined && request.method === 'DELETE') {
+    server.transactions = server.transactions.filter((t) => t !== found)
+    return new Response(null, { status: 204 })
+  }
+  const excluding = server.transactions.find(
+    (t) => `/api/v1/transactions/${String(t.id)}/excluded` === path,
+  )
+  if (excluding !== undefined && request.method === 'PUT') {
+    const { excluded } = (await request.json()) as { excluded: boolean }
+    excluding.excluded = excluded
+    return Response.json(excluding)
+  }
   return found ? Response.json(found) : error(404, 'not_found', "There's no such transaction.")
 }
 
@@ -1616,6 +1628,7 @@ describe('Transactions', () => {
     categorization_reason: null,
     import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
     undecided: false,
+    excluded: false,
     ...fields,
   })
 
@@ -1713,6 +1726,7 @@ describe('Transactions', () => {
       ['Tags', 'trip'],
       ['Status', 'Posted'],
       ['Source', 'Import'],
+      ['In budgets', 'Counted'],
       ['Categorized', 'From Actual: Groceries'],
       ['Import', 'export.zip, Feb 1, 2026'],
     ])
@@ -1738,6 +1752,58 @@ describe('Transactions', () => {
     expect(text).toContain('Pending')
     expect(text).toContain('Bank')
     expect(text).not.toContain('export.zip')
+  })
+
+  it('deletes a bank row only after a warning that offers excluding it instead', async () => {
+    const { router, wrapper } = await open('/transactions/2')
+    const button = (name: string) => {
+      const found = wrapper
+        .get('aside')
+        .findAll('button')
+        .find((b) => b.text() === name)
+      if (found === undefined) throw new Error(`no ${name} button`)
+      return found
+    }
+    const named = () =>
+      wrapper
+        .get('aside')
+        .findAll('button')
+        .map((b) => b.text())
+
+    await button('Delete').trigger('click')
+    expect(wrapper.get('aside [role="alertdialog"]').text()).toContain(
+      "The bank still has it. Once deleted, syncing won't bring it back.",
+    )
+    await button('Exclude from budgets instead').trigger('click')
+    await flushPromises()
+    expect(server.transactions.find((t) => t.id === 2)?.excluded).toBe(true)
+    expect(wrapper.find('aside [role="alertdialog"]').exists()).toBe(false)
+    expect(wrapper.get('aside dl').text()).toContain('Excluded')
+
+    // Already excluded: the warning only offers to delete or cancel.
+    await button('Delete').trigger('click')
+    expect(named()).not.toContain('Exclude from budgets instead')
+    await button('Cancel').trigger('click')
+    expect(wrapper.find('aside [role="alertdialog"]').exists()).toBe(false)
+    await button('Count it again').trigger('click')
+    await flushPromises()
+    expect(server.transactions.find((t) => t.id === 2)?.excluded).toBe(false)
+
+    await button('Delete').trigger('click')
+    await button('Delete').trigger('click')
+    await flushPromises()
+    expect(server.transactions.map((t) => t.id)).not.toContain(2)
+    expect(router.currentRoute.value.path).toBe('/transactions')
+  })
+
+  it('offers no Delete for a row from a file', async () => {
+    const { wrapper } = await open('/transactions/5')
+    expect(
+      wrapper
+        .get('aside')
+        .findAll('button')
+        .map((b) => b.text()),
+    ).not.toContain('Delete')
   })
 
   it('names the other account in a transfer leg, in the list and the detail', async () => {
@@ -1917,6 +1983,7 @@ describe('From Actual, undecided', () => {
     categorization_reason: null,
     import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
     undecided: true,
+    excluded: false,
   })
 
   beforeEach(() => {

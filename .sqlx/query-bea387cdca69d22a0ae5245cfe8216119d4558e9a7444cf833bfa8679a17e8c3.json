@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n         SET possible_duplicate_of = NULL,\n             sync_flag = CASE WHEN sync_flag IN ('possible_duplicate', 'possible_manual_match')\n                              THEN NULL ELSE sync_flag END\n         WHERE possible_duplicate_of = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "bea387cdca69d22a0ae5245cfe8216119d4558e9a7444cf833bfa8679a17e8c3"
+}

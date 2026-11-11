@@ -71,6 +71,7 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         transactions::list,
         transactions::get,
         transactions::tags,
+        transactions::set_excluded,
         manual::create,
         manual::change,
         manual::delete,
@@ -281,6 +282,10 @@ pub fn router(state: AppState) -> Router {
                 .delete(manual::delete),
         )
         .route("/transactions/{id}/category", put(undecided::set_category))
+        .route(
+            "/transactions/{id}/excluded",
+            put(transactions::set_excluded),
+        )
         .route("/undecided", get(undecided::list))
         .route("/undecided/move", post(undecided::move_group))
         .route("/tags", get(transactions::tags))

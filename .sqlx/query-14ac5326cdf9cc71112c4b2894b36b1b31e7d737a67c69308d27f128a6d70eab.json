@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT external_id FROM deleted_bank_rows WHERE account_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "external_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deleted_bank_rows",
+            "name": "external_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "14ac5326cdf9cc71112c4b2894b36b1b31e7d737a67c69308d27f128a6d70eab"
+}

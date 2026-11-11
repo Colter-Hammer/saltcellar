@@ -48,6 +48,9 @@ server.follow_system_clock(); // dates count back from the real time, not NOW
 | `pending-posts` | Day 0: a pending checking row. From day 1: the same id, posted, same amount. |
 | `pending-amount-changes` | Day 0: a pending row. From day 1: a posted row with a new id and a larger amount (a tip), same `transacted_at`. |
 | `id-reissued` | Day 0: a posted row. From day 1: the same row under a new id. |
+| `ids-reissued-together` | Day 0: two equal posted rows a day apart. From day 1: both under new ids, so neither can be told apart. |
+| `pending-dropped` | Day 0: a pending checking row (a hotel deposit). From day 1: gone, never posted. |
+| `posted-dropped` | Day 0: a posted checking row ten days old. From day 1: the bank stops sending it. |
 | `needs-auth` | `con.auth` for `CON-demo-2` in the error list; its accounts' `balance-date` is six days old. |
 | `revoked` | `GET /accounts` answers 403: the access URL was revoked. |
 | `unpaid` | `GET /accounts` answers 402. |

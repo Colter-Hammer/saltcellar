@@ -175,8 +175,11 @@ pub async fn change(
     Ok(Json(detail(&state, id).await?))
 }
 
-/// `DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted, with
-/// its tags and its transfer. The screen's **Undo** enters it again *(agent)*.
+/// `DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted,
+/// with its tags and its transfer (the screen's **Undo** enters it again *(agent)*), or a row from
+/// the bank (docs/spec/m2-bank-data.md#deleting-a-synced-row). A bank row's id is kept, so the
+/// next sync doesn't bring it back; the screen warns first and suggests excluding it from budgets
+/// instead. A row from a file without a bank id is undone with its import instead.
 #[utoipa::path(
     delete,
     path = "/api/v1/transactions/{id}",
@@ -186,13 +189,32 @@ pub async fn change(
         (status = 204, description = "The transaction is deleted."),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
         (status = 404, description = "`not_found`: there's no such transaction.", body = ErrorEnvelope),
-        (status = 409, description = "`not_manual`: it came from the bank or a file, or a bank row has adopted it.", body = ErrorEnvelope),
+        (status = 409, description = "`not_manual`: it came from a file and has no bank id.", body = ErrorEnvelope),
     ),
 )]
-pub async fn delete(State(state): State<AppState>, Id(id): Id) -> Result<StatusCode, ApiError> {
-    db::delete_manual_transaction(&state.pool, id)
+pub async fn delete(
+    State(state): State<AppState>,
+    Extension(current): Extension<Current>,
+    Id(id): Id,
+) -> Result<StatusCode, ApiError> {
+    match db::delete_manual_transaction(&state.pool, id).await {
+        Err(db::ManualError::NotManual) => {}
+        other => {
+            other.map_err(refused)?;
+            return Ok(StatusCode::NO_CONTENT);
+        }
+    }
+    db::delete_bank_row(&state.pool, id, current.login.user_id, state.now())
         .await
-        .map_err(refused)?;
+        .map_err(|error| match error {
+            db::DeleteBankRowError::NotFound => refused(db::ManualError::NotFound),
+            db::DeleteBankRowError::NotFromBank => ApiError::new(
+                StatusCode::CONFLICT,
+                "not_manual",
+                "A transaction from a file is removed by undoing its import.",
+            ),
+            db::DeleteBankRowError::Db(error) => error.into(),
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
