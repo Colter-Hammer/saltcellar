@@ -112,6 +112,8 @@ struct Inner {
     minted: u32,
     /// The currency every account reports (but the foreign one), `USD` unless set.
     currency: String,
+    /// Dates count back from the real time instead of [`NOW`].
+    system_clock: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +198,7 @@ impl FakeServer {
                 logins: BTreeMap::new(),
                 minted: 0,
                 currency: "USD".to_owned(),
+                system_clock: false,
             })),
             host: host.into(),
         };
@@ -248,6 +251,12 @@ impl FakeServer {
     /// household's; the foreign-currency scenario's extra account still differs.
     pub fn set_currency(&self, currency: &str) {
         currency.clone_into(&mut self.shared.lock().currency);
+    }
+
+    /// Counts every date back from the real time instead of the fixed [`NOW`], so an app on
+    /// the real clock finds the rows inside its windows: the binary does this *(agent)*.
+    pub fn follow_system_clock(&self) {
+        self.shared.lock().system_clock = true;
     }
 
     /// Moves a day on, for the scenarios that change over time.
@@ -309,9 +318,23 @@ async fn accounts(
     if !allowed {
         return (StatusCode::FORBIDDEN, "Forbidden").into_response();
     }
-    let (scenario, day, currency) = {
+    let (scenario, day, currency, system_clock) = {
         let inner = shared.lock();
-        (inner.scenario, inner.day, inner.currency.clone())
+        (
+            inner.scenario,
+            inner.day,
+            inner.currency.clone(),
+            inner.system_clock,
+        )
+    };
+    let now = if system_clock {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|elapsed| i64::try_from(elapsed.as_secs()).ok())
+            .unwrap_or(NOW)
+    } else {
+        NOW
     };
     match scenario {
         Scenario::Revoked => return (StatusCode::FORBIDDEN, "Forbidden").into_response(),
@@ -321,7 +344,7 @@ async fn accounts(
         _ => {}
     }
     let query = feed::Query::parse(query.as_deref().unwrap_or_default());
-    let body = feed::response(scenario, day, &query, &currency);
+    let body = feed::response(scenario, day, &query, &currency, now);
     (
         [(header::CONTENT_TYPE, "application/json")],
         body.to_string(),

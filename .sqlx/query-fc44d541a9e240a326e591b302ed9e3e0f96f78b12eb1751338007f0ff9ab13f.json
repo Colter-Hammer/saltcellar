@@ -1,0 +1,57 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT a.id AS \"account_id!: i64\", ca.external_account_id,\n             a.has_transactions AS \"has_transactions!: bool\",\n             ca.backfilled_at IS NOT NULL AS \"backfilled!: bool\"\n           FROM connection_accounts ca JOIN accounts a ON a.id = ca.account_id\n           WHERE ca.connection_id = ? AND ca.decision = 'tracked'\n           ORDER BY ca.first_seen_at, ca.rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "external_account_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "external_account_id"
+          }
+        }
+      },
+      {
+        "name": "has_transactions!: bool",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "has_transactions"
+          }
+        }
+      },
+      {
+        "name": "backfilled!: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fc44d541a9e240a326e591b302ed9e3e0f96f78b12eb1751338007f0ff9ab13f"
+}

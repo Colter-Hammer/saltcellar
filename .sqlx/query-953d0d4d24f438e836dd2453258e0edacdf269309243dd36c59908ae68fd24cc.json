@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM deleted_bank_rows\n                 WHERE account_id = ? AND external_id = ?) AS \"deleted!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "deleted!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "953d0d4d24f438e836dd2453258e0edacdf269309243dd36c59908ae68fd24cc"
+}

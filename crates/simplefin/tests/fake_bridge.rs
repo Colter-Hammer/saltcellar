@@ -178,6 +178,35 @@ async fn start_date_cuts_on_the_exact_second_of_transacted_at() {
 }
 
 #[tokio::test]
+async fn end_date_leaves_out_rows_transacted_at_or_after_it() {
+    let server = FakeServer::start(Scenario::Steady).await.unwrap();
+    let access = claimed(&server).await;
+    // TRN-demo-groc-1 was transacted exactly nine days before NOW.
+    let at = NOW - 9 * 86_400;
+    let (_, before) = feed(&access, &format!("version=2&end-date={at}")).await;
+    let before = ids(&rows(&before, "ACT-demo-checking"));
+    assert!(!before.contains(&"TRN-demo-groc-1".to_owned()));
+    assert!(before.contains(&"TRN-demo-rent-1".to_owned()));
+    let (_, through) = feed(&access, &format!("version=2&end-date={}", at + 1)).await;
+    assert!(ids(&rows(&through, "ACT-demo-checking")).contains(&"TRN-demo-groc-1".to_owned()));
+}
+
+#[tokio::test]
+async fn following_the_system_clock_moves_every_date() {
+    let server = FakeServer::start(Scenario::Steady).await.unwrap();
+    server.follow_system_clock();
+    let access = claimed(&server).await;
+    let (_, body) = feed(&access, "version=2").await;
+    let posted = rows(&body, "ACT-demo-checking")
+        .iter()
+        .map(|row| row["posted"].as_i64().unwrap())
+        .max()
+        .unwrap();
+    // The newest checking row is five days old by the real clock, not by NOW.
+    assert_ne!(posted, NOW - 5 * 86_400);
+}
+
+#[tokio::test]
 async fn the_requests_are_recorded() {
     let server = FakeServer::start(Scenario::Steady).await.unwrap();
     assert_eq!(server.requests(), []);

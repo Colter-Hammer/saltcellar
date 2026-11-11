@@ -9,6 +9,7 @@ mod household;
 mod imports;
 mod profile;
 mod reset;
+mod sync;
 mod transactions;
 mod undecided;
 
@@ -50,6 +51,10 @@ pub use profile::{
 };
 pub use reset::{UseReset, issue_password_reset, password_reset, use_password_reset};
 pub use sqlx::SqlitePool;
+pub use sync::{
+    AccountResult, Applied, FeedLink, RunEnd, SyncRun, SyncTrigger, apply_synced_rows,
+    finish_sync_run, latest_sync_run, mark_backfilled, start_sync_run, tracked_feed_accounts,
+};
 pub use transactions::{
     BatchRef, Filter, SplitLine, Tag, TransactionDetail, TransactionPage, TransactionRow, tags,
     transaction, transactions,
@@ -201,6 +206,7 @@ mod tests {
                 "category_groups",
                 "connection_accounts",
                 "connections",
+                "deleted_bank_rows",
                 "household",
                 "import_batch_rows",
                 "import_batches",
@@ -210,6 +216,8 @@ mod tests {
                 "payees",
                 "sessions",
                 "settings",
+                "sync_account_results",
+                "sync_runs",
                 "tags",
                 "transaction_splits",
                 "transaction_tags",

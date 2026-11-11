@@ -1,6 +1,7 @@
 // The new accounts prompt (docs/spec/m2-bank-data.md#accounts): claim the fake SimpleFIN Bridge in
 // Settings › Bank connection & sync, then decide on each account it reports at the top of
-// Accounts: track two, ignore one. It runs last, so the new accounts are in no other spec's list.
+// Accounts: track two, ignore one. Tracking back-fills: the checking account's rows arrive in
+// Transactions. It runs last, so the new accounts are in no other spec's list.
 import { expect, test } from '@playwright/test'
 
 /** A setup token from the fake Bridge beside the app, good for one claim. */
@@ -12,7 +13,7 @@ async function setupToken(request: import('@playwright/test').APIRequestContext)
   return response.text()
 }
 
-test('claim, then track two new accounts and ignore one', async ({ page }) => {
+test('claim, then track two new accounts and ignore one, and see the rows', async ({ page }) => {
   await page.goto('/settings/bank')
   await page.getByLabel('Setup token').fill(await setupToken(page.request))
   await page.getByRole('button', { name: 'Connect' }).click()
@@ -62,4 +63,19 @@ test('claim, then track two new accounts and ignore one', async ({ page }) => {
   await expect(row('Demo Rewards Card')).toContainText('Credit card')
   await expect(row('Demo Rewards Card')).toContainText('Tracking')
   await expect(row('Demo Savings')).toHaveCount(0)
+
+  // Tracking back-filled the checking account: its rows are in Transactions.
+  const href = await row('Demo Everyday Checking')
+    .getByRole('link', { name: 'Demo Everyday Checking', exact: true })
+    .getAttribute('href')
+  await page.goto(`/transactions?account=${href?.split('/').pop() ?? ''}`)
+  const rows = page.getByRole('table', { name: 'Transactions' }).getByRole('row')
+  await expect(rows.filter({ hasText: 'Demo Employer' })).toHaveCount(1)
+  await expect(rows.filter({ hasText: 'Demo Grocer' })).toHaveCount(1)
+
+  // Sync now: the bank has nothing new.
+  await page.goto('/settings/bank')
+  await page.getByRole('button', { name: 'Sync now' }).click()
+  await expect(page.getByRole('button', { name: 'Sync now' })).toBeEnabled()
+  await expect(page.getByTestId('last-sync')).toHaveText('Last sync: No changes')
 })

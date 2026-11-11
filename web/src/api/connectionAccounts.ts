@@ -18,9 +18,9 @@ export function useConnectionAccounts() {
 }
 
 /**
- * Deciding on a feed account. Each reloads the prompt and the accounts afterwards, whether it
- * worked or not, and throws an ApiError when it didn't (`already_tracked`, `foreign_currency`,
- * `not_found`).
+ * Deciding on a feed account. Each reloads the prompt, the accounts, the transactions (tracking
+ * back-fills the account's rows) and the connection's last sync afterwards, whether it worked or
+ * not, and throws an ApiError when it didn't (`already_tracked`, `foreign_currency`, `not_found`).
  */
 export function useFeedAccountDecisions() {
   const queryClient = useQueryClient()
@@ -31,6 +31,8 @@ export function useFeedAccountDecisions() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['connection-accounts'] }),
         queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['bank-connection'] }),
       ])
     }
   }

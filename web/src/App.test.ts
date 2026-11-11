@@ -54,9 +54,16 @@ interface FakeServer {
   /** The bank connection, as `GET /api/v1/bank-connection` shows it. */
   bank: {
     keySet: boolean
-    connection: { label: string; status: string; paused: boolean } | null
+    connection: {
+      label: string
+      status: string
+      paused: boolean
+      last_sync: { added: number; updated: number; finished_at: string; error: null } | null
+    } | null
     /** The setup tokens `PUT /api/v1/bank-connection` was sent. */
     claimed: string[]
+    /** How many times `POST /api/v1/bank-connection/sync` was sent. */
+    synced: number
     /** How many times `DELETE /api/v1/bank-connection` was sent. */
     disconnected: number
   }
@@ -91,6 +98,7 @@ async function answer(request: Request): Promise<Response> {
     return found ? Response.json(found) : error(404, 'not_found', "There's no such account.")
   }
   if (path === '/api/v1/bank-connection') return bank(request)
+  if (path === '/api/v1/bank-connection/sync') return syncNow()
   if (path.startsWith('/api/v1/undecided')) return undecided(request, path)
   if (path.startsWith('/api/v1/imports') && !path.startsWith('/api/v1/imports/actual')) {
     return imports(request, path)
@@ -148,6 +156,22 @@ async function answer(request: Request): Promise<Response> {
   )
 }
 
+/** Sync now: a run that added two rows. */
+function syncNow(): Response {
+  server.bank.synced += 1
+  const run = {
+    trigger: 'manual',
+    started_at: '2026-10-28T09:00:00Z',
+    finished_at: '2026-10-28T09:00:02Z',
+    requests: 1,
+    added: 2,
+    updated: 0,
+    error: null,
+  }
+  if (server.bank.connection) server.bank.connection.last_sync = run
+  return Response.json(run)
+}
+
 async function bank(request: Request): Promise<Response> {
   if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
   const shown = () =>
@@ -166,7 +190,12 @@ async function bank(request: Request): Promise<Response> {
     if (token === 'nonsense')
       return invalid({ setup_token: "That doesn't look like a setup token." })
     if (token === 'used') return error(422, 'token_refused', "SimpleFIN didn't accept that token.")
-    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'ok', paused: false }
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'ok',
+      paused: false,
+      last_sync: null,
+    }
   }
   return shown()
 }
@@ -430,7 +459,7 @@ beforeEach(() => {
     batches: [],
     edited: 0,
     undone: [],
-    bank: { keySet: true, connection: null, claimed: [], disconnected: 0 },
+    bank: { keySet: true, connection: null, claimed: [], disconnected: 0, synced: 0 },
   }
   serverUp()
   os.dark = false
@@ -924,6 +953,14 @@ describe('Settings › Bank connection & sync', () => {
       .get('main')
       .findAll('button')
       .map((b) => b.text())
+  const press = async (wrapper: Wrapper, label: string, nth = 0) => {
+    await wrapper
+      .get('main')
+      .findAll('button')
+      .filter((b) => b.text() === label)
+      [nth]?.trigger('click')
+    await flushPromises()
+  }
   const paste = async (wrapper: Wrapper, token: string) => {
     await wrapper.get('input[name="setup_token"]').setValue(token)
     await wrapper.get('form').trigger('submit')
@@ -948,7 +985,21 @@ describe('Settings › Bank connection & sync', () => {
       'SimpleFIN Bridge · connected',
     )
     expect(wrapper.find('form').exists()).toBe(false)
-    expect(buttons(wrapper)).toEqual(['Replace setup token…', 'Disconnect'])
+    expect(buttons(wrapper)).toEqual(['Sync now', 'Replace setup token…', 'Disconnect'])
+  })
+
+  it('syncs now and says what the sync did', async () => {
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'ok',
+      paused: false,
+      last_sync: null,
+    }
+    const { wrapper } = await open('/settings/bank')
+    expect(wrapper.find('[data-testid="last-sync"]').exists()).toBe(false)
+    await press(wrapper, 'Sync now')
+    expect(server.bank.synced).toBe(1)
+    expect(wrapper.get('[data-testid="last-sync"]').text()).toBe('Last sync: 2 rows added')
   })
 
   it('names what is wrong with a token', async () => {
@@ -961,24 +1012,31 @@ describe('Settings › Bank connection & sync', () => {
   })
 
   it('replaces the token from a form that Cancel closes', async () => {
-    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'ok', paused: false }
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'ok',
+      paused: false,
+      last_sync: null,
+    }
     const { wrapper } = await open('/settings/bank')
-    await wrapper.findAll('main button')[0]?.trigger('click')
+    await press(wrapper, 'Replace setup token…')
     expect(wrapper.find('form').exists()).toBe(true)
-    await wrapper
-      .findAll('main button')
-      .find((b) => b.text() === 'Cancel')
-      ?.trigger('click')
+    await press(wrapper, 'Cancel')
     expect(wrapper.find('form').exists()).toBe(false)
 
-    await wrapper.findAll('main button')[0]?.trigger('click')
+    await press(wrapper, 'Replace setup token…')
     await paste(wrapper, 'bmV3')
     expect(server.bank.claimed).toEqual(['bmV3'])
     expect(wrapper.find('form').exists()).toBe(false)
   })
 
   it('shows a paused connection with the way out', async () => {
-    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'key_mismatch', paused: true }
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'key_mismatch',
+      paused: true,
+      last_sync: null,
+    }
     const { wrapper } = await open('/settings/bank')
     expect(wrapper.get('[data-testid="connection-state"]').text()).toBe(
       'SimpleFIN Bridge · Sync paused',
@@ -988,20 +1046,22 @@ describe('Settings › Bank connection & sync', () => {
   })
 
   it('asks before disconnecting, and then the accounts are left alone', async () => {
-    server.bank.connection = { label: 'SimpleFIN Bridge', status: 'ok', paused: false }
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'ok',
+      paused: false,
+      last_sync: null,
+    }
     const { wrapper } = await open('/settings/bank')
-    await wrapper.findAll('main button')[1]?.trigger('click')
+    await press(wrapper, 'Disconnect')
     expect(wrapper.get('[role="alert"]').text()).toContain('accounts and transactions stay')
     expect(server.bank.disconnected).toBe(0)
-    await wrapper
-      .findAll('main button')
-      .find((b) => b.text() === 'Cancel')
-      ?.trigger('click')
-    expect(buttons(wrapper)).toEqual(['Replace setup token…', 'Disconnect'])
+    await press(wrapper, 'Cancel')
+    expect(buttons(wrapper)).toEqual(['Sync now', 'Replace setup token…', 'Disconnect'])
 
-    await wrapper.findAll('main button')[1]?.trigger('click')
-    await wrapper.findAll('main button')[0]?.trigger('click')
-    await flushPromises()
+    await press(wrapper, 'Disconnect')
+    // The confirming Disconnect.
+    await press(wrapper, 'Disconnect')
     expect(server.bank.disconnected).toBe(1)
     expect(wrapper.find('[data-testid="connection-state"]').exists()).toBe(false)
     expect(wrapper.find('form').exists()).toBe(true)

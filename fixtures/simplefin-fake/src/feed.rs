@@ -14,6 +14,8 @@ pub struct Query {
     pub pending: bool,
     /// Epoch seconds; rows transacted before it are left out.
     pub start_date: Option<i64>,
+    /// Epoch seconds; rows transacted at or after it are left out.
+    pub end_date: Option<i64>,
 }
 
 impl Query {
@@ -22,12 +24,14 @@ impl Query {
             version2: false,
             pending: false,
             start_date: None,
+            end_date: None,
         };
         for pair in query.split('&') {
             match pair.split_once('=') {
                 Some(("version", "2")) => parsed.version2 = true,
                 Some(("pending", "1")) => parsed.pending = true,
                 Some(("start-date", value)) => parsed.start_date = value.parse().ok(),
+                Some(("end-date", value)) => parsed.end_date = value.parse().ok(),
                 _ => {}
             }
         }
@@ -47,15 +51,15 @@ struct Row {
 }
 
 impl Row {
-    fn json(&self) -> Value {
+    fn json(&self, now: i64) -> Value {
         let mut row = json!({
             "id": self.id,
-            "posted": NOW - self.posted_days_ago * DAY,
+            "posted": now - self.posted_days_ago * DAY,
             "amount": self.amount,
             "description": self.description,
             "payee": self.payee,
             "memo": "",
-            "transacted_at": NOW - self.transacted_days_ago * DAY,
+            "transacted_at": now - self.transacted_days_ago * DAY,
         });
         if self.pending {
             row["pending"] = json!(true);
@@ -246,8 +250,9 @@ fn travel(currency: &str) -> Account {
     }
 }
 
-/// The body of `GET /accounts` for `scenario` on `day`, as the query asks for it.
-pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str) -> Value {
+/// The body of `GET /accounts` for `scenario` on `day`, as the query asks for it, with every date
+/// counted back from `now` (epoch seconds).
+pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str, now: i64) -> Value {
     let accounts = accounts(scenario, day, currency);
     let needs_auth = scenario == Scenario::NeedsAuth;
     let errors: Vec<Value> = match scenario {
@@ -273,14 +278,14 @@ pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str) -> 
                 .iter()
                 .filter(|row| query.version2 && query.pending || !row.pending)
                 .filter(|row| {
-                    query
-                        .start_date
-                        .is_none_or(|start| NOW - row.transacted_days_ago * DAY >= start)
+                    let transacted = now - row.transacted_days_ago * DAY;
+                    query.start_date.is_none_or(|start| transacted >= start)
+                        && query.end_date.is_none_or(|end| transacted < end)
                 })
-                .map(Row::json)
+                .map(|row| row.json(now))
                 .collect();
             let stale = needs_auth && account.conn_id == "CON-demo-2";
-            let balance_date = if stale { NOW - 6 * DAY } else { NOW - 3600 };
+            let balance_date = if stale { now - 6 * DAY } else { now - 3600 };
             if query.version2 {
                 json!({
                     "id": account.id,

@@ -50,6 +50,9 @@ pub struct Connection {
     status: ConnectionStatus,
     /// True for every status but `ok`: syncing is paused.
     paused: bool,
+    /// The newest sync run; null before the first.
+    #[schema(required = true)]
+    last_sync: Option<crate::sync::SyncRun>,
 }
 
 /// The bank connection screen's state.
@@ -63,12 +66,14 @@ pub struct BankConnection {
 
 async fn current(state: &AppState) -> Result<BankConnection, ApiError> {
     let connection = db::connection(&state.pool).await?;
+    let last_sync = crate::sync::latest(state).await?;
     Ok(BankConnection {
         secret_key_set: state.bank.secret_key.is_some(),
         connection: connection.map(|connection| Connection {
             label: connection.label,
             paused: connection.status != db::ConnectionStatus::Ok,
             status: connection.status.into(),
+            last_sync,
         }),
     })
 }
@@ -99,8 +104,8 @@ pub struct SetupToken {
 /// one with its secret replaced and its pause cleared, keeping its accounts. A token that isn't
 /// one is refused before any request is made; so is every claim without the secret key. Once
 /// claimed, one request lists the connection's accounts, which wait in the new accounts prompt
-/// (or attach at once to an imported account with the same provider id); if that request fails,
-/// the claim still stands.
+/// (or attach at once to an imported account with the same provider id, which is then
+/// back-filled); if a request fails, the claim still stands.
 #[utoipa::path(
     put,
     path = "/api/v1/bank-connection",
@@ -140,6 +145,9 @@ pub async fn claim(
     let connection_id = db::save_connection(&state.pool, &sealed).await?;
     tracing::info!("bank connection claimed");
     look_for_accounts(&state, connection_id, claimed).await?;
+    if let Err(error) = crate::sync::backfill(&state).await {
+        tracing::warn!(code = error.code(), "the back-fill after claiming failed");
+    }
     Ok(Json(current(&state).await?))
 }
 

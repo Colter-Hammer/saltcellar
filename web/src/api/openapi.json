@@ -351,7 +351,7 @@
         "tags": [
           "bank"
         ],
-        "summary": "`PUT /api/v1/bank-connection`: claims a setup token, stores the access URL it answers sealed\nwith `BUDGET_SECRET_KEY`, and makes it the household's connection: a new one, or the existing\none with its secret replaced and its pause cleared, keeping its accounts. A token that isn't\none is refused before any request is made; so is every claim without the secret key. Once\nclaimed, one request lists the connection's accounts, which wait in the new accounts prompt\n(or attach at once to an imported account with the same provider id); if that request fails,\nthe claim still stands.",
+        "summary": "`PUT /api/v1/bank-connection`: claims a setup token, stores the access URL it answers sealed\nwith `BUDGET_SECRET_KEY`, and makes it the household's connection: a new one, or the existing\none with its secret replaced and its pause cleared, keeping its accounts. A token that isn't\none is refused before any request is made; so is every claim without the secret key. Once\nclaimed, one request lists the connection's accounts, which wait in the new accounts prompt\n(or attach at once to an imported account with the same provider id, which is then\nback-filled); if a request fails, the claim still stands.",
         "operationId": "claimSetupToken",
         "requestBody": {
           "content": {
@@ -428,6 +428,47 @@
           },
           "401": {
             "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bank-connection/sync": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "`POST /api/v1/bank-connection/sync`: Sync now. Runs a sync and answers how it went; while one\nis running, waits for it and answers that one instead of asking the Bridge again. A run the\nBridge failed still answers 200, with the run's error.",
+        "operationId": "syncNow",
+        "responses": {
+          "200": {
+            "description": "The run, finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -989,7 +1030,7 @@
         "tags": [
           "connection_accounts"
         ],
-        "summary": "`POST /api/v1/connection-accounts/{external_account_id}/track`: tracks a waiting or ignored\nfeed account.",
+        "summary": "`POST /api/v1/connection-accounts/{external_account_id}/track`: tracks a waiting or ignored\nfeed account, then back-fills it: its last 90 days of rows arrive before this answers. If the\nback-fill fails it is tried again on the next sync, and the account is tracked all the same.",
         "operationId": "trackConnectionAccount",
         "parameters": [
           {
@@ -3441,12 +3482,24 @@
         "required": [
           "label",
           "status",
-          "paused"
+          "paused",
+          "last_sync"
         ],
         "properties": {
           "label": {
             "type": "string",
             "description": "What to call it, like `SimpleFIN Bridge`."
+          },
+          "last_sync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SyncRun",
+                "description": "The newest sync run; null before the first."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "paused": {
             "type": "boolean",
@@ -4053,6 +4106,58 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SyncRun": {
+        "type": "object",
+        "description": "One sync run, as the screen shows it.",
+        "required": [
+          "trigger",
+          "started_at",
+          "finished_at",
+          "requests",
+          "added",
+          "updated",
+          "error"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows it added."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the whole run failed, to show as is; null when it didn't."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null while it runs."
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bridge requests it made."
+          },
+          "started_at": {
+            "type": "string",
+            "description": "RFC 3339."
+          },
+          "trigger": {
+            "type": "string",
+            "description": "What started it: `manual` (Sync now), `backfill` (tracking an account), `scheduled`,\n`retry` or `catch_up`."
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows whose amount, date, status or bank text it changed."
           }
         }
       },

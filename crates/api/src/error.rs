@@ -48,6 +48,16 @@ impl ApiError {
         }
     }
 
+    /// The error's code, for a log line.
+    pub(crate) fn code(&self) -> &'static str {
+        self.code
+    }
+
+    /// Whether it is a 409: the request can't be done in the state things are in.
+    pub(crate) fn is_conflict(&self) -> bool {
+        self.status == StatusCode::CONFLICT
+    }
+
     /// A 422 naming each field that's wrong and why.
     pub fn validation(message: impl Into<String>, fields: BTreeMap<String, String>) -> Self {
         ApiError {

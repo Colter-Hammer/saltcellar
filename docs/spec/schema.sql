@@ -133,6 +133,7 @@ CREATE TABLE connection_accounts (
   first_seen_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   last_seen_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                         -- the last response it was in; older than the newest one = it stopped arriving *(agent)*
+  backfilled_at       TEXT,                 -- its 90-day back-fill is done; NULL = back-fill on the next sync *(agent)*
   PRIMARY KEY (connection_id, external_account_id),
   CHECK ((decision = 'tracked') = (account_id IS NOT NULL))
 ) STRICT;
@@ -178,7 +179,7 @@ CREATE TABLE balance_adjustments (
 -- running one.
 CREATE TABLE sync_runs (
   id            INTEGER PRIMARY KEY,
-  connection_id INTEGER NOT NULL REFERENCES connections(id),
+  connection_id INTEGER NOT NULL REFERENCES connections(id) ON DELETE CASCADE, -- Disconnect takes its history *(agent)*
   trigger       TEXT NOT NULL CHECK (trigger IN ('scheduled','manual','retry','catch_up','backfill')),
   started_at    TEXT NOT NULL,
   finished_at   TEXT,
@@ -191,7 +192,7 @@ CREATE TABLE sync_runs (
 
 CREATE TABLE sync_account_results (         -- M2. Banks fail independently.
   sync_run_id          INTEGER NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
-  account_id           INTEGER NOT NULL REFERENCES accounts(id),
+  account_id           INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, -- *(agent)*
   ok                   INTEGER NOT NULL,    -- 0 = keeps its last data; no miss counts or drift move this run
   error_code           TEXT,                -- errlist code, HTTP status, or 'absent' (missing from a successful
                                             -- response with no error) *(agent)*

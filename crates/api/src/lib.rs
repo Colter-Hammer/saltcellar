@@ -15,6 +15,7 @@ mod profile;
 mod reset;
 mod session;
 mod setup;
+mod sync;
 #[cfg(test)]
 mod tests;
 mod transactions;
@@ -62,6 +63,7 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         bank::get,
         bank::claim,
         bank::disconnect,
+        sync::sync_now,
         connection_accounts::list,
         connection_accounts::track,
         connection_accounts::ignore,
@@ -114,6 +116,8 @@ pub struct AppState {
     setup: Arc<setup::Setup>,
     uploads: Arc<import::Uploads>,
     clock: Arc<dyn Fn() -> Timestamp + Send + Sync>,
+    /// Held while a bank sync runs: one at a time.
+    sync_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -144,6 +148,7 @@ impl AppState {
             setup: Arc::new(setup),
             uploads: Arc::new(import::Uploads::new(data_dir)),
             clock: Arc::new(Timestamp::now),
+            sync_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -250,6 +255,7 @@ pub fn router(state: AppState) -> Router {
             "/bank-connection",
             get(bank::get).put(bank::claim).delete(bank::disconnect),
         )
+        .route("/bank-connection/sync", post(sync::sync_now))
         .route("/connection-accounts", get(connection_accounts::list))
         .route(
             "/connection-accounts/{external_account_id}/track",

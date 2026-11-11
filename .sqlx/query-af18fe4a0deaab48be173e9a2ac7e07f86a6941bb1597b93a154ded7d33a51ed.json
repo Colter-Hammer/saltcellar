@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT payee_id AS \"id!: i64\" FROM payee_aliases WHERE normalized_text = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "payee_aliases",
+            "name": "payee_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "af18fe4a0deaab48be173e9a2ac7e07f86a6941bb1597b93a154ded7d33a51ed"
+}
