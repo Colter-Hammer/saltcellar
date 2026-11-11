@@ -62,7 +62,7 @@ function close() {
       <aside
         v-if="selected !== null"
         aria-labelledby="transaction-payee"
-        class="fixed inset-0 z-40 overflow-y-auto bg-background p-4 lg:sticky lg:top-4 lg:z-auto lg:rounded-xl lg:border"
+        class="fixed inset-0 z-50 overflow-y-auto bg-background p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:sticky lg:top-4 lg:z-auto lg:rounded-xl lg:border"
       >
         <TransactionDetail :id="selected" @close="close" />
       </aside>

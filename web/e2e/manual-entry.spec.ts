@@ -10,8 +10,9 @@ const entryForm = (page: Page) => page.getByRole('form', { name: 'New transactio
 const combo = (scope: Locator, name: string) => scope.getByRole('combobox', { name, exact: true })
 
 test('enter, edit, delete and undo, and transfer', async ({ page }) => {
-  // A phone: the + opens the form as a sheet.
-  await page.setViewportSize({ width: 412, height: 915 })
+  // A short phone, so the form runs past the tab bar: the sheet covers it, and its buttons stay
+  // reachable (Playwright refuses a click on a covered button).
+  await page.setViewportSize({ width: 375, height: 600 })
   await page.goto('/transactions')
   await page.getByRole('button', { name: 'New transaction' }).click()
   const form = entryForm(page)
@@ -31,6 +32,13 @@ test('enter, edit, delete and undo, and transfer', async ({ page }) => {
   await expect(detail.getByRole('paragraph').getByText('Manual', { exact: true })).toBeVisible()
   await expect(detail.getByLabel('Details')).toContainText('Groceries')
   await expect(detail.getByText('−€12.50')).toBeVisible()
+  // Edit on the phone too: Save changes sits at the foot of the sheet.
+  await detail.getByRole('button', { name: 'Edit' }).click()
+  const phoneEdit = page.getByRole('form', { name: 'Edit transaction' })
+  await phoneEdit.getByLabel('Memo').fill('from the phone')
+  await phoneEdit.getByRole('button', { name: 'Save changes' }).click()
+  await expect(phoneEdit).toBeHidden()
+  await expect(detail.getByLabel('Details')).toContainText('from the phone')
   await detail.getByRole('button', { name: 'Close' }).click()
   const phoneRow = page.getByRole('link').filter({ hasText: 'Fake Bakery' })
   await expect(phoneRow).toContainText('Manual')
