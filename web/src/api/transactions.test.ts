@@ -15,6 +15,9 @@ beforeEach(() => {
     vi.fn(async (request: Request) => {
       const { pathname } = new URL(request.url)
       const body = await request.text()
+      if (request.method === 'DELETE') {
+        expect(request.headers.get('Content-Type')).toBe('application/json')
+      }
       sent.push(`${request.method} ${pathname}${body ? ` ${body}` : ''}`)
       if (pathname === '/api/v1/payees') {
         return Response.json({ payees: [{ id: 1, name: 'Corner Market' }] })

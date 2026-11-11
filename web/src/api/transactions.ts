@@ -99,8 +99,15 @@ export function useManualEdits() {
       edit(
         call(client.PUT('/api/v1/transactions/{id}', { params: { path: { id } }, body: entry })),
       ),
-    /** `DELETE /api/v1/transactions/{id}`. */
+    /** `DELETE /api/v1/transactions/{id}`, marked JSON as every changing request must be. */
     remove: (id: number) =>
-      edit(call(client.DELETE('/api/v1/transactions/{id}', { params: { path: { id } } }))),
+      edit(
+        call(
+          client.DELETE('/api/v1/transactions/{id}', {
+            params: { path: { id } },
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ),
   }
 }
