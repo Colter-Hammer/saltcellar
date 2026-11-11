@@ -11,6 +11,7 @@ mod date;
 pub mod feed;
 pub mod import;
 pub mod login;
+pub mod manual;
 mod money;
 pub mod profile;
 mod setup_code;

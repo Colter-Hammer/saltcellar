@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT has_transactions AS \"has_transactions!: bool\" FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "has_transactions!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "has_transactions"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f90bf64a0434eb83bbb743c84644d3370c87f23eb1dacb398675c48164bde71c"
+}

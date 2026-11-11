@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM transaction_tags WHERE transaction_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0b038dca6eef7f04a0fed1e377e5e1fa6f4b0a75c96d8529f1225ec7e233d317"
+}

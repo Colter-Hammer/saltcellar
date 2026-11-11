@@ -1,5 +1,6 @@
 //! Transactions (docs/spec/m1-ledger-import.md#transactions): read a page at a time, newest first,
-//! searched and filtered, and one at a time in full. Read-only in milestone 1, where the Actual importer writes them.
+//! searched and filtered, and one at a time in full. The Actual importer, sync and file imports
+//! write them; manual entry (`crate::manual`) writes and edits rows typed in by hand.
 
 use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status};
 use domain::{Date, Money};
@@ -27,8 +28,12 @@ pub struct TransactionRow {
     pub split_categories: i64,
     /// The other account of the transfer it's a leg of; `None` for any other transaction.
     pub transfer_account: Option<String>,
+    pub transfer_account_id: Option<i64>,
     /// Its tags' names, in name order.
     pub tags: Vec<String>,
+    /// Entered by hand and not yet adopted by a bank row: it shows the manual badge, and every
+    /// field can be edited or the row deleted.
+    pub manual: bool,
 }
 
 /// One page of transactions, and where the next one starts.
@@ -232,9 +237,13 @@ async fn rows(
                 JOIN accounts oa ON oa.id = CASE WHEN tr.from_txn_id = t.id
                                                  THEN tr.to_account_id ELSE tr.from_account_id END
                WHERE tr.from_txn_id = t.id OR tr.to_txn_id = t.id) AS "transfer_account?",
+             (SELECT CASE WHEN tr.from_txn_id = t.id THEN tr.to_account_id
+                          ELSE tr.from_account_id END FROM transfers tr
+               WHERE tr.from_txn_id = t.id OR tr.to_txn_id = t.id) AS "transfer_account_id?: i64",
              (SELECT json_group_array(name) FROM
                (SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id
-                 WHERE tt.transaction_id = t.id ORDER BY g.name)) AS "tags!: String"
+                 WHERE tt.transaction_id = t.id ORDER BY g.name)) AS "tags!: String",
+             (t.source = 'manual' AND t.external_id IS NULL) AS "manual!: bool"
            FROM transactions t
            JOIN accounts a ON a.id = t.account_id
            LEFT JOIN payees p ON p.id = t.payee_id
@@ -302,7 +311,9 @@ struct Found {
     split: bool,
     split_categories: i64,
     transfer_account: Option<String>,
+    transfer_account_id: Option<i64>,
     tags: String,
+    manual: bool,
 }
 
 impl TryFrom<Found> for TransactionRow {
@@ -323,7 +334,9 @@ impl TryFrom<Found> for TransactionRow {
             split: row.split,
             split_categories: row.split_categories,
             transfer_account: row.transfer_account,
+            transfer_account_id: row.transfer_account_id,
             tags: read_tags(&row.tags)?,
+            manual: row.manual,
         })
     }
 }
@@ -478,13 +491,16 @@ mod tests {
                 split: true,
                 split_categories: 2,
                 transfer_account: None,
+                transfer_account_id: None,
                 tags: vec!["gift \"big\"".to_owned(), "trip".to_owned()],
+                manual: false,
             }
         );
         let refund = &page.transactions[1];
         assert_eq!(refund.amount, Money::from_minor(4000));
         assert_eq!(refund.payee, None);
         assert_eq!(refund.tags, Vec::<String>::new());
+        assert!(refund.manual);
         let cafe = &page.transactions[2];
         assert_eq!(cafe.category.as_deref(), Some("Dining out"));
         assert!(!cafe.split);

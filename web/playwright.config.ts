@@ -61,6 +61,7 @@ export default defineConfig({
         'imports.spec.ts',
         'manual-accounts.spec.ts',
         'new-accounts.spec.ts',
+        'manual-entry.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -80,6 +81,7 @@ export default defineConfig({
         'imports.spec.ts',
         'manual-accounts.spec.ts',
         'new-accounts.spec.ts',
+        'manual-entry.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -137,11 +139,19 @@ export default defineConfig({
       dependencies: ['imports'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
-    // Last, the bank connection: claiming the fake Bridge brings new accounts to Accounts.
+    // Then the bank connection: claiming the fake Bridge brings new accounts to Accounts.
     {
       name: 'new-accounts',
       testMatch: 'new-accounts.spec.ts',
       dependencies: ['manual-accounts'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Then manual entry, on the manual account above and the imported categories: it works a
+    // phone and a desktop in turn.
+    {
+      name: 'manual-entry',
+      testMatch: 'manual-entry.spec.ts',
+      dependencies: ['new-accounts'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

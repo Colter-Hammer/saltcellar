@@ -10,6 +10,7 @@ mod error;
 mod health;
 mod household;
 mod import;
+mod manual;
 mod middleware;
 mod profile;
 mod reset;
@@ -70,6 +71,10 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         transactions::list,
         transactions::get,
         transactions::tags,
+        manual::create,
+        manual::change,
+        manual::delete,
+        manual::payees,
         undecided::list,
         undecided::move_group,
         undecided::set_category,
@@ -265,12 +270,21 @@ pub fn router(state: AppState) -> Router {
             "/connection-accounts/{external_account_id}/ignore",
             post(connection_accounts::ignore),
         )
-        .route("/transactions", get(transactions::list))
-        .route("/transactions/{id}", get(transactions::get))
+        .route(
+            "/transactions",
+            get(transactions::list).post(manual::create),
+        )
+        .route(
+            "/transactions/{id}",
+            get(transactions::get)
+                .put(manual::change)
+                .delete(manual::delete),
+        )
         .route("/transactions/{id}/category", put(undecided::set_category))
         .route("/undecided", get(undecided::list))
         .route("/undecided/move", post(undecided::move_group))
         .route("/tags", get(transactions::tags))
+        .route("/payees", get(manual::payees))
         .route(
             "/categories",
             get(categories::list).post(categories::add_category),

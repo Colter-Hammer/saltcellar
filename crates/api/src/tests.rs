@@ -1225,5 +1225,6 @@ mod bank;
 mod categories;
 mod connection_accounts;
 mod import;
+mod manual;
 mod sync;
 mod undo;

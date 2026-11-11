@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT from_account_id, to_account_id, from_txn_id, to_txn_id, matched_by, state,\n                      confirmed_by\n               FROM transfers",
+  "describe": {
+    "columns": [
+      {
+        "name": "from_account_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "from_account_id"
+          }
+        }
+      },
+      {
+        "name": "to_account_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "to_account_id"
+          }
+        }
+      },
+      {
+        "name": "from_txn_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "from_txn_id"
+          }
+        }
+      },
+      {
+        "name": "to_txn_id",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "to_txn_id"
+          }
+        }
+      },
+      {
+        "name": "matched_by",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "matched_by"
+          }
+        }
+      },
+      {
+        "name": "state",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "state"
+          }
+        }
+      },
+      {
+        "name": "confirmed_by",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transfers",
+            "name": "confirmed_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f6821bdc80f0999d281bc6bf09d156de5b03588f7515829520542a76ede3fce8"
+}

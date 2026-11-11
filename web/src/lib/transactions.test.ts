@@ -28,7 +28,9 @@ function row(id: number, fields: Partial<TransactionRow> = {}): TransactionRow {
     split: false,
     split_categories: 0,
     transfer_account: null,
+    transfer_account_id: null,
     tags: [],
+    manual: false,
     ...fields,
   }
 }

@@ -6,15 +6,29 @@
 // with a Load more button for when that doesn't fire *(agent)*. With none, the first steps.
 // The search and filters live in the address's query, so reloading or sharing it keeps them, and
 // opening or closing a transaction carries them along *(agent)*.
+// The + button opens the manual entry form where a transaction's detail opens, the account filter's
+// account chosen if one is set *(agent)*; an entered row opens in its detail. Deleting a manual row
+// shows an Undo toast, which enters it again (docs/spec/m2-bank-data.md#manual-entry).
+import { Plus } from '@lucide/vue'
 import { FlexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/vue-table'
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { type TransactionRow, useTransactions } from '@/api/transactions'
+import { ApiError } from '@/api/client'
+import { useHousehold } from '@/api/household'
+import {
+  type ManualEntry,
+  type TransactionRow,
+  useManualEdits,
+  useTransactions,
+} from '@/api/transactions'
 import GroupMark from '@/components/GroupMark.vue'
+import ManualEntryForm from '@/components/ManualEntryForm.vue'
 import TransactionDetail from '@/components/TransactionDetail.vue'
 import TransactionFilters from '@/components/TransactionFilters.vue'
+import UndoToast from '@/components/UndoToast.vue'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
+import { blankFields, type EntryErrors, todayIn } from '@/lib/manual'
 import {
   categoryLabel,
   isUncategorized,
@@ -54,6 +68,67 @@ function close() {
   void router.push({ path: '/transactions', query: filter.value })
 }
 
+// Manual entry.
+const household = useHousehold()
+const manual = useManualEdits()
+const entering = ref(false)
+const saving = ref(false)
+const refused = ref<EntryErrors>()
+const problem = ref('')
+const panel = computed(() => entering.value || selected.value !== null)
+const start = computed(() =>
+  blankFields(
+    todayIn(household.data.value?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
+    filter.value.account ?? '',
+  ),
+)
+
+function startEntering() {
+  refused.value = undefined
+  entering.value = true
+}
+
+async function enter(entry: ManualEntry) {
+  saving.value = true
+  problem.value = ''
+  try {
+    const row = await manual.create(entry)
+    entering.value = false
+    refused.value = undefined
+    void router.push(link(row))
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'validation_failed')
+      refused.value = error.fields
+    else problem.value = error instanceof ApiError ? error.message : 'Something went wrong.'
+  } finally {
+    saving.value = false
+  }
+}
+
+// Undo after deleting a manual row.
+const undoable = ref<ManualEntry>()
+
+function deleted(entry: ManualEntry) {
+  undoable.value = entry
+  close()
+}
+
+async function undo() {
+  const entry = undoable.value
+  undoable.value = undefined
+  if (!entry) return
+  problem.value = ''
+  try {
+    await manual.create(entry)
+  } catch (error) {
+    problem.value = error instanceof ApiError ? error.message : "Couldn't undo."
+  }
+}
+
+watch(selected, (id) => {
+  if (id !== null) entering.value = false
+})
+
 function more() {
   if (pages.hasNextPage.value && !pages.isFetchingNextPage.value) void pages.fetchNextPage()
 }
@@ -70,9 +145,18 @@ const columns: ColumnDef<typeof features, TransactionRow>[] = [
     id: 'payee',
     header: 'Payee',
     cell: ({ row }) =>
-      h(RouterLink, { to: link(row.original), class: 'hover:underline' }, () =>
-        payeeLabel(row.original),
-      ),
+      h('span', [
+        h(RouterLink, { to: link(row.original), class: 'hover:underline' }, () =>
+          payeeLabel(row.original),
+        ),
+        row.original.manual
+          ? h(
+              'span',
+              { class: 'ml-1.5 rounded border px-1 text-xs text-muted-foreground' },
+              'Manual',
+            )
+          : null,
+      ]),
   },
   {
     id: 'category',
@@ -118,7 +202,9 @@ onMounted(() => {
 onBeforeUnmount(() => observer?.disconnect())
 
 function onKey(event: KeyboardEvent) {
-  if (event.key === 'Escape' && selected.value !== null) close()
+  if (event.key !== 'Escape') return
+  if (entering.value) entering.value = false
+  else if (selected.value !== null) close()
 }
 onMounted(() => {
   globalThis.addEventListener('keydown', onKey)
@@ -133,8 +219,25 @@ onBeforeUnmount(() => {
     <p v-if="pages.isError.value" role="alert" class="text-sm text-destructive">
       {{ pages.error.value?.message }}
     </p>
+    <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
 
-    <TransactionFilters v-if="!empty || filtered" :filter="filter" @change="refilter" />
+    <div class="flex items-start gap-2">
+      <TransactionFilters
+        v-if="!empty || filtered"
+        class="min-w-0 flex-1"
+        :filter="filter"
+        @change="refilter"
+      />
+      <button
+        type="button"
+        aria-label="New transaction"
+        title="New transaction"
+        class="ml-auto inline-flex shrink-0 items-center rounded-md border px-3 py-2"
+        @click="startEntering"
+      >
+        <Plus class="size-4" aria-hidden="true" />
+      </button>
+    </div>
 
     <p v-if="empty && filtered" class="text-sm text-muted-foreground">No transactions match.</p>
 
@@ -154,9 +257,9 @@ onBeforeUnmount(() => {
     </template>
 
     <div
-      v-if="rows.length > 0"
+      v-if="rows.length > 0 || panel"
       class="lg:grid lg:items-start lg:gap-6"
-      :class="selected !== null && 'lg:grid-cols-[1fr_22rem]'"
+      :class="panel && 'lg:grid-cols-[1fr_22rem]'"
     >
       <div class="flex min-w-0 flex-col gap-4">
         <!-- Phones: by day. -->
@@ -177,6 +280,11 @@ onBeforeUnmount(() => {
                       v-if="row.status === 'pending'"
                       class="rounded border px-1 text-xs text-muted-foreground"
                       >Pending</span
+                    >
+                    <span
+                      v-if="row.manual"
+                      class="rounded border px-1 text-xs text-muted-foreground"
+                      >Manual</span
                     >
                   </span>
                   <span
@@ -248,12 +356,35 @@ onBeforeUnmount(() => {
       </div>
 
       <aside
-        v-if="selected !== null"
+        v-if="entering"
+        aria-label="New transaction"
+        class="fixed inset-0 z-40 overflow-y-auto bg-background p-4 lg:sticky lg:top-4 lg:z-auto lg:col-start-2 lg:rounded-xl lg:border"
+      >
+        <ManualEntryForm
+          title="New transaction"
+          action="Enter transaction"
+          :start="start"
+          :formatting="formatting"
+          :refused="refused"
+          :saving="saving"
+          @save="enter"
+          @cancel="entering = false"
+        />
+      </aside>
+      <aside
+        v-else-if="selected !== null"
         aria-labelledby="transaction-payee"
         class="fixed inset-0 z-40 overflow-y-auto bg-background p-4 lg:sticky lg:top-4 lg:z-auto lg:rounded-xl lg:border"
       >
-        <TransactionDetail :id="selected" @close="close" />
+        <TransactionDetail :id="selected" @close="close" @deleted="deleted" />
       </aside>
     </div>
+
+    <UndoToast
+      v-if="undoable"
+      message="Transaction deleted."
+      @undo="undo"
+      @dismiss="undoable = undefined"
+    />
   </div>
 </template>
