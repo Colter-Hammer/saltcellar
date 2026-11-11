@@ -2,12 +2,12 @@
 // entered with its category (which is required) and the manual badge; then on a desktop, edited,
 // deleted and brought back with Undo, and a Transfer to… another account. It runs last, on the
 // manual account manual-accounts.spec.ts made and the categories the import brought.
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 test.use({ locale: 'en-US' })
 
 const entryForm = (page: Page) => page.getByRole('form', { name: 'New transaction' })
-const combo = (page: Page, name: string) => page.getByRole('combobox', { name, exact: true })
+const combo = (scope: Locator, name: string) => scope.getByRole('combobox', { name, exact: true })
 
 test('enter, edit, delete and undo, and transfer', async ({ page }) => {
   // A phone: the + opens the form as a sheet.
@@ -15,14 +15,14 @@ test('enter, edit, delete and undo, and transfer', async ({ page }) => {
   await page.goto('/transactions')
   await page.getByRole('button', { name: 'New transaction' }).click()
   const form = entryForm(page)
-  await combo(page, 'Account').selectOption({ label: 'Fake wallet' })
+  await combo(form, 'Account').selectOption({ label: 'Fake wallet' })
   await form.getByLabel('Amount', { exact: true }).fill('12.50')
-  await combo(page, 'Payee').fill('Fake Bakery')
+  await combo(form, 'Payee').fill('Fake Bakery')
   await form.getByLabel('Tags').fill('e2e')
   // No category: a field error, nothing entered.
   await form.getByRole('button', { name: 'Enter transaction' }).click()
   await expect(form.getByText('Choose a category.')).toBeVisible()
-  await combo(page, 'Category').selectOption({ label: 'Groceries' })
+  await combo(form, 'Category').selectOption({ label: 'Groceries' })
   await form.getByRole('button', { name: 'Enter transaction' }).click()
   await expect(form).toBeHidden()
 
@@ -46,8 +46,8 @@ test('enter, edit, delete and undo, and transfer', async ({ page }) => {
   const edit = page.getByRole('form', { name: 'Edit transaction' })
   await edit.getByLabel('Money in').check()
   await edit.getByLabel('Amount', { exact: true }).fill('15')
-  await combo(page, 'Payee').fill('Fake Bakery Refund')
-  await combo(page, 'Category').selectOption({ label: 'Eating Out' })
+  await combo(edit, 'Payee').fill('Fake Bakery Refund')
+  await combo(edit, 'Category').selectOption({ label: 'Eating Out' })
   await edit.getByLabel('Memo').fill('returned a cake')
   await edit.getByLabel('Tags').fill('e2e edited')
   await edit.getByRole('button', { name: 'Save changes' }).click()
@@ -74,11 +74,11 @@ test('enter, edit, delete and undo, and transfer', async ({ page }) => {
   // Transfer to… another account: no category asked for.
   await page.getByRole('button', { name: 'New transaction' }).click()
   const transfer = entryForm(page)
-  await combo(page, 'Account').selectOption({ label: 'Fake wallet' })
+  await combo(transfer, 'Account').selectOption({ label: 'Fake wallet' })
   await transfer.getByLabel('Amount', { exact: true }).fill('20')
-  await combo(page, 'Payee').fill('Fake top-up')
+  await combo(transfer, 'Payee').fill('Fake top-up')
   await transfer.getByLabel('Transfer to…').check()
-  await combo(page, 'Transfer to').selectOption({ label: 'Everyday checking' })
+  await combo(transfer, 'Transfer to').selectOption({ label: 'Everyday checking' })
   await transfer.getByRole('button', { name: 'Enter transaction' }).click()
   await expect(transfer).toBeHidden()
   await expect(row('Fake top-up')).toContainText('Transfer to Everyday checking')

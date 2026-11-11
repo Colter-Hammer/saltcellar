@@ -69,7 +69,10 @@ async fn a_category_is_required_unless_its_a_transfer() {
     body["category_id"] = Value::Null;
     let (status, error) = call(&app, "POST", "/api/v1/transactions", &body).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(error["error"]["fields"]["category_id"], "Choose a category.");
+    assert_eq!(
+        error["error"]["fields"]["category_id"],
+        "Choose a category."
+    );
 
     // Missing references are named by field too.
     for (key, value, field) in [
@@ -101,7 +104,10 @@ async fn transfer_to_writes_one_leg_and_names_the_other_account() {
             .fetch_one(&app.pool)
             .await
             .unwrap();
-    assert_eq!(legs, (row["id"].as_i64().unwrap(), None, "manual".to_owned()));
+    assert_eq!(
+        legs,
+        (row["id"].as_i64().unwrap(), None, "manual".to_owned())
+    );
 }
 
 #[tokio::test]
@@ -134,7 +140,15 @@ async fn edit_changes_every_field_and_delete_then_enter_again_brings_it_back() {
     // Undo enters the same fields again.
     let (status, back) = call(&app, "POST", "/api/v1/transactions", &changed).await;
     assert_eq!(status, StatusCode::CREATED);
-    for key in ["account", "date", "amount_minor", "payee", "category", "memo", "tags"] {
+    for key in [
+        "account",
+        "date",
+        "amount_minor",
+        "payee",
+        "category",
+        "memo",
+        "tags",
+    ] {
         assert_eq!(back[key], edited[key], "{key}");
     }
 }

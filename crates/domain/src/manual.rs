@@ -75,7 +75,10 @@ pub fn check(typed: &Typed<'_>) -> Result<Entry, FieldErrors> {
         errors.insert("date", "Enter a date.".to_owned());
     }
     if typed.amount_minor == 0 {
-        errors.insert("amount_minor", "Enter an amount other than zero.".to_owned());
+        errors.insert(
+            "amount_minor",
+            "Enter an amount other than zero.".to_owned(),
+        );
     }
     let payee = trimmed(typed.payee);
     if payee
@@ -175,7 +178,7 @@ fn tag_names(typed: &[String]) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
 
-    fn typed<'a>(tags: &'a [String]) -> Typed<'a> {
+    fn typed(tags: &[String]) -> Typed<'_> {
         Typed {
             account_id: 1,
             date: "2026-03-04",
@@ -190,7 +193,12 @@ mod tests {
 
     #[test]
     fn a_full_entry_checks_out_trimmed() {
-        let tags = ["#trip".to_owned(), " gift ".to_owned(), "trip".to_owned(), String::new()];
+        let tags = [
+            "#trip".to_owned(),
+            " gift ".to_owned(),
+            "trip".to_owned(),
+            String::new(),
+        ];
         let entry = check(&typed(&tags)).unwrap();
         assert_eq!(
             entry,
@@ -263,7 +271,14 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             errors.keys().copied().collect::<Vec<_>>(),
-            ["amount_minor", "category_id", "date", "memo", "payee", "tags"]
+            [
+                "amount_minor",
+                "category_id",
+                "date",
+                "memo",
+                "payee",
+                "tags"
+            ]
         );
     }
 

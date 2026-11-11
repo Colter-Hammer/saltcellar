@@ -214,10 +214,13 @@ async fn check_references(
         }
         // Any other account, balances-only ones included: their side of the transfer stays empty.
         Lands::TransferWith(other) => {
-            sqlx::query_scalar!(r#"SELECT id AS "id!: i64" FROM accounts WHERE id = ?"#, other)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or(ManualError::NoSuchTransferAccount)?;
+            sqlx::query_scalar!(
+                r#"SELECT id AS "id!: i64" FROM accounts WHERE id = ?"#,
+                other
+            )
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(ManualError::NoSuchTransferAccount)?;
         }
     }
     Ok(())
@@ -275,11 +278,12 @@ async fn payee_id(tx: &mut sqlx::SqliteConnection, name: &str) -> Result<i64, Ma
     )
     .execute(&mut *tx)
     .await?;
-    Ok(
-        sqlx::query_scalar!(r#"SELECT id AS "id!: i64" FROM payees WHERE name = ?"#, name)
-            .fetch_one(&mut *tx)
-            .await?,
+    Ok(sqlx::query_scalar!(
+        r#"SELECT id AS "id!: i64" FROM payees WHERE name = ?"#,
+        name
     )
+    .fetch_one(&mut *tx)
+    .await?)
 }
 
 /// Row `id`'s tags and, for a transfer, its one-leg transfer: money out goes from its account to
@@ -313,7 +317,11 @@ async fn write_links(
         } else {
             (other, entry.account_id)
         };
-        let (from_txn, to_txn) = if out { (Some(id), None) } else { (None, Some(id)) };
+        let (from_txn, to_txn) = if out {
+            (Some(id), None)
+        } else {
+            (None, Some(id))
+        };
         sqlx::query!(
             "INSERT INTO transfers
                (from_account_id, to_account_id, from_txn_id, to_txn_id, matched_by, state,
@@ -426,7 +434,9 @@ mod tests {
             payee: Some("Fake Bakery".to_owned()),
             ..entry(Lands::Category(1))
         };
-        add_manual_transaction(&pool, &new, &author()).await.unwrap();
+        add_manual_transaction(&pool, &new, &author())
+            .await
+            .unwrap();
         let names: Vec<String> = payees(&pool)
             .await
             .unwrap()
@@ -450,11 +460,11 @@ mod tests {
         .fetch_one(&pool)
         .await
         .unwrap();
+        assert_eq!((transfer.from_account_id, transfer.to_account_id), (1, 2));
         assert_eq!(
-            (transfer.from_account_id, transfer.to_account_id),
-            (1, 2)
+            (transfer.from_txn_id, transfer.to_txn_id),
+            (Some(out), None)
         );
-        assert_eq!((transfer.from_txn_id, transfer.to_txn_id), (Some(out), None));
         assert_eq!(transfer.matched_by, "manual");
         assert_eq!(transfer.state, "confirmed");
         assert_eq!(transfer.confirmed_by, Some(1));
@@ -471,13 +481,12 @@ mod tests {
         let id = add_manual_transaction(&pool, &money_in, &author())
             .await
             .unwrap();
-        let (from, to): (i64, Option<i64>) = sqlx::query_as(
-            "SELECT from_account_id, to_txn_id FROM transfers WHERE to_txn_id = ?",
-        )
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let (from, to): (i64, Option<i64>) =
+            sqlx::query_as("SELECT from_account_id, to_txn_id FROM transfers WHERE to_txn_id = ?")
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!((from, to), (3, Some(id)));
     }
 
