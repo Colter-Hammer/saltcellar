@@ -463,6 +463,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/payees`: every payee, for the entry form's payee field. */
+        get: operations["getPayees"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profile": {
         parameters: {
             query?: never;
@@ -646,7 +663,12 @@ export interface paths {
          */
         get: operations["getTransactions"];
         put?: never;
-        post?: never;
+        /**
+         * `POST /api/v1/transactions`: enters a manual transaction. It's posted *(agent)*, counts in
+         *     budgets at once, records `categorized_by = 'user'` with the reason "Set by <display name>",
+         *     and shows the manual badge until a bank row adopts it.
+         */
+        post: operations["addTransaction"];
         delete?: never;
         options?: never;
         head?: never;
@@ -662,9 +684,17 @@ export interface paths {
         };
         /** `GET /api/v1/transactions/{id}`: one transaction in full. */
         get: operations["getTransaction"];
-        put?: never;
+        /**
+         * `PUT /api/v1/transactions/{id}`: replaces every field of a manual transaction no bank row has
+         *     adopted, its tags and its transfer included.
+         */
+        put: operations["changeTransaction"];
         post?: never;
-        delete?: never;
+        /**
+         * `DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted, with
+         *     its tags and its transfer. The screen's **Undo** enters it again *(agent)*.
+         */
+        delete: operations["deleteTransaction"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1253,6 +1283,37 @@ export interface components {
             /** @description As typed: case and surrounding spaces don't matter. */
             username: string;
         };
+        /** @description A manual transaction, whole: what `POST` writes and `PUT` replaces. */
+        ManualEntry: {
+            /**
+             * Format: int64
+             * @description An account that holds transactions (not balances only).
+             */
+            account_id: number;
+            /**
+             * Format: int64
+             * @description In minor units, not zero: negative is money out, positive money in.
+             */
+            amount_minor: number;
+            /**
+             * Format: int64
+             * @description Its category. Required unless `transfer_account_id` is given; never with it.
+             */
+            category_id?: number | null;
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            memo?: string | null;
+            /** @description The payee's name: an existing payee's exactly, or a new one, added. Blank or null for none. */
+            payee?: string | null;
+            /** @description Tag names, with or without `#`: letters, digits, `-` and `_`. New ones are added. */
+            tags?: string[];
+            /**
+             * Format: int64
+             * @description **Transfer to…** this other account instead of a category: money out goes to it, money in
+             *     comes from it. The transfer has only this leg until that account's own row arrives.
+             */
+            transfer_account_id?: number | null;
+        };
         /** @description Where to put every undecided row of one Actual category. */
         MoveGroup: {
             /** @description The group, as `GET /api/v1/undecided` names it. */
@@ -1294,6 +1355,17 @@ export interface components {
             icon?: string | null;
             kind: components["schemas"]["CategoryGroupKind"];
             name: string;
+        };
+        /** @description A payee, as the entry form offers it. */
+        Payee: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description Every payee the household has. */
+        PayeeList: {
+            /** @description By name, ignoring case. */
+            payees: components["schemas"]["Payee"][];
         };
         Profile: {
             /** @description BCP 47, like `de-DE`; null = the browser's locale. */
@@ -1449,6 +1521,11 @@ export interface components {
             date: string;
             /** Format: int64 */
             id: number;
+            /**
+             * @description Entered by hand and not yet adopted by a bank row: it shows the **manual** badge, and
+             *     `PUT` and `DELETE /api/v1/transactions/{id}` can edit or delete it.
+             */
+            manual: boolean;
             /** @description Null when it has none. */
             payee: string | null;
             /** @description Exactly what the bank sent; never edited. */
@@ -1465,6 +1542,11 @@ export interface components {
             tags: string[];
             /** @description The other account of the transfer it's a leg of; null for any other transaction. */
             transfer_account: string | null;
+            /**
+             * Format: int64
+             * @description That other account's id; null for any other transaction.
+             */
+            transfer_account_id: number | null;
         };
         /**
          * @description Where it came from: the bank (through the sync provider), a file, or entered by hand.
@@ -2894,6 +2976,35 @@ export interface operations {
             };
         };
     };
+    getPayees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every payee, by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeList"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getProfile: {
         parameters: {
             query?: never;
@@ -3503,6 +3614,48 @@ export interface operations {
             };
         };
     };
+    addTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEntry"];
+            };
+        };
+        responses: {
+            /** @description The transaction is entered. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: a field can't be written as given, named in `fields`: no category and no transfer, both, a transfer to the same account, an account, category or transfer account that doesn't exist, a balances-only account, a zero amount, an unreadable date, a bad tag, or a payee or memo too long. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getTransaction: {
         parameters: {
             query?: never;
@@ -3535,6 +3688,117 @@ export interface operations {
             };
             /** @description `not_found`: there's no such transaction. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEntry"];
+            };
+        };
+        responses: {
+            /** @description The transaction, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_manual`: it came from the bank or a file, or a bank row has adopted it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: as for `POST /api/v1/transactions`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transaction is deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_manual`: it came from the bank or a file, or a bank row has adopted it. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

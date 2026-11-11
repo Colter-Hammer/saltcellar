@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transfers\n               (from_account_id, to_account_id, from_txn_id, to_txn_id, matched_by, state,\n                confirmed_by)\n             VALUES (?, ?, ?, ?, 'manual', 'confirmed', ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "f01e22939d1cb175420fd69ad1b5c529a16875985df3b7f65cb2628c98875b11"
+}

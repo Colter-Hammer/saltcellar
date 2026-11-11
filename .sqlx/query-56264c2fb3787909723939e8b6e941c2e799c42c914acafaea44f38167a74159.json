@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM transfers WHERE from_txn_id = ?1 OR to_txn_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "56264c2fb3787909723939e8b6e941c2e799c42c914acafaea44f38167a74159"
+}

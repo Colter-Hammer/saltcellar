@@ -1,5 +1,5 @@
-//! Transactions (docs/spec/m1-ledger-import.md#transactions): read-only in milestone 1, where the
-//! Actual importer writes them. The list pages on `(date, id)`, newest first, searched and filtered
+//! Transactions (docs/spec/m1-ledger-import.md#transactions): read here; manual entry
+//! (`crate::manual`) writes the rows typed in by hand. The list pages on `(date, id)`, newest first, searched and filtered
 //! by its query; the tags are listed for its tag filter.
 
 use axum::Json;
@@ -81,8 +81,14 @@ pub struct TransactionRow {
     /// The other account of the transfer it's a leg of; null for any other transaction.
     #[schema(required = true)]
     transfer_account: Option<String>,
+    /// That other account's id; null for any other transaction.
+    #[schema(required = true)]
+    transfer_account_id: Option<i64>,
     /// Its tags' names, in name order.
     tags: Vec<String>,
+    /// Entered by hand and not yet adopted by a bank row: it shows the **manual** badge, and
+    /// `PUT` and `DELETE /api/v1/transactions/{id}` can edit or delete it.
+    manual: bool,
 }
 
 impl From<db::TransactionRow> for TransactionRow {
@@ -101,7 +107,9 @@ impl From<db::TransactionRow> for TransactionRow {
             split: row.split,
             split_categories: u32::try_from(row.split_categories).unwrap_or_default(),
             transfer_account: row.transfer_account,
+            transfer_account_id: row.transfer_account_id,
             tags: row.tags,
+            manual: row.manual,
         }
     }
 }

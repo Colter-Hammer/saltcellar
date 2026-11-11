@@ -1615,6 +1615,37 @@
         }
       }
     },
+    "/api/v1/payees": {
+      "get": {
+        "tags": [
+          "manual"
+        ],
+        "summary": "`GET /api/v1/payees`: every payee, for the entry form's payee field.",
+        "operationId": "getPayees",
+        "responses": {
+          "200": {
+            "description": "Every payee, by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayeeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/profile": {
       "get": {
         "tags": [
@@ -2358,6 +2389,55 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "manual"
+        ],
+        "summary": "`POST /api/v1/transactions`: enters a manual transaction. It's posted *(agent)*, counts in\nbudgets at once, records `categorized_by = 'user'` with the reason \"Set by <display name>\",\nand shows the manual badge until a bank row adopts it.",
+        "operationId": "addTransaction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The transaction is entered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: a field can't be written as given, named in `fields`: no category and no transfer, both, a transfer to the same account, an account, category or transfer account that doesn't exist, a balances-only account, a zero amount, an unreadable date, a bad tag, or a payee or memo too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/transactions/{id}": {
@@ -2402,6 +2482,141 @@
           },
           "404": {
             "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "manual"
+        ],
+        "summary": "`PUT /api/v1/transactions/{id}`: replaces every field of a manual transaction no bank row has\nadopted, its tags and its transfer included.",
+        "operationId": "changeTransaction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction, changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_manual`: it came from the bank or a file, or a bank row has adopted it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: as for `POST /api/v1/transactions`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "manual"
+        ],
+        "summary": "`DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted, with\nits tags and its transfer. The screen's **Undo** enters it again *(agent)*.",
+        "operationId": "deleteTransaction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The transaction is deleted."
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_manual`: it came from the bank or a file, or a bank row has adopted it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3869,6 +4084,67 @@
           }
         }
       },
+      "ManualEntry": {
+        "type": "object",
+        "description": "A manual transaction, whole: what `POST` writes and `PUT` replaces.",
+        "required": [
+          "account_id",
+          "date",
+          "amount_minor"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "An account that holds transactions (not balances only)."
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units, not zero: negative is money out, positive money in."
+          },
+          "category_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Its category. Required unless `transfer_account_id` is given; never with it."
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "memo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The payee's name: an existing payee's exactly, or a new one, added. Blank or null for none."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tag names, with or without `#`: letters, digits, `-` and `_`. New ones are added."
+          },
+          "transfer_account_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "**Transfer to…** this other account instead of a category: money out goes to it, money in\ncomes from it. The transfer has only this leg until that account's own row arrives."
+          }
+        }
+      },
       "MoveGroup": {
         "type": "object",
         "description": "Where to put every undecided row of one Actual category.",
@@ -3964,6 +4240,39 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "Payee": {
+        "type": "object",
+        "description": "A payee, as the entry form offers it.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PayeeList": {
+        "type": "object",
+        "description": "Every payee the household has.",
+        "required": [
+          "payees"
+        ],
+        "properties": {
+          "payees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Payee"
+            },
+            "description": "By name, ignoring case."
           }
         }
       },
@@ -4333,7 +4642,9 @@
           "split",
           "split_categories",
           "transfer_account",
-          "tags"
+          "transfer_account_id",
+          "tags",
+          "manual"
         ],
         "properties": {
           "account": {
@@ -4369,6 +4680,10 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "manual": {
+            "type": "boolean",
+            "description": "Entered by hand and not yet adopted by a bank row: it shows the **manual** badge, and\n`PUT` and `DELETE /api/v1/transactions/{id}` can edit or delete it."
           },
           "payee": {
             "type": [
@@ -4407,6 +4722,14 @@
               "null"
             ],
             "description": "The other account of the transfer it's a leg of; null for any other transaction."
+          },
+          "transfer_account_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "That other account's id; null for any other transaction."
           }
         }
       },

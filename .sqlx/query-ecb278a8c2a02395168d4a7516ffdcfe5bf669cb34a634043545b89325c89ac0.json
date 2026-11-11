@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT source, external_id FROM transactions WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "source",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "external_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "ecb278a8c2a02395168d4a7516ffdcfe5bf669cb34a634043545b89325c89ac0"
+}

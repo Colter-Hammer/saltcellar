@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transaction_tags (transaction_id, tag_id)\n             SELECT ?, id FROM tags WHERE name = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e44131e0c3bea62e7f8aec18b43e20fec70d8a97acb4366cf5e08ca77e536183"
+}

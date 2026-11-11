@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/vue-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 import { call, client } from './client'
 import type { TransactionFilter } from '@/lib/transactions'
@@ -59,4 +59,55 @@ export function useTags() {
     queryKey: ['tags'],
     queryFn: async (): Promise<Tag[]> => (await call(client.GET('/api/v1/tags'))).tags,
   })
+}
+
+export type ManualEntry = components['schemas']['ManualEntry']
+type Payee = components['schemas']['Payee']
+
+/** `GET /api/v1/payees`: every payee, by name, for the entry form. */
+export function usePayees() {
+  return useQuery({
+    queryKey: ['payees'],
+    queryFn: async (): Promise<Payee[]> => (await call(client.GET('/api/v1/payees'))).payees,
+  })
+}
+
+/**
+ * Entering, editing and deleting manual transactions. Each reloads the transactions, payees, tags
+ * and accounts afterwards, whether it worked or not, and throws an ApiError when it didn't: a
+ * `validation_failed` names the fields.
+ */
+export function useManualEdits() {
+  const queryClient = useQueryClient()
+  async function edit<T>(request: Promise<T>): Promise<T> {
+    try {
+      return await request
+    } finally {
+      await Promise.all(
+        ['transactions', 'payees', 'tags', 'accounts'].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key] }),
+        ),
+      )
+    }
+  }
+  return {
+    /** `POST /api/v1/transactions`: enters one; resolves to it. */
+    create: (entry: ManualEntry) =>
+      edit(call(client.POST('/api/v1/transactions', { body: entry }))),
+    /** `PUT /api/v1/transactions/{id}`: replaces every field; resolves to it. */
+    change: (id: number, entry: ManualEntry) =>
+      edit(
+        call(client.PUT('/api/v1/transactions/{id}', { params: { path: { id } }, body: entry })),
+      ),
+    /** `DELETE /api/v1/transactions/{id}`, marked JSON as every changing request must be. */
+    remove: (id: number) =>
+      edit(
+        call(
+          client.DELETE('/api/v1/transactions/{id}', {
+            params: { path: { id } },
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ),
+  }
 }

@@ -7,6 +7,7 @@ mod connection;
 mod connection_accounts;
 mod household;
 mod imports;
+mod manual;
 mod profile;
 mod reset;
 mod sync;
@@ -44,6 +45,10 @@ pub use household::{Household, household};
 pub use imports::{
     ActualCommit, Batch, Committed, CommittedAccount, ImportError, UndoError, Undone,
     actual_import_in_place, commit_actual_import, import_batches, undo_import,
+};
+pub use manual::{
+    Author, ManualError, Payee, add_manual_transaction, delete_manual_transaction, payees,
+    update_manual_transaction,
 };
 pub use profile::{
     Profile, ProfileChange, end_all_sessions, password_hash, profile, set_palette, set_password,

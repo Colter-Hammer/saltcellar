@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT status, source, categorized_by, categorization_reason, payee_id,\n                      category_id, raw_description, dedupe_key, updated_by\n               FROM transactions WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "status",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "categorized_by",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorized_by"
+          }
+        }
+      },
+      {
+        "name": "categorization_reason",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorization_reason"
+          }
+        }
+      },
+      {
+        "name": "payee_id",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "payee_id"
+          }
+        }
+      },
+      {
+        "name": "category_id",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "category_id"
+          }
+        }
+      },
+      {
+        "name": "raw_description",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "raw_description"
+          }
+        }
+      },
+      {
+        "name": "dedupe_key",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "dedupe_key"
+          }
+        }
+      },
+      {
+        "name": "updated_by",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "cab71aee5066df7a4a85b34a0a6fddae6058f2e2eaf721a4d94ab861991e2772"
+}

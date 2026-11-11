@@ -1,20 +1,28 @@
 <script setup lang="ts">
 // A transaction in full (docs/spec/m1-ledger-import.md#transactions): what the list shows, plus
 // what the bank sent, the split lines, memo, status, source, how it got its category and the
-// import it came in with. Read-only in milestone 1, except that a From Actual, undecided row gets
-// a category picker (docs/spec/m1-ledger-import.md#from-actual-undecided).
-import { computed, ref } from 'vue'
+// import it came in with. A From Actual, undecided row gets a category picker
+// (docs/spec/m1-ledger-import.md#from-actual-undecided). A manual row no bank row has adopted
+// carries the manual badge, and Edit (the entry form, in place of the details) and Delete, which
+// is immediate: the screen offers Undo (docs/spec/m2-bank-data.md#manual-entry).
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/client'
-import { useTransaction } from '@/api/transactions'
+import { type ManualEntry, useManualEdits, useTransaction } from '@/api/transactions'
 import { useDecide } from '@/api/undecided'
 import CategoryPicker from '@/components/CategoryPicker.vue'
 import GroupMark from '@/components/GroupMark.vue'
+import ManualEntryForm from '@/components/ManualEntryForm.vue'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
+import { type EntryErrors, entryOf, fieldsOf } from '@/lib/manual'
 import { categoryLabel, payeeLabel, sourceLabel, statusLabel } from '@/lib/transactions'
 
 const props = defineProps<{ id: number }>()
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  /** It was deleted; `entry` enters it again. */
+  deleted: [entry: ManualEntry]
+}>()
 
 const query = useTransaction(() => props.id)
 const formatting = useFormatting()
@@ -29,6 +37,48 @@ async function setCategory() {
   try {
     await decide.one.mutateAsync({ id: props.id, categoryId: Number(chosen.value) })
     chosen.value = ''
+  } catch (error) {
+    failure.value = error instanceof ApiError ? error.message : 'Something went wrong.'
+  }
+}
+
+const manual = useManualEdits()
+const editing = ref(false)
+const saving = ref(false)
+const refused = ref<EntryErrors>()
+watch(
+  () => props.id,
+  () => {
+    editing.value = false
+    refused.value = undefined
+  },
+)
+
+async function save(entry: ManualEntry) {
+  failure.value = ''
+  saving.value = true
+  try {
+    await manual.change(props.id, entry)
+    refused.value = undefined
+    editing.value = false
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'validation_failed') {
+      refused.value = error.fields
+    } else {
+      failure.value = error instanceof ApiError ? error.message : 'Something went wrong.'
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+async function remove() {
+  const shown = transaction.value
+  if (!shown) return
+  failure.value = ''
+  try {
+    await manual.remove(props.id)
+    emit('deleted', entryOf(shown))
   } catch (error) {
     failure.value = error instanceof ApiError ? error.message : 'Something went wrong.'
   }
@@ -64,8 +114,32 @@ const batch = computed(() => {
       {{ query.error.value?.message }}
     </p>
 
-    <template v-if="transaction">
-      <p class="text-2xl"><Money :minor="transaction.amount_minor" signed /></p>
+    <ManualEntryForm
+      v-if="transaction && editing"
+      title="Edit transaction"
+      action="Save changes"
+      :start="fieldsOf(transaction, formatting)"
+      :formatting="formatting"
+      :refused="refused"
+      :saving="saving"
+      @save="save"
+      @cancel="editing = false"
+    />
+    <template v-else-if="transaction">
+      <p class="flex items-center gap-2 text-2xl">
+        <Money :minor="transaction.amount_minor" signed />
+        <span v-if="transaction.manual" class="rounded border px-1 text-xs text-muted-foreground"
+          >Manual</span
+        >
+      </p>
+      <div v-if="transaction.manual" class="flex gap-2">
+        <button type="button" class="rounded-md border px-3 py-1" @click="editing = true">
+          Edit
+        </button>
+        <button type="button" class="rounded-md border px-3 py-1 text-destructive" @click="remove">
+          Delete
+        </button>
+      </div>
       <dl aria-label="Details" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
         <dt class="text-muted-foreground">Date</dt>
         <dd>{{ formatDate(transaction.date, formatting) }}</dd>
@@ -123,8 +197,8 @@ const batch = computed(() => {
         >
           Set category
         </button>
-        <p v-if="failure" role="alert" class="w-full text-destructive">{{ failure }}</p>
       </form>
     </template>
+    <p v-if="failure" role="alert" class="w-full text-destructive">{{ failure }}</p>
   </div>
 </template>
