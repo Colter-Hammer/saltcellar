@@ -141,6 +141,12 @@ async fn run(config: Config) -> Result<(), StartError> {
             "BUDGET_SYNC_COOLDOWN_MINUTES is set: Sync now's cooldown is changed (a development setting)"
         );
     }
+    if config.bank.sync_request_cap != api::BankConfig::default().sync_request_cap {
+        tracing::warn!(
+            cap = config.bank.sync_request_cap,
+            "BUDGET_SYNC_REQUEST_CAP is set: the daily Bridge request cap is changed (a development setting)"
+        );
+    }
     state.start_sync_schedule().await?;
     let app = web::app(api::router(state), dist);
     axum::serve(listener, app)

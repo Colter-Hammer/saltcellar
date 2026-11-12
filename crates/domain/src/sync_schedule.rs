@@ -7,7 +7,8 @@ use jiff::civil::Time;
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan};
 
-/// Bridge requests the app makes in any rolling 24 hours, half the Bridge's own limit.
+/// Bridge requests the app makes in any rolling 24 hours, half the Bridge's own limit. The rules
+/// below take the cap as an argument, so a development install can raise it.
 pub const REQUEST_CAP: u32 = 12;
 /// The window the cap counts over.
 pub const CAP_WINDOW: SignedDuration = SignedDuration::from_hours(24);
@@ -118,18 +119,18 @@ pub fn requests_used(spent: &[Spent], now: Timestamp) -> u32 {
         .sum()
 }
 
-/// Requests left of the cap at `now`, the held-back one included.
+/// Requests left of `cap` at `now`, the held-back one included.
 #[must_use]
-pub fn requests_left(spent: &[Spent], now: Timestamp) -> u32 {
-    REQUEST_CAP.saturating_sub(requests_used(spent, now))
+pub fn requests_left(spent: &[Spent], now: Timestamp, cap: u32) -> u32 {
+    cap.saturating_sub(requests_used(spent, now))
 }
 
-/// Whether `asker` may spend `needed` requests at `now`.
+/// Whether `asker` may spend `needed` requests at `now`, under `cap`.
 #[must_use]
-pub fn allows(spent: &[Spent], now: Timestamp, asker: Asker, needed: u32) -> bool {
+pub fn allows(spent: &[Spent], now: Timestamp, cap: u32, asker: Asker, needed: u32) -> bool {
     let limit = match asker {
-        Asker::Scheduled => REQUEST_CAP,
-        Asker::Other => REQUEST_CAP - 1,
+        Asker::Scheduled => cap,
+        Asker::Other => cap.saturating_sub(1),
     };
     requests_used(spent, now) + needed <= limit
 }
@@ -141,10 +142,11 @@ pub fn allows(spent: &[Spent], now: Timestamp, asker: Asker, needed: u32) -> boo
 pub fn allowed_from(
     spent: &[Spent],
     now: Timestamp,
+    cap: u32,
     asker: Asker,
     needed: u32,
 ) -> Option<Timestamp> {
-    if allows(spent, now, asker, needed) {
+    if allows(spent, now, cap, asker, needed) {
         return None;
     }
     let mut leaving: Vec<Timestamp> = spent
@@ -155,7 +157,7 @@ pub fn allowed_from(
     leaving.sort_unstable();
     leaving
         .into_iter()
-        .find(|&at| allows(spent, at, asker, needed))
+        .find(|&at| allows(spent, at, cap, asker, needed))
 }
 
 /// When Sync now is next allowed after a sync that finished at `last_finished`: `None` if now.
@@ -299,27 +301,36 @@ mod tests {
             runs.push(spent(&format!("2026-10-28T{hour:02}:00:00Z"), 1));
         }
         assert_eq!(requests_used(&runs, now), 10);
-        assert_eq!(requests_left(&runs, now), 2);
+        assert_eq!(requests_left(&runs, now, REQUEST_CAP), 2);
         // Sync now may take the eleventh, never the twelfth.
-        assert!(allows(&runs, now, Asker::Other, 1));
-        assert!(!allows(&runs, now, Asker::Other, 2));
+        assert!(allows(&runs, now, REQUEST_CAP, Asker::Other, 1));
+        assert!(!allows(&runs, now, REQUEST_CAP, Asker::Other, 2));
         runs.push(spent("2026-10-28T14:30:00Z", 1));
-        assert!(!allows(&runs, now, Asker::Other, 1));
-        assert!(allows(&runs, now, Asker::Scheduled, 1));
+        assert!(!allows(&runs, now, REQUEST_CAP, Asker::Other, 1));
+        assert!(allows(&runs, now, REQUEST_CAP, Asker::Scheduled, 1));
         // The 04:00 run leaves the window at 04:00 tomorrow.
         assert_eq!(
-            allowed_from(&runs, now, Asker::Other, 1),
+            allowed_from(&runs, now, REQUEST_CAP, Asker::Other, 1),
             Some(at("2026-10-29T04:00:00Z"))
         );
         assert_eq!(
-            allowed_from(&runs, now, Asker::Other, 2),
+            allowed_from(&runs, now, REQUEST_CAP, Asker::Other, 2),
             Some(at("2026-10-29T05:00:00Z"))
         );
-        assert_eq!(allowed_from(&runs, now, Asker::Scheduled, 1), None);
+        assert_eq!(
+            allowed_from(&runs, now, REQUEST_CAP, Asker::Scheduled, 1),
+            None
+        );
         runs.push(spent("2026-10-28T14:40:00Z", 1));
-        assert_eq!(requests_left(&runs, now), 0);
-        assert!(!allows(&runs, now, Asker::Scheduled, 1));
-        assert_eq!(allowed_from(&runs, now, Asker::Other, 13), None);
+        assert_eq!(requests_left(&runs, now, REQUEST_CAP), 0);
+        assert!(!allows(&runs, now, REQUEST_CAP, Asker::Scheduled, 1));
+        assert_eq!(
+            allowed_from(&runs, now, REQUEST_CAP, Asker::Other, 13),
+            None
+        );
+        // A raised cap lets the same runs through.
+        assert!(allows(&runs, now, 100, Asker::Other, 1));
+        assert_eq!(requests_left(&runs, now, 100), 88);
     }
 
     #[test]

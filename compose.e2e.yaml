@@ -10,6 +10,8 @@ services:
       BUDGET_SIMPLEFIN_CLAIM_HOSTS: bridge:8190
       # Specs press Sync now minutes apart; the cooldown has its own tests.
       BUDGET_SYNC_COOLDOWN_MINUTES: "0"
+      # The specs sync more than the 12 requests a day a real install allows.
+      BUDGET_SYNC_REQUEST_CAP: "100"
   bridge:
     image: ${BRIDGE_IMAGE:-saltcellar-fake:e2e}
     build:

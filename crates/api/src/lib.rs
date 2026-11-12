@@ -122,6 +122,8 @@ pub struct BankConfig {
     pub claim_policy: ClaimPolicy,
     /// How long Sync now waits after a sync: 30 minutes unless the dev setting changes it.
     pub sync_cooldown: jiff::SignedDuration,
+    /// Bridge requests allowed in any rolling 24 hours: 12 unless the dev setting changes it.
+    pub sync_request_cap: u32,
 }
 
 impl Default for BankConfig {
@@ -130,6 +132,7 @@ impl Default for BankConfig {
             secret_key: None,
             claim_policy: ClaimPolicy::default(),
             sync_cooldown: sync::DEFAULT_COOLDOWN,
+            sync_request_cap: domain::sync_schedule::REQUEST_CAP,
         }
     }
 }

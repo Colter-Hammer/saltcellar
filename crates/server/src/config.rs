@@ -130,21 +130,7 @@ impl Config {
                 .map(str::to_owned),
         );
 
-        // A dev setting: e2e presses Sync now in one spec after another, minutes apart.
-        let sync_cooldown = match get("BUDGET_SYNC_COOLDOWN_MINUTES") {
-            None => BankConfig::default().sync_cooldown,
-            Some(value) => value
-                .trim()
-                .parse::<u16>()
-                .map(|mins| jiff::SignedDuration::from_mins(i64::from(mins)))
-                .map_err(|_| {
-                    invalid(
-                        "BUDGET_SYNC_COOLDOWN_MINUTES",
-                        &value,
-                        "a whole number of minutes",
-                    )
-                })?,
-        };
+        let (sync_cooldown, sync_request_cap) = sync_limits(&get)?;
 
         Ok(Config {
             data_dir,
@@ -156,9 +142,50 @@ impl Config {
                 secret_key,
                 claim_policy,
                 sync_cooldown,
+                sync_request_cap,
             },
         })
     }
+}
+
+/// The two development settings that loosen the sync limits: e2e presses Sync now in one spec
+/// after another, minutes apart, and syncs more than 12 times on one install.
+fn sync_limits(
+    get: &impl Fn(&str) -> Option<String>,
+) -> Result<(jiff::SignedDuration, u32), ConfigError> {
+    // A dev setting: e2e presses Sync now in one spec after another, minutes apart.
+    let sync_cooldown = match get("BUDGET_SYNC_COOLDOWN_MINUTES") {
+        None => BankConfig::default().sync_cooldown,
+        Some(value) => value
+            .trim()
+            .parse::<u16>()
+            .map(|mins| jiff::SignedDuration::from_mins(i64::from(mins)))
+            .map_err(|_| {
+                invalid(
+                    "BUDGET_SYNC_COOLDOWN_MINUTES",
+                    &value,
+                    "a whole number of minutes",
+                )
+            })?,
+    };
+
+    // A dev setting: e2e syncs more than 12 times on one install.
+    let sync_request_cap = match get("BUDGET_SYNC_REQUEST_CAP") {
+        None => BankConfig::default().sync_request_cap,
+        Some(value) => value
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|cap| *cap >= 2)
+            .ok_or_else(|| {
+                invalid(
+                    "BUDGET_SYNC_REQUEST_CAP",
+                    &value,
+                    "a whole number of requests, 2 or more",
+                )
+            })?,
+    };
+    Ok((sync_cooldown, sync_request_cap))
 }
 
 /// An IP address is a range of one.
@@ -228,6 +255,7 @@ mod tests {
                 "127.0.0.1:8190, Fake.example.test",
             ),
             ("BUDGET_SYNC_COOLDOWN_MINUTES", "0"),
+            ("BUDGET_SYNC_REQUEST_CAP", "100"),
         ])
         .unwrap();
         assert_eq!(c.data_dir, PathBuf::from("/srv/budget"));
@@ -250,6 +278,7 @@ mod tests {
             ["127.0.0.1:8190", "fake.example.test"]
         );
         assert_eq!(c.bank.sync_cooldown, jiff::SignedDuration::ZERO);
+        assert_eq!(c.bank.sync_request_cap, 100);
     }
 
     /// 32 bytes of base64, made up for the tests.
@@ -307,6 +336,12 @@ mod tests {
             &[("BUDGET_SYNC_COOLDOWN_MINUTES", "soon")],
             "BUDGET_SYNC_COOLDOWN_MINUTES",
         );
+        for bad in ["lots", "1"] {
+            error_names(
+                &[("BUDGET_SYNC_REQUEST_CAP", bad)],
+                "BUDGET_SYNC_REQUEST_CAP",
+            );
+        }
         error_names(
             &[("BUDGET_BASE_URL", "budget.example.test")],
             "BUDGET_BASE_URL",

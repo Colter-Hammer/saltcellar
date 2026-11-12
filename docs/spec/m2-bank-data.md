@@ -118,7 +118,7 @@ What the protocol and the live Bridge actually do, so code doesn't rediscover it
   - The rules are pure functions in `domain::sync_schedule`, tested on a fake clock; the API's `schedule` module runs them, looking for due work every 30 s. What waits (a retry, this start's catch-up) is kept in memory: a restart forgets retries, and the catch-up stands in for them.
   - The scheduled run starts within 1 hour of its slot, once; later than that, only a restart's catch-up makes up for it. A time a clock change skips runs just after it. Changing the time to one already past today runs it tomorrow.
   - The cooldown counts from the newest finished run that isn't a back-fill, so tracking an account doesn't lock Sync now. Sync now answers 409 `sync_cooling_down` ("Synced 12 min ago. Sync now works again in 18 min.") or 409 `sync_limit_reached` ("Sync limit reached, try again after 3:40 pm.", in the household timezone). A press while a sync runs still joins it.
-  - Every run asks the budget for the requests it will make (a back-fill's two included); only the scheduled run may take the held-back twelfth. Claiming a setup token isn't a sync run and isn't counted.
+  - Every run asks the budget for the requests it will make (a back-fill's two included); only the scheduled run may take the held-back twelfth. Claiming a setup token isn't a sync run and isn't counted. The cap is `BankConfig::sync_request_cap`, raised only by the development setting below.
   - Transient: no answer, a 5xx, `act.failed`, `act.missingdata`, and `con.*` but `con.auth`, on the run or on any account. Retries follow scheduled, catch-up and retry runs only; Sync now and back-fills show their result instead. The second retry is 2 hours after the first failure, not after the first retry. Any successful run cancels a waiting retry; a non-transient failure ends them.
   - The catch-up runs 3 minutes after start when the last successful run of any trigger (a run without a run-level error) is over 20 hours old: a fresh Sync now makes it pointless. It checks again when due.
   - Retries and catch-ups that would land in the first 3 minutes of an hour move to minute 7.
@@ -274,5 +274,6 @@ Details of the flag actions *(agent)*: every action clears its flag (`POST /api/
 
 | `BUDGET_SIMPLEFIN_CLAIM_HOSTS` | none | Development only *(agent)*. A comma-separated list of `host[:port]`. When set, a setup token may point only at these hosts, over `http://` as well as `https://`, so the [fake SimpleFIN server](../../fixtures/simplefin-fake/README.md) works. Unset (production), any `https://` claim URL is accepted. |
 | `BUDGET_SYNC_COOLDOWN_MINUTES` | `30` | Development only *(agent)*. Sync now's cooldown in minutes; the e2e tests set `0`, since their specs press Sync now minutes apart. |
+| `BUDGET_SYNC_REQUEST_CAP` | `12` | Development only *(agent)*. The Bridge requests allowed in any rolling 24 hours, 2 or more. The e2e tests set `100`, since their specs sync more often than a real install may. Leave unset in production: the real Bridge allows 24. |
 
 Settings keys: `sync.time` (`"06:13"`), `sync.keep_raw_responses` (`false`).

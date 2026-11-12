@@ -253,15 +253,16 @@ async fn within_budget(
         Asker::Other
     };
     let spent = spent(state, now).await?;
-    if rules::allows(&spent, now, asker, needed) {
+    let cap = state.bank.sync_request_cap;
+    if rules::allows(&spent, now, cap, asker, needed) {
         return Ok(());
     }
     tracing::info!(
         trigger = trigger.as_str(),
-        left = rules::requests_left(&spent, now),
+        left = rules::requests_left(&spent, now, cap),
         "bank sync skipped: the request limit is reached"
     );
-    let from = rules::allowed_from(&spent, now, asker, needed);
+    let from = rules::allowed_from(&spent, now, cap, asker, needed);
     Err(limit_reached(state, from).await?)
 }
 
@@ -577,17 +578,18 @@ pub(crate) async fn sync_state(state: &AppState) -> Result<SyncState, ApiError> 
     let settings = db::sync_settings(&state.pool).await?;
     let spent = spent(state, now).await?;
     let last = db::last_finished_sync(&state.pool).await?;
-    let blocked = !rules::allows(&spent, now, Asker::Other, 1);
+    let cap = state.bank.sync_request_cap;
+    let blocked = !rules::allows(&spent, now, cap, Asker::Other, 1);
     Ok(SyncState {
         time: sync_time(&settings).to_string(),
         keep_raw_responses: settings.keep_raw_responses,
-        request_cap: rules::REQUEST_CAP,
-        requests_left: rules::requests_left(&spent, now),
+        request_cap: cap,
+        requests_left: rules::requests_left(&spent, now, cap),
         last_synced_at: last.map(|at| at.to_string()),
         cooldown_until: rules::cooldown_until(last, state.bank.sync_cooldown, now)
             .map(|at| at.to_string()),
         limit_until: blocked
-            .then(|| rules::allowed_from(&spent, now, Asker::Other, 1))
+            .then(|| rules::allowed_from(&spent, now, cap, Asker::Other, 1))
             .flatten()
             .map(|at| at.to_string()),
     })

@@ -79,9 +79,10 @@ test('claim, then track two new accounts and ignore one, and see the rows', asyn
   await expect(page.getByRole('button', { name: 'Sync now' })).toBeEnabled()
   await expect(page.getByTestId('last-sync')).toHaveText('Last sync: No changes')
 
-  // The schedule and the budget: two back-fills of two requests each and a Sync now.
+  // The schedule and the budget: two back-fills of two requests each and a Sync now, of the 100
+  // e2e allows (BUDGET_SYNC_REQUEST_CAP).
   await expect(page.getByTestId('sync-schedule')).toHaveText(
-    'Syncs daily around 6 AM · 7 of 12 requests left today',
+    'Syncs daily around 6 AM · 95 of 100 requests left today',
   )
   const runs = page.getByRole('list', { name: 'Recent syncs' }).getByRole('listitem')
   await expect(runs).toHaveCount(3)

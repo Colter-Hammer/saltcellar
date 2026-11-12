@@ -37,6 +37,7 @@ Only what's needed before anyone can log in, or what touches the host. Everythin
 | `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the bank connection's access URL and any kept raw bank responses. Required to connect a bank: without it Settings › Bank connection & sync says so and claims nothing. Keep a copy outside the data dir; backups don't include it. If it's lost or changed, sync shows paused until you paste a new setup token. Never logged. |
 | `BUDGET_SIMPLEFIN_CLAIM_HOSTS` | none | Development only. A comma-separated list of `host[:port]`: setup tokens may then point only at these, over plain `http://` too, so a fake SimpleFIN server on localhost works. Leave unset in production, where any `https://` setup token is accepted. |
 | `BUDGET_SYNC_COOLDOWN_MINUTES` | `30` | Development only. How long Sync now waits after a sync. The e2e tests set `0`, since their specs press Sync now minutes apart. Leave unset in production. |
+| `BUDGET_SYNC_REQUEST_CAP` | `12` | Development only. The Bridge requests allowed in any rolling 24 hours, 2 or more. The e2e tests set `100`, since their specs sync more often than a real install may. Leave unset in production: the real Bridge allows 24. |
 
 `compose.yaml` passes `BUDGET_BASE_URL` and `BUDGET_SECRET_KEY` through from your shell or a `.env` file next to it. Add the others under `environment:` as you need them.
 

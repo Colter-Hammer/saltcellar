@@ -29,6 +29,7 @@ pub(super) async fn claimed_app_with_cooldown(
         secret_key: Some(SecretKey::from_base64(&key).unwrap()),
         claim_policy: ClaimPolicy::only_hosts([server.host()]),
         sync_cooldown: cooldown,
+        ..BankConfig::default()
     })
     .await;
     let request = axum::http::Request::put("/api/v1/bank-connection")
