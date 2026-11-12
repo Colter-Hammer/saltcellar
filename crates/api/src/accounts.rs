@@ -99,7 +99,7 @@ pub struct Account {
     /// Balances only: it holds balance snapshots and no transactions.
     balances_only: bool,
     /// Its connection; null for an account with none. One with a connection gets its balance from
-    /// the bank and takes no manual balance.
+    /// the bank and takes no manual balance, unless `balance_entry` says so.
     #[schema(required = true)]
     connection_id: Option<i64>,
     /// The balance shown, its latest balance snapshot, in minor units; null before it has one.
@@ -120,6 +120,22 @@ pub struct Account {
     /// `YYYY-MM-DD`, the date of its latest transaction; null without one.
     #[schema(required = true)]
     last_transaction_date: Option<String>,
+    /// How its bank data stands; null for an account that isn't synced.
+    #[schema(required = true)]
+    sync: Option<crate::sync_health::AccountSync>,
+    /// Who enters its balance.
+    balance_entry: BalanceEntry,
+}
+
+/// Who enters an account's balance.
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BalanceEntry {
+    /// The household does (Update balance): an account with no connection, or a balances-only
+    /// one whose bank link is broken or whose connection is paused.
+    Manual,
+    /// The bank sends it.
+    Bank,
 }
 
 impl From<db::AccountBalance> for Account {
@@ -140,8 +156,25 @@ impl From<db::AccountBalance> for Account {
             opening_date: account.opening.map(|opening| opening.date.to_string()),
             rows: account.rows,
             last_transaction_date: account.last_transaction.map(|date| date.to_string()),
+            balance_entry: if account.connection_id.is_none() {
+                BalanceEntry::Manual
+            } else {
+                BalanceEntry::Bank
+            },
+            sync: None,
         }
     }
+}
+
+/// `account` with its bank data's health, and the manual balance it takes because of it.
+fn with_sync(account: db::AccountBalance, health: &crate::sync_health::Snapshot) -> Account {
+    let id = account.id;
+    let mut account = Account::from(account);
+    account.sync = health.account(id);
+    if health.takes_manual_balance(id) {
+        account.balance_entry = BalanceEntry::Manual;
+    }
+    account
 }
 
 #[derive(Serialize, ToSchema)]
@@ -162,8 +195,12 @@ pub struct AccountList {
 )]
 pub async fn list(State(state): State<AppState>) -> Result<Json<AccountList>, ApiError> {
     let accounts = db::account_balances(&state.pool).await?;
+    let health = crate::sync_health::Snapshot::load(&state).await?;
     Ok(Json(AccountList {
-        accounts: accounts.into_iter().map(Account::from).collect(),
+        accounts: accounts
+            .into_iter()
+            .map(|account| with_sync(account, &health))
+            .collect(),
     }))
 }
 
@@ -187,7 +224,8 @@ pub async fn get(State(state): State<AppState>, Id(id): Id) -> Result<Json<Accou
             "There's no such account.",
         )
     })?;
-    Ok(Json(account.into()))
+    let health = crate::sync_health::Snapshot::load(&state).await?;
+    Ok(Json(with_sync(account, &health)))
 }
 
 /// A manual account: one with no connection, whose balance is entered by hand.
@@ -244,7 +282,8 @@ pub struct BalanceUpdate {
 }
 
 /// `POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,
-/// as a manual balance snapshot. A second one the same day replaces the first.
+/// as a manual balance snapshot. A second one the same day replaces the first. A balances-only
+/// account whose bank link is broken, or whose connection is paused, takes one too.
 #[utoipa::path(
     post,
     path = "/api/v1/accounts/{id}/balance",
@@ -255,7 +294,7 @@ pub struct BalanceUpdate {
         (status = 204, description = "The balance is recorded."),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
         (status = 404, description = "`not_found`: there's no such account.", body = ErrorEnvelope),
-        (status = 409, description = "`account_connected`: the account has a connection, so its balance comes from the bank.", body = ErrorEnvelope),
+        (status = 409, description = "`account_connected`: the account has a connection that works, so its balance comes from the bank.", body = ErrorEnvelope),
     ),
 )]
 pub async fn update_balance(
@@ -265,7 +304,12 @@ pub async fn update_balance(
 ) -> Result<StatusCode, ApiError> {
     let today = state.today().await?;
     let balance = domain::Money::from_minor(body.balance_minor);
-    db::add_manual_snapshot(&state.pool, id, balance, today).await?;
+    let health = crate::sync_health::Snapshot::load(&state).await?;
+    if health.takes_manual_balance(id) {
+        db::add_snapshot_to_broken_link(&state.pool, id, balance, today).await?;
+    } else {
+        db::add_manual_snapshot(&state.pool, id, balance, today).await?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { useUndecided } from '@/api/undecided'
 import AppLogo from '@/components/AppLogo.vue'
 import LogOutButton from '@/components/LogOutButton.vue'
+import PausedBanner from '@/components/PausedBanner.vue'
 import ServerBanner from '@/components/ServerBanner.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
 import { cn } from '@/lib/utils'
@@ -62,6 +63,7 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
       </header>
 
       <ServerBanner />
+      <PausedBanner />
 
       <main class="flex-1 pb-20 lg:pb-10">
         <slot />

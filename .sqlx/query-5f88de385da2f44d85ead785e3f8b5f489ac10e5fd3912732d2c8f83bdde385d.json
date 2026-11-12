@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO connection_accounts\n               (connection_id, external_account_id, provider_name, institution, currency,\n                bank_link_id, first_seen_at, last_seen_at)\n             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)\n             ON CONFLICT (connection_id, external_account_id) DO UPDATE SET\n               provider_name = excluded.provider_name, institution = excluded.institution,\n               currency = excluded.currency, last_seen_at = excluded.last_seen_at,\n               bank_link_id = COALESCE(excluded.bank_link_id, bank_link_id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "5f88de385da2f44d85ead785e3f8b5f489ac10e5fd3912732d2c8f83bdde385d"
+}

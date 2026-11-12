@@ -298,7 +298,6 @@ fn travel(currency: &str) -> Account {
 /// counted back from `now` (epoch seconds).
 pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str, now: i64) -> Value {
     let accounts = accounts(scenario, day, currency);
-    let needs_auth = scenario == Scenario::NeedsAuth;
     let errors: Vec<Value> = match scenario {
         Scenario::NeedsAuth => vec![json!({
             "code": "con.auth",
@@ -310,6 +309,19 @@ pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str, now
             "msg": "Demo Rewards Card: no transactions were available.",
             "conn_id": "CON-demo-1",
             "account_id": "ACT-demo-card",
+        })],
+        Scenario::GenAuth => vec![json!({
+            "code": "gen.auth",
+            "msg": "This access URL was disabled. Make a new setup token.",
+        })],
+        Scenario::ConError => vec![json!({
+            "code": "con.failed",
+            "msg": "Demo Credit Union is having trouble right now.",
+            "conn_id": "CON-demo-2",
+        })],
+        Scenario::GenApi => vec![json!({
+            "code": "gen.api",
+            "msg": "Requests asking for more than 90 days of history are slow.",
         })],
         _ => Vec::new(),
     };
@@ -328,8 +340,12 @@ pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str, now
                 })
                 .map(|row| row.json(now))
                 .collect();
-            let stale = needs_auth && account.conn_id == "CON-demo-2";
-            let balance_date = if stale { now - 6 * DAY } else { now - 3600 };
+            let age = match scenario {
+                Scenario::NeedsAuth if account.conn_id == "CON-demo-2" => 6 * DAY,
+                Scenario::StaleData if account.conn_id == "CON-demo-2" => 3 * DAY,
+                _ => 3600,
+            };
+            let balance_date = now - age;
             if query.version2 {
                 json!({
                     "id": account.id,

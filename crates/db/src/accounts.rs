@@ -244,15 +244,43 @@ pub async fn add_manual_snapshot(
     balance: Money,
     today: Date,
 ) -> Result<(), AccountError> {
+    add_snapshot(pool, id, balance, today, false).await
+}
+
+/// [`add_manual_snapshot`] for a balances-only account that has a connection, whose bank link is
+/// broken: the caller has checked the link, and the household enters the balance by hand until
+/// the bank is back (docs/spec/m2-bank-data.md#errors).
+///
+/// # Errors
+/// [`AccountError::NotFound`] if there's no such account, [`AccountError::Connected`] if it has a
+/// connection and isn't balances-only; otherwise only if the database fails.
+pub async fn add_snapshot_to_broken_link(
+    pool: &SqlitePool,
+    id: i64,
+    balance: Money,
+    today: Date,
+) -> Result<(), AccountError> {
+    add_snapshot(pool, id, balance, today, true).await
+}
+
+async fn add_snapshot(
+    pool: &SqlitePool,
+    id: i64,
+    balance: Money,
+    today: Date,
+    broken_link: bool,
+) -> Result<(), AccountError> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
-    let connected = sqlx::query_scalar!(
-        r#"SELECT connection_id IS NOT NULL AS "connected!: bool" FROM accounts WHERE id = ?"#,
+    let found = sqlx::query!(
+        r#"SELECT connection_id IS NOT NULL AS "connected!: bool",
+             has_transactions AS "has_transactions!: bool"
+           FROM accounts WHERE id = ?"#,
         id
     )
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(AccountError::NotFound)?;
-    if connected {
+    if found.connected && (!broken_link || found.has_transactions) {
         return Err(AccountError::Connected);
     }
     write_manual_snapshot(&mut tx, id, balance, today).await?;
@@ -710,6 +738,41 @@ mod tests {
         let account = account_balance(&pool, 2).await.unwrap().unwrap();
         assert_eq!(account.snapshot, Some(Money::from_minor(500_000)));
         assert_eq!(account.app_balance, None);
+    }
+
+    #[tokio::test]
+    async fn a_balances_only_account_at_a_broken_link_takes_a_manual_snapshot() {
+        let (_dir, pool) = migrated().await;
+        let connection = crate::save_connection(&pool, b"sealed").await.unwrap();
+        sqlx::query(
+            "INSERT INTO accounts (id, name, type, role, connection_id, has_transactions) VALUES
+               (1, 'Synced', 'checking', 'budgeted', ?1, 1),
+               (2, 'Brokerage', 'investment', 'tracking', ?1, 0)",
+        )
+        .bind(connection)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let today = date("2026-03-01");
+        let money = Money::from_minor(500_000);
+        assert!(matches!(
+            add_snapshot_to_broken_link(&pool, 1, money, today).await,
+            Err(AccountError::Connected)
+        ));
+        assert!(matches!(
+            add_snapshot_to_broken_link(&pool, 9, money, today).await,
+            Err(AccountError::NotFound)
+        ));
+        add_snapshot_to_broken_link(&pool, 2, money, today)
+            .await
+            .unwrap();
+        let account = account_balance(&pool, 2).await.unwrap().unwrap();
+        assert_eq!(account.snapshot, Some(money));
+        // The ordinary entry point still refuses it.
+        assert!(matches!(
+            add_manual_snapshot(&pool, 2, money, today).await,
+            Err(AccountError::Connected)
+        ));
     }
 
     #[tokio::test]

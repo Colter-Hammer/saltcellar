@@ -377,6 +377,34 @@ async fn the_failure_scenarios_say_what_they_say() {
     assert_eq!(absent["errlist"].as_array().unwrap().len(), 0);
     assert_eq!(absent["accounts"].as_array().unwrap().len(), 2);
 
+    let (status, gen_auth) = scenario_feed(Scenario::GenAuth, 0).await;
+    assert_eq!(status, 200);
+    assert_eq!(gen_auth["errlist"][0]["code"], "gen.auth");
+    assert!(gen_auth["errlist"][0].get("conn_id").is_none());
+
+    let (_, con_error) = scenario_feed(Scenario::ConError, 0).await;
+    assert_eq!(con_error["errlist"][0]["code"], "con.failed");
+    assert_eq!(con_error["errlist"][0]["conn_id"], "CON-demo-2");
+
+    let (_, gen_api) = scenario_feed(Scenario::GenApi, 0).await;
+    assert_eq!(gen_api["errlist"][0]["code"], "gen.api");
+    assert!(gen_api["errlist"][0].get("conn_id").is_none());
+    assert!(gen_api["errlist"][0].get("account_id").is_none());
+
+    let (_, stale) = scenario_feed(Scenario::StaleData, 0).await;
+    assert_eq!(stale["errlist"].as_array().unwrap().len(), 0);
+    let date_of = |id: &str| {
+        stale["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == id)
+            .unwrap()["balance-date"]
+            .clone()
+    };
+    assert_eq!(date_of("ACT-demo-savings"), NOW - 3 * 86_400);
+    assert_eq!(date_of("ACT-demo-checking"), NOW - 3600);
+
     let (_, steady) = scenario_feed(Scenario::Steady, 0).await;
     let (_, wrong) = scenario_feed(Scenario::WrongSign, 0).await;
     let card = |body: &Value| {

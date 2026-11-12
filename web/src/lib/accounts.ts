@@ -106,3 +106,12 @@ export function describeAccount(accounts: readonly Account[], id: number): strin
   const name = group?.accounts[at]?.name ?? ''
   return `${name}, ${String(at + 1)} of ${String(group?.accounts.length ?? 0)} in ${group?.name ?? ''}`
 }
+
+/**
+ * Whether the account's bank data needs attention (docs/spec/m2-bank-data.md#sync-health-in-the-ui):
+ * the accounts list marks it with a ⚠. Stale data is quiet, so it isn't one.
+ */
+export function needsAttention(account: Account): boolean {
+  const state = account.sync?.state
+  return state === 'needs_attention' || state === 'needs_reconnecting'
+}

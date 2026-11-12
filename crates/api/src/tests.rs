@@ -1234,4 +1234,5 @@ mod matching;
 mod schedule;
 mod sync;
 mod sync_flags;
+mod sync_health;
 mod undo;

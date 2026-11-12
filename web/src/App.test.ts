@@ -59,6 +59,7 @@ interface FakeServer {
       status: string
       paused: boolean
       last_sync: { added: number; updated: number; finished_at: string; error: null } | null
+      banks: Record<string, unknown>[]
     } | null
     /** The setup tokens `PUT /api/v1/bank-connection` was sent. */
     claimed: string[]
@@ -66,6 +67,8 @@ interface FakeServer {
     synced: number
     /** How many times `DELETE /api/v1/bank-connection` was sent. */
     disconnected: number
+    /** How many times `POST /api/v1/bank-connection/sync-after-reconnect` was sent. */
+    reconnected: number
   }
 }
 
@@ -99,6 +102,10 @@ async function answer(request: Request): Promise<Response> {
   }
   if (path === '/api/v1/bank-connection') return bank(request)
   if (path === '/api/v1/bank-connection/sync') return syncNow()
+  if (path === '/api/v1/bank-connection/sync-after-reconnect') {
+    server.bank.reconnected += 1
+    return syncNow(false)
+  }
   if (path.startsWith('/api/v1/undecided')) return undecided(request, path)
   if (path.startsWith('/api/v1/imports') && !path.startsWith('/api/v1/imports/actual')) {
     return imports(request, path)
@@ -157,8 +164,8 @@ async function answer(request: Request): Promise<Response> {
 }
 
 /** Sync now: a run that added two rows. */
-function syncNow(): Response {
-  server.bank.synced += 1
+function syncNow(counted = true): Response {
+  if (counted) server.bank.synced += 1
   const run = {
     trigger: 'manual',
     started_at: '2026-10-28T09:00:00Z',
@@ -195,6 +202,7 @@ async function bank(request: Request): Promise<Response> {
       status: 'ok',
       paused: false,
       last_sync: null,
+      banks: [],
     }
   }
   return shown()
@@ -471,7 +479,14 @@ beforeEach(() => {
     batches: [],
     edited: 0,
     undone: [],
-    bank: { keySet: true, connection: null, claimed: [], disconnected: 0, synced: 0 },
+    bank: {
+      keySet: true,
+      connection: null,
+      claimed: [],
+      disconnected: 0,
+      synced: 0,
+      reconnected: 0,
+    },
   }
   serverUp()
   os.dark = false
@@ -898,13 +913,16 @@ describe('logging in', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((request: Request) =>
-        ['/api/v1/session', '/api/v1/profile'].includes(new URL(request.url).pathname)
+        ['/api/v1/session', '/api/v1/profile', '/api/v1/bank-connection'].includes(
+          new URL(request.url).pathname,
+        )
           ? Promise.reject(new TypeError('Failed to fetch'))
           : answer(request),
       ),
     )
-    // A screen that asks the server nothing itself, beyond the shell's profile (for the palette),
-    // which is gone too: one that asked more would find the login gone.
+    // A screen that asks the server nothing itself, beyond the shell's profile (for the palette)
+    // and bank connection (for the paused banner), which are gone too: one that asked more would
+    // find the login gone.
     const { router } = await open('/more')
     expect(router.currentRoute.value.path).toBe('/more')
   })
@@ -1006,6 +1024,7 @@ describe('Settings › Bank connection & sync', () => {
       status: 'ok',
       paused: false,
       last_sync: null,
+      banks: [],
     }
     const { wrapper } = await open('/settings/bank')
     expect(wrapper.find('[data-testid="last-sync"]').exists()).toBe(false)
@@ -1029,6 +1048,7 @@ describe('Settings › Bank connection & sync', () => {
       status: 'ok',
       paused: false,
       last_sync: null,
+      banks: [],
     }
     const { wrapper } = await open('/settings/bank')
     await press(wrapper, 'Replace setup token…')
@@ -1042,12 +1062,60 @@ describe('Settings › Bank connection & sync', () => {
     expect(wrapper.find('form').exists()).toBe(false)
   })
 
+  it.each([
+    [
+      'token_revoked',
+      'Bank sync stopped. Get a new setup token from SimpleFIN and paste it in Settings.',
+    ],
+    [
+      'unpaid',
+      'SimpleFIN subscription unpaid. Bank sync stopped. Pay it, then paste a new setup token in Settings.',
+    ],
+    [
+      'key_mismatch',
+      'Bank sync stopped. The secret key changed. Paste a new setup token in Settings.',
+    ],
+  ])('shows the paused banner on every screen (%s)', async (status, text) => {
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status,
+      paused: true,
+      last_sync: null,
+      banks: [],
+    }
+    for (const path of ['/transactions', '/accounts', '/settings', '/settings/bank']) {
+      const { wrapper } = await open(path)
+      expect(wrapper.get('[data-testid="paused-banner"]').text(), path).toBe(text)
+      expect(wrapper.get('[data-testid="paused-banner"] a').attributes('href')).toBe(
+        '/settings/bank',
+      )
+    }
+  })
+
+  it('shows no banner while the connection works, or without one', async () => {
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'ok',
+      paused: false,
+      last_sync: null,
+      banks: [],
+    }
+    expect((await open('/accounts')).wrapper.find('[data-testid="paused-banner"]').exists()).toBe(
+      false,
+    )
+    server.bank.connection = null
+    expect((await open('/accounts')).wrapper.find('[data-testid="paused-banner"]').exists()).toBe(
+      false,
+    )
+  })
+
   it('shows a paused connection with the way out', async () => {
     server.bank.connection = {
       label: 'SimpleFIN Bridge',
       status: 'key_mismatch',
       paused: true,
       last_sync: null,
+      banks: [],
     }
     const { wrapper } = await open('/settings/bank')
     expect(wrapper.get('[data-testid="connection-state"]').text()).toBe(
@@ -1057,12 +1125,71 @@ describe('Settings › Bank connection & sync', () => {
     expect(wrapper.find('form').exists()).toBe(true)
   })
 
+  const bankRow = (fields: Record<string, unknown>) => ({
+    name: 'Demo Credit Union',
+    accounts: 2,
+    state: 'ok',
+    message: null,
+    days: null,
+    last_refreshed_at: '2026-10-21T09:00:00Z',
+    fix: false,
+    ...fields,
+  })
+
+  it('lists each bank link with its state and the way to fix one that needs it', async () => {
+    server.bank.connection = {
+      label: 'SimpleFIN Bridge',
+      status: 'ok',
+      paused: false,
+      last_sync: null,
+      banks: [
+        bankRow({ name: 'First Demo Bank', accounts: 1 }),
+        bankRow({
+          state: 'needs_reconnecting',
+          message: 'Demo Credit Union needs you to sign in again.',
+          fix: true,
+        }),
+        bankRow({
+          name: 'Demo Savings Bank',
+          state: 'stale',
+          message: "Bank hasn't updated in 4 days.",
+        }),
+        bankRow({ name: 'Demo Brokerage', accounts: 1, state: 'balances_only' }),
+      ],
+    }
+    const { wrapper } = await open('/settings/bank')
+    const rows = wrapper.findAll('[data-testid="bank"]')
+    expect(rows.map((row) => row.get('[data-state]').text())).toEqual([
+      'OK',
+      'Needs reconnecting',
+      'Stale',
+      'Balances only',
+    ])
+    const needs = rows[1]
+    expect(needs?.text()).toContain('2 accounts')
+    expect(needs?.text()).toContain('Demo Credit Union needs you to sign in again.')
+    expect(needs?.text()).toContain('Last refreshed Oct 21, 2026')
+    expect(rows[2]?.text()).toContain("Bank hasn't updated in 4 days.")
+    // Only the bank that needs it has the fix.
+    expect(wrapper.findAll('a[href^="https://"]').map((a) => a.text())).toEqual([
+      'Fix at SimpleFIN ↗',
+    ])
+    const fix = wrapper.get('a[href^="https://"]')
+    expect(fix.attributes('target')).toBe('_blank')
+    expect(fix.attributes('rel')).toContain('noopener')
+
+    await press(wrapper, 'Done, sync now')
+    expect(server.bank.reconnected).toBe(1)
+    expect(server.bank.synced).toBe(0)
+  })
+
   it('asks before disconnecting, and then the accounts are left alone', async () => {
     server.bank.connection = {
       label: 'SimpleFIN Bridge',
       status: 'ok',
       paused: false,
       last_sync: null,
+      banks: [],
     }
     const { wrapper } = await open('/settings/bank')
     await press(wrapper, 'Disconnect')
@@ -1484,6 +1611,8 @@ describe('Accounts', () => {
     in_net_worth: true,
     balances_only: false,
     connection_id: null,
+    balance_entry: 'manual',
+    sync: null,
     balance_minor: 0,
     app_balance_minor: 0,
     opening_balance_minor: 0,
@@ -1544,6 +1673,77 @@ describe('Accounts', () => {
     ])
   })
 
+  it('marks an account whose bank needs attention with a ⚠, and says why on its screen', async () => {
+    server.accounts = [
+      fake(1, {
+        name: 'Demo Savings',
+        connection_id: 7,
+        balance_entry: 'bank',
+        sync: {
+          state: 'needs_reconnecting',
+          message: 'Demo Credit Union needs you to sign in again.',
+          days: null,
+          last_refreshed_at: '2026-10-22T09:00:00Z',
+          fix: true,
+        },
+      }),
+      fake(2, {
+        name: 'Demo Checking',
+        connection_id: 7,
+        balance_entry: 'bank',
+        sync: {
+          state: 'stale',
+          message: 'Data is 3 days old.',
+          days: 3,
+          last_refreshed_at: '2026-10-25T09:00:00Z',
+          fix: false,
+        },
+      }),
+    ]
+    const { wrapper } = await open('/accounts')
+    const marked = (name: string) =>
+      wrapper
+        .findAll('main li')
+        .find((li) => li.text().includes(name))
+        ?.find('[aria-label="Needs attention"]')
+        .exists()
+    expect(marked('Demo Savings')).toBe(true)
+    // Stale data is quiet.
+    expect(marked('Demo Checking')).toBe(false)
+
+    await wrapper.get('main li a').trigger('click')
+    await flushPromises()
+    const sync = wrapper.get('[data-testid="account-sync"]')
+    expect(sync.text()).toContain('Needs attention. Demo Credit Union needs you to sign in again.')
+    expect(sync.text()).toContain('Fix at SimpleFIN ↗')
+    expect(sync.text()).toContain('Done, sync now')
+    // A synced account with rows takes its balance from the bank.
+    expect(wrapper.findAll('main button').map((b) => b.text())).not.toContain('Update balance')
+  })
+
+  it('offers Update balance on a balances-only account whose bank link is broken', async () => {
+    server.accounts = [
+      fake(1, {
+        name: 'Demo Brokerage',
+        balances_only: true,
+        connection_id: 7,
+        balance_entry: 'manual',
+        sync: {
+          state: 'stale',
+          message: 'Data is 4 days old.',
+          days: 4,
+          last_refreshed_at: '2026-10-24T09:00:00Z',
+          fix: false,
+        },
+      }),
+    ]
+    const { wrapper } = await open('/accounts/1')
+    expect(wrapper.get('[data-testid="account-sync"]').text()).toContain(
+      'Stale. Data is 4 days old.',
+    )
+    expect(wrapper.findAll('main button').map((b) => b.text())).toContain('Update balance')
+  })
+
   it('opens an account with its balances and a link to its transactions', async () => {
     const { router, wrapper } = await open('/accounts')
     await wrapper.get('main li a').trigger('click')
@@ -1598,6 +1798,8 @@ describe('Transactions', () => {
     in_net_worth: true,
     balances_only: false,
     connection_id: null,
+    balance_entry: 'manual',
+    sync: null,
     balance_minor: 0,
     app_balance_minor: 0,
     opening_balance_minor: 0,

@@ -17,6 +17,8 @@ pub struct ReportedAccount {
     pub institution: Option<String>,
     /// ISO 4217, as the feed spells it.
     pub currency: String,
+    /// Its bank link's id (`conn_id`), if the feed names it.
+    pub bank_link: Option<String>,
 }
 
 /// What recording a response did.
@@ -60,16 +62,18 @@ pub async fn record_connection_accounts(
         sqlx::query!(
             "INSERT INTO connection_accounts
                (connection_id, external_account_id, provider_name, institution, currency,
-                first_seen_at, last_seen_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+                bank_link_id, first_seen_at, last_seen_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
              ON CONFLICT (connection_id, external_account_id) DO UPDATE SET
                provider_name = excluded.provider_name, institution = excluded.institution,
-               currency = excluded.currency, last_seen_at = excluded.last_seen_at",
+               currency = excluded.currency, last_seen_at = excluded.last_seen_at,
+               bank_link_id = COALESCE(excluded.bank_link_id, bank_link_id)",
             connection_id,
             account.external_id,
             account.name,
             account.institution,
             account.currency,
+            account.bank_link,
             at
         )
         .execute(&mut *tx)
@@ -394,6 +398,7 @@ mod tests {
             name: name.to_owned(),
             institution: Some("First Demo Bank".to_owned()),
             currency: currency.to_owned(),
+            bank_link: None,
         }
     }
 

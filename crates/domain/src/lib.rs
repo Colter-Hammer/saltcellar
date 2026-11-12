@@ -16,6 +16,7 @@ pub mod matching;
 mod money;
 pub mod profile;
 mod setup_code;
+pub mod sync_health;
 pub mod sync_schedule;
 pub mod throttle;
 mod timezone;

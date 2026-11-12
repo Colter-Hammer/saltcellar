@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT connection_id IS NOT NULL AS \"connected!: bool\",\n             has_transactions AS \"has_transactions!: bool\"\n           FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "connected!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "has_transactions!: bool",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "has_transactions"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "95358d16a3c69786183bbc29571df91633f18692fbc9bff24c58b8e23f6ceca2"
+}

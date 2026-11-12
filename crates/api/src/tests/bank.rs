@@ -100,7 +100,7 @@ async fn claiming_stores_an_encrypted_secret_and_the_screen_shows_connected() {
         body,
         json!({
             "secret_key_set": true,
-            "connection": { "label": "SimpleFIN Bridge", "status": "ok", "paused": false, "last_sync": null },
+            "connection": { "label": "SimpleFIN Bridge", "status": "ok", "paused": false, "last_sync": null, "banks": [] },
             "sync": fresh_sync()
         })
     );
@@ -189,7 +189,7 @@ async fn with_a_different_key_at_startup_the_app_starts_and_shows_paused() {
         assert_eq!(body["secret_key_set"], other.is_some());
         assert_eq!(
             body["connection"],
-            json!({ "label": "SimpleFIN Bridge", "status": "key_mismatch", "paused": true, "last_sync": null })
+            json!({ "label": "SimpleFIN Bridge", "status": "key_mismatch", "paused": true, "last_sync": null, "banks": [] })
         );
     }
 

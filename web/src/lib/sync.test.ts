@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type { SyncRun, SyncState } from '@/api/bank'
-import { accountProblem, runSummary, scheduleLine, syncNowWait, triggerName } from './sync'
+import type { Bank, SyncRun, SyncState } from '@/api/bank'
+import {
+  accountCount,
+  accountProblem,
+  bankState,
+  pausedBanner,
+  runSummary,
+  scheduleLine,
+  syncNowWait,
+  triggerName,
+} from './sync'
 
 function run(change: Partial<SyncRun>): SyncRun {
   return {
@@ -118,5 +127,35 @@ describe('accountProblem', () => {
     expect(accountProblem({ ...card, error: null, error_code: null })).toBe(
       'Demo Rewards Card: failed',
     )
+  })
+})
+
+describe('pausedBanner', () => {
+  it('says what stopped, and where the way out is', () => {
+    const say = (status: string) => {
+      const { lead, link, tail } = pausedBanner(status)
+      return `${lead}${link}${tail}`
+    }
+    expect(say('token_revoked')).toBe(
+      'Bank sync stopped. Get a new setup token from SimpleFIN and paste it in Settings.',
+    )
+    expect(say('unpaid')).toContain('SimpleFIN subscription unpaid')
+    expect(say('key_mismatch')).toContain('The secret key changed')
+    expect(say('anything else')).toContain('Get a new setup token')
+  })
+})
+
+describe('bankState', () => {
+  it('names each state', () => {
+    const state = (s: Bank['state']) => bankState({ state: s } as Bank)
+    expect(
+      (['ok', 'balances_only', 'stale', 'needs_reconnecting', 'needs_attention'] as const).map(
+        state,
+      ),
+    ).toEqual(['OK', 'Balances only', 'Stale', 'Needs reconnecting', 'Needs attention'])
+  })
+
+  it('counts accounts', () => {
+    expect([accountCount(1), accountCount(3)]).toEqual(['1 account', '3 accounts'])
   })
 })

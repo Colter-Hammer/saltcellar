@@ -256,7 +256,7 @@
         "tags": [
           "accounts"
         ],
-        "summary": "`POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,\nas a manual balance snapshot. A second one the same day replaces the first.",
+        "summary": "`POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,\nas a manual balance snapshot. A second one the same day replaces the first. A balances-only\naccount whose bank link is broken, or whose connection is paused, takes one too.",
         "operationId": "updateAccountBalance",
         "parameters": [
           {
@@ -305,7 +305,7 @@
             }
           },
           "409": {
-            "description": "`account_connected`: the account has a connection, so its balance comes from the bank.",
+            "description": "`account_connected`: the account has a connection that works, so its balance comes from the bank.",
             "content": {
               "application/json": {
                 "schema": {
@@ -468,7 +468,48 @@
             }
           },
           "409": {
-            "description": "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted.",
+            "description": "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted; `sync_cooling_down`: a sync finished a moment ago; `sync_limit_reached`: the request budget is spent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bank-connection/sync-after-reconnect": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "`POST /api/v1/bank-connection/sync-after-reconnect`: **Done, sync now**, once the household\nhas re-authorized a bank at SimpleFIN. Like Sync now, but it skips the cooldown; it still\ncounts against the request cap and joins a running sync.",
+        "operationId": "syncAfterReconnect",
+        "responses": {
+          "200": {
+            "description": "The run, finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted; `sync_limit_reached`: the request budget is spent.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3218,7 +3259,9 @@
           "opening_balance_minor",
           "opening_date",
           "rows",
-          "last_transaction_date"
+          "last_transaction_date",
+          "sync",
+          "balance_entry"
         ],
         "properties": {
           "app_balance_minor": {
@@ -3228,6 +3271,10 @@
             ],
             "format": "int64",
             "description": "The app's own balance, its opening balance plus its posted transactions, in minor units;\nnull without an opening balance. Where it differs from `balance_minor`, that's drift."
+          },
+          "balance_entry": {
+            "$ref": "#/components/schemas/BalanceEntry",
+            "description": "Who enters its balance."
           },
           "balance_minor": {
             "type": [
@@ -3250,7 +3297,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Its connection; null for an account with none. One with a connection gets its balance from\nthe bank and takes no manual balance."
+            "description": "Its connection; null for an account with none. One with a connection gets its balance from\nthe bank and takes no manual balance, unless `balance_entry` says so."
           },
           "id": {
             "type": "integer",
@@ -3300,6 +3347,17 @@
             "format": "int64",
             "description": "How many transactions it has.",
             "minimum": 0
+          },
+          "sync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountSync",
+                "description": "How its bank data stands; null for an account that isn't synced."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "type": {
             "$ref": "#/components/schemas/AccountType"
@@ -3429,6 +3487,58 @@
             "minimum": 0
           }
         }
+      },
+      "AccountSync": {
+        "type": "object",
+        "description": "An account's sync health.",
+        "required": [
+          "state",
+          "message",
+          "days",
+          "last_refreshed_at",
+          "fix"
+        ],
+        "properties": {
+          "days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How old its data is, in whole days, when that is the problem."
+          },
+          "fix": {
+            "type": "boolean",
+            "description": "**Fix at SimpleFIN** then **Done, sync now** can help: its bank link is broken."
+          },
+          "last_refreshed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339: when the provider last refreshed its bank link; null before any sync read it."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One sentence for the household (\"Data is 3 days old.\"); null when all is well."
+          },
+          "state": {
+            "$ref": "#/components/schemas/AccountSyncState"
+          }
+        }
+      },
+      "AccountSyncState": {
+        "type": "string",
+        "description": "Where an account's data stands.",
+        "enum": [
+          "ok",
+          "stale",
+          "needs_reconnecting",
+          "needs_attention"
+        ]
       },
       "AccountType": {
         "type": "string",
@@ -3811,6 +3921,14 @@
           }
         }
       },
+      "BalanceEntry": {
+        "type": "string",
+        "description": "Who enters an account's balance.",
+        "enum": [
+          "manual",
+          "bank"
+        ]
+      },
       "BalanceUpdate": {
         "type": "object",
         "description": "What's in a manual account today.",
@@ -3822,6 +3940,60 @@
             "type": "integer",
             "format": "int64",
             "description": "In minor units."
+          }
+        }
+      },
+      "Bank": {
+        "type": "object",
+        "description": "One bank link of the connection, for Settings › Bank connection & sync.",
+        "required": [
+          "name",
+          "accounts",
+          "state",
+          "message",
+          "days",
+          "last_refreshed_at",
+          "fix"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many tracked accounts it has.",
+            "minimum": 0
+          },
+          "days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How old its data is, in whole days, when stale."
+          },
+          "fix": {
+            "type": "boolean",
+            "description": "**Fix at SimpleFIN ↗** and **Done, sync now** apply."
+          },
+          "last_refreshed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339: the newest refresh of any of its accounts; null before any sync read one."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Bank hasn't updated in 4 days\" and the like; null when all is well."
+          },
+          "name": {
+            "type": "string",
+            "description": "The bank's name as the feed gives it."
+          },
+          "state": {
+            "$ref": "#/components/schemas/BankLinkState"
           }
         }
       },
@@ -3853,6 +4025,17 @@
             "description": "The schedule, the request budget and Sync now's wait."
           }
         }
+      },
+      "BankLinkState": {
+        "type": "string",
+        "description": "A bank link's state.",
+        "enum": [
+          "ok",
+          "balances_only",
+          "stale",
+          "needs_attention",
+          "needs_reconnecting"
+        ]
       },
       "Category": {
         "type": "object",
@@ -4107,9 +4290,17 @@
           "label",
           "status",
           "paused",
-          "last_sync"
+          "last_sync",
+          "banks"
         ],
         "properties": {
+          "banks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Bank"
+            },
+            "description": "One row per bank link, with its state."
+          },
           "label": {
             "type": "string",
             "description": "What to call it, like `SimpleFIN Bridge`."

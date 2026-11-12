@@ -4,6 +4,7 @@ import {
   describeAccount,
   dropAccount,
   groupAccounts,
+  needsAttention,
   roleLabel,
   stepAccount,
   transactionsLink,
@@ -21,6 +22,8 @@ function account(id: number, fields: Partial<Account> = {}): Account {
     in_net_worth: true,
     balances_only: false,
     connection_id: null,
+    balance_entry: 'manual',
+    sync: null,
     balance_minor: 0,
     app_balance_minor: 0,
     opening_balance_minor: 0,
@@ -120,5 +123,23 @@ describe('ordering accounts', () => {
   it('says where an account stands in its group', () => {
     expect(describeAccount(all, 3)).toBe('Account 3, 2 of 3 in Budgeted')
     expect(describeAccount(all, 4)).toBe('Account 4, 1 of 1 in Closed')
+  })
+})
+
+describe('needsAttention', () => {
+  const sync = (state: NonNullable<Account['sync']>['state']): Account['sync'] => ({
+    state,
+    message: null,
+    days: null,
+    last_refreshed_at: null,
+    fix: false,
+  })
+
+  it('is true for an account that needs reconnecting or attention, and not for the quiet ones', () => {
+    expect(needsAttention(account(1, { sync: sync('needs_reconnecting') }))).toBe(true)
+    expect(needsAttention(account(1, { sync: sync('needs_attention') }))).toBe(true)
+    expect(needsAttention(account(1, { sync: sync('stale') }))).toBe(false)
+    expect(needsAttention(account(1, { sync: sync('ok') }))).toBe(false)
+    expect(needsAttention(account(1, { sync: null }))).toBe(false)
   })
 })

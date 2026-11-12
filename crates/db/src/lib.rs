@@ -13,6 +13,7 @@ mod profile;
 mod reset;
 mod sync;
 mod sync_flags;
+mod sync_health;
 mod sync_schedule;
 mod synced_rows;
 mod transactions;
@@ -25,8 +26,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 
 pub use accounts::{
     Account, AccountBalance, AccountChange, AccountError, NewAccount, account_balance,
-    account_balances, accounts, add_manual_snapshot, create_manual_account, set_account_order,
-    update_account,
+    account_balances, accounts, add_manual_snapshot, add_snapshot_to_broken_link,
+    create_manual_account, set_account_order, update_account,
 };
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
@@ -68,6 +69,7 @@ pub use sync::{
 pub use sync_flags::{
     NewSplitLine, Resolution, ResolveError, SplitError, resolve_sync_flag, set_splits,
 };
+pub use sync_health::{FeedAccountHealth, feed_account_health};
 pub use sync_schedule::{
     RunAccount, RunWithAccounts, SyncSettings, keep_raw_response, last_finished_sync,
     last_scheduled_sync, last_successful_sync, prune_sync_history, requests_since,

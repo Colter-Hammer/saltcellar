@@ -53,6 +53,8 @@ pub struct Connection {
     /// The newest sync run; null before the first.
     #[schema(required = true)]
     last_sync: Option<crate::sync::SyncRun>,
+    /// One row per bank link, with its state.
+    banks: Vec<crate::sync_health::Bank>,
 }
 
 /// The bank connection screen's state.
@@ -69,6 +71,7 @@ pub struct BankConnection {
 pub(crate) async fn current(state: &AppState) -> Result<BankConnection, ApiError> {
     let connection = db::connection(&state.pool).await?;
     let last_sync = crate::sync::latest(state).await?;
+    let banks = crate::sync_health::Snapshot::load(state).await?.banks();
     Ok(BankConnection {
         secret_key_set: state.bank.secret_key.is_some(),
         sync: crate::sync::sync_state(state).await?,
@@ -77,6 +80,7 @@ pub(crate) async fn current(state: &AppState) -> Result<BankConnection, ApiError
             paused: connection.status != db::ConnectionStatus::Ok,
             status: connection.status.into(),
             last_sync,
+            banks,
         }),
     })
 }
@@ -195,6 +199,7 @@ async fn look_for_accounts(
             name: account.name,
             institution: account.institution,
             currency: account.currency,
+            bank_link: account.bank_link,
         })
         .collect();
     let recorded = db::record_connection_accounts(

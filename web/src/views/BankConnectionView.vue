@@ -14,9 +14,18 @@ import {
 } from '@/api/bank'
 import { ApiError } from '@/api/client'
 import { useHousehold } from '@/api/household'
+import BankFix from '@/components/BankFix.vue'
 import FormField from '@/components/FormField.vue'
-import { formatInstant, useFormatting } from '@/lib/format'
-import { accountProblem, runSummary, scheduleLine, syncNowWait, triggerName } from '@/lib/sync'
+import { formatInstant, formatInstantDay, useFormatting } from '@/lib/format'
+import {
+  accountCount,
+  accountProblem,
+  bankState,
+  runSummary,
+  scheduleLine,
+  syncNowWait,
+  triggerName,
+} from '@/lib/sync'
 
 const bank = useBankConnection()
 const claim = useClaimSetupToken()
@@ -283,6 +292,42 @@ async function confirmDisconnect() {
             </div>
           </template>
         </div>
+      </section>
+
+      <section
+        v-if="connection && connection.banks.length > 0"
+        aria-labelledby="banks-heading"
+        class="flex flex-col gap-3"
+      >
+        <h2 id="banks-heading" class="font-semibold">Banks</h2>
+        <ul aria-label="Banks" class="flex flex-col divide-y">
+          <li
+            v-for="(link, index) in connection.banks"
+            :key="index"
+            data-testid="bank"
+            class="flex flex-col gap-1 py-3 text-sm"
+          >
+            <span class="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span class="font-medium">{{ link.name }}</span>
+              <span class="text-muted-foreground">{{ accountCount(link.accounts) }}</span>
+            </span>
+            <span
+              :data-state="link.state"
+              :class="
+                link.state === 'needs_reconnecting' || link.state === 'needs_attention'
+                  ? 'font-medium text-destructive'
+                  : 'text-muted-foreground'
+              "
+            >
+              {{ bankState(link) }}
+            </span>
+            <span v-if="link.message" class="text-muted-foreground">{{ link.message }}</span>
+            <span v-if="link.last_refreshed_at" class="text-muted-foreground">
+              Last refreshed {{ formatInstantDay(link.last_refreshed_at, timeZone, formatting) }}
+            </span>
+            <BankFix v-if="link.fix && !connection.paused" class="mt-1" />
+          </li>
+        </ul>
       </section>
 
       <section
