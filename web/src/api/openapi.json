@@ -480,6 +480,88 @@
         }
       }
     },
+    "/api/v1/bank-connection/sync-runs": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "`GET /api/v1/bank-connection/sync-runs`: Recent syncs.",
+        "operationId": "listSyncRuns",
+        "responses": {
+          "200": {
+            "description": "The runs, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bank-connection/sync-settings": {
+      "put": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "`PUT /api/v1/bank-connection/sync-settings`: the daily sync time and whether raw bank\nresponses are kept. A time set to one already past today runs tomorrow.",
+        "operationId": "changeSyncSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncSettingsChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Changed; the connection screen now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` with `sync_time` if it isn't `HH:MM`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/categories": {
       "get": {
         "tags": [
@@ -3747,7 +3829,8 @@
         "type": "object",
         "description": "The bank connection screen's state.",
         "required": [
-          "secret_key_set"
+          "secret_key_set",
+          "sync"
         ],
         "properties": {
           "connection": {
@@ -3764,6 +3847,10 @@
           "secret_key_set": {
             "type": "boolean",
             "description": "Whether `BUDGET_SECRET_KEY` is set. Without it no setup token can be claimed."
+          },
+          "sync": {
+            "$ref": "#/components/schemas/SyncState",
+            "description": "The schedule, the request budget and Sync now's wait."
           }
         }
       },
@@ -4365,6 +4452,26 @@
           }
         }
       },
+      "HistoryRun": {
+        "type": "object",
+        "description": "A run in the history, with each account's result.",
+        "required": [
+          "run",
+          "accounts"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunAccount"
+            },
+            "description": "By account name."
+          },
+          "run": {
+            "$ref": "#/components/schemas/SyncRun"
+          }
+        }
+      },
       "Household": {
         "type": "object",
         "required": [
@@ -4791,6 +4898,52 @@
           }
         }
       },
+      "RunAccount": {
+        "type": "object",
+        "description": "How one account fared in a run.",
+        "required": [
+          "account_id",
+          "name",
+          "ok",
+          "error_code",
+          "error",
+          "balance_date"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "balance_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339: when the provider last refreshed the account's bank."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized, to show as is."
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Like `act.missingdata`, `con.auth` or `absent`; null when it went well."
+          },
+          "name": {
+            "type": "string",
+            "description": "The account's name in the app."
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "Session": {
         "type": "object",
         "required": [
@@ -4902,10 +5055,26 @@
           }
         }
       },
+      "SyncHistory": {
+        "type": "object",
+        "description": "The run history, newest first: 90 days of it.",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryRun"
+            }
+          }
+        }
+      },
       "SyncRun": {
         "type": "object",
         "description": "One sync run, as the screen shows it.",
         "required": [
+          "id",
           "trigger",
           "started_at",
           "finished_at",
@@ -4934,6 +5103,10 @@
             ],
             "description": "Null while it runs."
           },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
           "requests": {
             "type": "integer",
             "format": "int64",
@@ -4951,6 +5124,80 @@
             "type": "integer",
             "format": "int64",
             "description": "Rows whose amount, date, status or bank text it changed."
+          }
+        }
+      },
+      "SyncSettingsChange": {
+        "type": "object",
+        "description": "The sync settings, changed.",
+        "required": [
+          "sync_time",
+          "keep_raw_responses"
+        ],
+        "properties": {
+          "keep_raw_responses": {
+            "type": "boolean",
+            "description": "Keep raw bank responses, sealed, for 7 days. Turning it off deletes the kept ones."
+          },
+          "sync_time": {
+            "type": "string",
+            "description": "The daily sync time, `HH:MM` (24-hour) in the household timezone."
+          }
+        }
+      },
+      "SyncState": {
+        "type": "object",
+        "description": "The daily schedule, the request budget and Sync now's wait, for the connection screen.",
+        "required": [
+          "time",
+          "keep_raw_responses",
+          "request_cap",
+          "requests_left",
+          "last_synced_at",
+          "cooldown_until",
+          "limit_until"
+        ],
+        "properties": {
+          "cooldown_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339: Sync now waits until then after the last sync; null when it needn't."
+          },
+          "keep_raw_responses": {
+            "type": "boolean",
+            "description": "Raw bank responses are kept (sealed, 7 days) for troubleshooting."
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339: when the last sync finished (back-fills aside); null before the first."
+          },
+          "limit_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339: the request limit is reached until then; null when Sync now may ask."
+          },
+          "request_cap": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bridge requests allowed in any rolling 24 hours.",
+            "minimum": 0
+          },
+          "requests_left": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, how many are left now.",
+            "minimum": 0
+          },
+          "time": {
+            "type": "string",
+            "description": "The daily sync time, `HH:MM` in the household timezone."
           }
         }
       },
