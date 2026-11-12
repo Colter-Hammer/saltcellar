@@ -46,6 +46,9 @@ const NOT_SEEN_FOR: SignedDuration = SignedDuration::from_hours(7 * 24);
 /// removed, kept in `dropped_transactions` (`user_edited` when the household had touched it); a
 /// posted provider row dated at least 5 days into the window and unseen for 7 days is flagged
 /// `not_seen_at_bank`, its `last_seen_at` kept. A flagged row that comes back loses the flag.
+/// Last, a manual row no bank row has adopted is flagged `not_seen_at_bank` once its date is more
+/// than 14 days before `now`'s UTC date *(agent)*, and loses the flag if an edit brings it back
+/// inside them.
 ///
 /// # Errors
 /// If the database fails; nothing is written then.
@@ -93,7 +96,13 @@ pub async fn apply_synced_rows(
                 applied.updated += 1;
             }
             Match::PossibleDuplicate(of) => {
-                insert(&mut tx, account_id, row, Some(of), &at).await?;
+                let flag = Some(("possible_duplicate", of));
+                insert(&mut tx, account_id, row, flag, &at).await?;
+                applied.added += 1;
+            }
+            Match::PossibleManualMatch(of) => {
+                let flag = Some(("possible_manual_match", of));
+                insert(&mut tx, account_id, row, flag, &at).await?;
                 applied.added += 1;
             }
             Match::New => {
@@ -119,6 +128,18 @@ pub async fn apply_synced_rows(
         ids,
         from,
         unseen_since
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query!(
+        "UPDATE transactions
+         SET sync_flag = CASE WHEN date < date(?, '-14 days')
+                              THEN 'not_seen_at_bank' END
+         WHERE account_id = ? AND source = 'manual' AND external_id IS NULL
+           AND (sync_flag IS NULL OR sync_flag = 'not_seen_at_bank')",
+        at,
+        account_id
     )
     .execute(&mut *tx)
     .await?;
@@ -167,6 +188,7 @@ async fn candidates(
                 pending: row.status == "pending",
                 raw_description: row.raw_description,
                 imported: row.source == "import",
+                manual: row.source == "manual",
             })
         })
         .collect()
@@ -226,20 +248,20 @@ async fn take_over(
     Ok(changed)
 }
 
-/// Inserts the feed row as the provider's, flagged `possible_duplicate` of `duplicate_of` when
-/// given.
+/// Inserts the feed row as the provider's, with `flag` (`possible_duplicate` or
+/// `possible_manual_match`, and the row it points at) when given.
 async fn insert(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     account_id: i64,
     row: &SyncedRow,
-    duplicate_of: Option<i64>,
+    flag: Option<(&str, i64)>,
     at: &str,
 ) -> Result<(), Error> {
     let date = row.date.to_string();
     let amount = row.amount.minor();
     let status = if row.pending { "pending" } else { "posted" };
     let key = domain::import::dedupe_key(account_id, row.date, row.amount, &row.raw_description);
-    let flag = duplicate_of.map(|_| "possible_duplicate");
+    let (flag, duplicate_of) = flag.unzip();
     let payee = payee(tx, &row.payee_text).await?;
     sqlx::query!(
         "INSERT INTO transactions
