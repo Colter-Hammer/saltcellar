@@ -135,6 +135,19 @@ async fn run(config: Config) -> Result<(), StartError> {
             "Setup code: {code}. Open the app and enter it to set it up; a new code is printed each time the app starts until then."
         );
     }
+    if config.bank.sync_cooldown != api::BankConfig::default().sync_cooldown {
+        tracing::warn!(
+            minutes = config.bank.sync_cooldown.as_mins(),
+            "BUDGET_SYNC_COOLDOWN_MINUTES is set: Sync now's cooldown is changed (a development setting)"
+        );
+    }
+    if config.bank.sync_request_cap != api::BankConfig::default().sync_request_cap {
+        tracing::warn!(
+            cap = config.bank.sync_request_cap,
+            "BUDGET_SYNC_REQUEST_CAP is set: the daily Bridge request cap is changed (a development setting)"
+        );
+    }
+    state.start_sync_schedule().await?;
     let app = web::app(api::router(state), dist);
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())

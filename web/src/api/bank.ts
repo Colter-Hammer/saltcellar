@@ -4,6 +4,8 @@ import type { components } from './generated/schema'
 
 /** One sync run, as Settings › Bank connection & sync shows it. */
 export type SyncRun = components['schemas']['SyncRun']
+/** The daily schedule, the request budget and Sync now's wait. */
+export type SyncState = components['schemas']['SyncState']
 
 /**
  * `GET /api/v1/bank-connection`: whether the server has its secret key, and the household's bank
@@ -80,5 +82,29 @@ export function useSyncNow() {
         queryClient.invalidateQueries({ queryKey: ['accounts'] }),
         queryClient.invalidateQueries({ queryKey: ['transactions'] }),
       ]),
+  })
+}
+
+/**
+ * `PUT /api/v1/bank-connection/sync-settings`: the daily sync time (`HH:MM`) and whether raw bank
+ * responses are kept; resolves to the connection screen. Throws an ApiError `validation_failed`
+ * naming `sync_time`. Turning raw responses off deletes the kept ones.
+ */
+export function useChangeSyncSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: { sync_time: string; keep_raw_responses: boolean }) =>
+      call(client.PUT('/api/v1/bank-connection/sync-settings', { body: settings })),
+    onSuccess: (connection) => {
+      queryClient.setQueryData(['bank-connection'], connection)
+    },
+  })
+}
+
+/** `GET /api/v1/bank-connection/sync-runs`: Recent syncs, newest first, 90 days of them. */
+export function useSyncHistory() {
+  return useQuery({
+    queryKey: ['bank-connection', 'sync-runs'],
+    queryFn: () => call(client.GET('/api/v1/bank-connection/sync-runs')),
   })
 }

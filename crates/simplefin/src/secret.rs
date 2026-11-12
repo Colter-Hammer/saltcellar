@@ -62,12 +62,47 @@ pub enum OpenError {
 #[error("can't seal the secret: no random bytes from the OS")]
 pub struct SealError;
 
+/// Bound into a kept raw bank response's seal, so it never opens as anything else *(agent)*.
+const RAW_RESPONSE_CONTEXT: &[u8] = b"saltcellar kept raw bank response";
+
 /// Seals the access URL under `key`: a version byte, a fresh random 24-byte nonce, then the
 /// XChaCha20-Poly1305 ciphertext with its tag.
 ///
 /// # Errors
 /// [`SealError`] if the OS has no random bytes for the nonce.
 pub fn seal(key: &SecretKey, url: &AccessUrl) -> Result<Vec<u8>, SealError> {
+    seal_for(key, url.expose().as_bytes(), CONTEXT)
+}
+
+/// Opens a value [`seal`] made.
+///
+/// # Errors
+/// [`OpenError::WrongKey`] if `key` isn't the one it was sealed with, [`OpenError::Unreadable`]
+/// if it isn't a sealed value at all.
+pub fn open(key: &SecretKey, sealed: &[u8]) -> Result<AccessUrl, OpenError> {
+    let plain = open_for(key, sealed, CONTEXT)?;
+    let text = String::from_utf8(plain).map_err(|_| OpenError::Unreadable)?;
+    Ok(AccessUrl::new(text))
+}
+
+/// Seals a raw bank response kept for troubleshooting, the same way as [`seal`] but for its own
+/// purpose.
+///
+/// # Errors
+/// [`SealError`] if the OS has no random bytes for the nonce.
+pub fn seal_raw_response(key: &SecretKey, body: &[u8]) -> Result<Vec<u8>, SealError> {
+    seal_for(key, body, RAW_RESPONSE_CONTEXT)
+}
+
+/// Opens a value [`seal_raw_response`] made.
+///
+/// # Errors
+/// As [`open`].
+pub fn open_raw_response(key: &SecretKey, sealed: &[u8]) -> Result<Vec<u8>, OpenError> {
+    open_for(key, sealed, RAW_RESPONSE_CONTEXT)
+}
+
+fn seal_for(key: &SecretKey, plain: &[u8], context: &[u8]) -> Result<Vec<u8>, SealError> {
     let mut nonce = [0u8; NONCE_LEN];
     getrandom::fill(&mut nonce).map_err(|_| SealError)?;
     let sealed = key
@@ -75,8 +110,8 @@ pub fn seal(key: &SecretKey, url: &AccessUrl) -> Result<Vec<u8>, SealError> {
         .encrypt(
             &XNonce::from(nonce),
             Payload {
-                msg: url.expose().as_bytes(),
-                aad: CONTEXT,
+                msg: plain,
+                aad: context,
             },
         )
         .map_err(|_| SealError)?;
@@ -87,12 +122,7 @@ pub fn seal(key: &SecretKey, url: &AccessUrl) -> Result<Vec<u8>, SealError> {
     Ok(out)
 }
 
-/// Opens a value [`seal`] made.
-///
-/// # Errors
-/// [`OpenError::WrongKey`] if `key` isn't the one it was sealed with, [`OpenError::Unreadable`]
-/// if it isn't a sealed value at all.
-pub fn open(key: &SecretKey, sealed: &[u8]) -> Result<AccessUrl, OpenError> {
+fn open_for(key: &SecretKey, sealed: &[u8], context: &[u8]) -> Result<Vec<u8>, OpenError> {
     let [VERSION, rest @ ..] = sealed else {
         return Err(OpenError::Unreadable);
     };
@@ -100,18 +130,15 @@ pub fn open(key: &SecretKey, sealed: &[u8]) -> Result<AccessUrl, OpenError> {
         .split_at_checked(NONCE_LEN)
         .ok_or(OpenError::Unreadable)?;
     let nonce: [u8; NONCE_LEN] = nonce.try_into().map_err(|_| OpenError::Unreadable)?;
-    let plain = key
-        .cipher()
+    key.cipher()
         .decrypt(
             &XNonce::from(nonce),
             Payload {
                 msg: ciphertext,
-                aad: CONTEXT,
+                aad: context,
             },
         )
-        .map_err(|_| OpenError::WrongKey)?;
-    let text = String::from_utf8(plain).map_err(|_| OpenError::Unreadable)?;
-    Ok(AccessUrl::new(text))
+        .map_err(|_| OpenError::WrongKey)
 }
 
 #[cfg(test)]
@@ -123,6 +150,24 @@ mod tests {
     }
 
     const URL: &str = "https://demo-user:demo-pass@bridge.example.test/simplefin";
+
+    #[test]
+    fn a_raw_response_opens_only_as_a_raw_response() {
+        let body = br#"{"accounts":[]}"#;
+        let sealed = seal_raw_response(&key(1), body).unwrap();
+        assert!(!sealed.windows(body.len()).any(|w| w == body));
+        assert_eq!(open_raw_response(&key(1), &sealed).unwrap(), body);
+        assert_eq!(open(&key(1), &sealed).unwrap_err(), OpenError::WrongKey);
+        assert_eq!(
+            open_raw_response(&key(2), &sealed).unwrap_err(),
+            OpenError::WrongKey
+        );
+        let url = seal(&key(1), &AccessUrl::new(URL.to_owned())).unwrap();
+        assert_eq!(
+            open_raw_response(&key(1), &url).unwrap_err(),
+            OpenError::WrongKey
+        );
+    }
 
     #[test]
     fn a_sealed_url_opens_with_the_same_key() {

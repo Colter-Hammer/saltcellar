@@ -180,3 +180,42 @@ export function formatInstantDay(
     new Date(instant),
   )
 }
+
+/** The time of day of an RFC 3339 instant in `timeZone` (an IANA name), like `3:40 PM`. */
+export function formatInstantTime(
+  instant: string,
+  timeZone: string,
+  formatting: Pick<Formatting, 'locale'> = DEFAULT,
+): string {
+  return new Intl.DateTimeFormat(formatting.locale, { timeStyle: 'short', timeZone }).format(
+    new Date(instant),
+  )
+}
+
+/** The day and time of an RFC 3339 instant in `timeZone`, like `Oct 28, 2026, 3:40 PM`. */
+export function formatInstant(
+  instant: string,
+  timeZone: string,
+  formatting: Pick<Formatting, 'locale'> = DEFAULT,
+): string {
+  return new Intl.DateTimeFormat(formatting.locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone,
+  }).format(new Date(instant))
+}
+
+/** An `HH:MM` time of day rounded to the nearest hour, like `6 AM` for `06:13`. */
+export function formatAroundHour(
+  time: string,
+  formatting: Pick<Formatting, 'locale'> = DEFAULT,
+): string {
+  const [hours, minutes] = time.split(':').map(Number)
+  if (hours === undefined || minutes === undefined || Number.isNaN(hours + minutes)) {
+    throw new RangeError(`not an HH:MM time: ${time}`)
+  }
+  const hour = (hours + (minutes >= 30 ? 1 : 0)) % 24
+  return new Intl.DateTimeFormat(formatting.locale, { hour: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(2026, 0, 1, hour)),
+  )
+}

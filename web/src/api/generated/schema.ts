@@ -129,6 +129,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bank-connection/sync-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/bank-connection/sync-runs`: Recent syncs. */
+        get: operations["listSyncRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-connection/sync-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * `PUT /api/v1/bank-connection/sync-settings`: the daily sync time and whether raw bank
+         *     responses are kept. A time set to one already past today runs tomorrow.
+         */
+        put: operations["changeSyncSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -1144,6 +1181,8 @@ export interface components {
             connection?: components["schemas"]["Connection"] | null;
             /** @description Whether `BUDGET_SECRET_KEY` is set. Without it no setup token can be claimed. */
             secret_key_set: boolean;
+            /** @description The schedule, the request budget and Sync now's wait. */
+            sync: components["schemas"]["SyncState"];
         };
         Category: {
             hidden: boolean;
@@ -1363,6 +1402,12 @@ export interface components {
              */
             status: string;
         };
+        /** @description A run in the history, with each account's result. */
+        HistoryRun: {
+            /** @description By account name. */
+            accounts: components["schemas"]["RunAccount"][];
+            run: components["schemas"]["SyncRun"];
+        };
         Household: {
             /**
              * @description ISO 4217: every amount is in minor units of it.
@@ -1539,6 +1584,20 @@ export interface components {
         Resolve: {
             action: components["schemas"]["FlagAction"];
         };
+        /** @description How one account fared in a run. */
+        RunAccount: {
+            /** Format: int64 */
+            account_id: number;
+            /** @description RFC 3339: when the provider last refreshed the account's bank. */
+            balance_date: string | null;
+            /** @description Sanitized, to show as is. */
+            error: string | null;
+            /** @description Like `act.missingdata`, `con.auth` or `absent`; null when it went well. */
+            error_code: string | null;
+            /** @description The account's name in the app. */
+            name: string;
+            ok: boolean;
+        };
         Session: {
             display_name: string;
             username: string;
@@ -1580,6 +1639,10 @@ export interface components {
             category_id: number;
             memo?: string | null;
         };
+        /** @description The run history, newest first: 90 days of it. */
+        SyncHistory: {
+            runs: components["schemas"]["HistoryRun"][];
+        };
         /** @description One sync run, as the screen shows it. */
         SyncRun: {
             /**
@@ -1591,6 +1654,8 @@ export interface components {
             error: string | null;
             /** @description Null while it runs. */
             finished_at: string | null;
+            /** Format: int64 */
+            id: number;
             /**
              * Format: int64
              * @description Bridge requests it made.
@@ -1608,6 +1673,36 @@ export interface components {
              * @description Rows whose amount, date, status or bank text it changed.
              */
             updated: number;
+        };
+        /** @description The sync settings, changed. */
+        SyncSettingsChange: {
+            /** @description Keep raw bank responses, sealed, for 7 days. Turning it off deletes the kept ones. */
+            keep_raw_responses: boolean;
+            /** @description The daily sync time, `HH:MM` (24-hour) in the household timezone. */
+            sync_time: string;
+        };
+        /** @description The daily schedule, the request budget and Sync now's wait, for the connection screen. */
+        SyncState: {
+            /** @description RFC 3339: Sync now waits until then after the last sync; null when it needn't. */
+            cooldown_until: string | null;
+            /** @description Raw bank responses are kept (sealed, 7 days) for troubleshooting. */
+            keep_raw_responses: boolean;
+            /** @description RFC 3339: when the last sync finished (back-fills aside); null before the first. */
+            last_synced_at: string | null;
+            /** @description RFC 3339: the request limit is reached until then; null when Sync now may ask. */
+            limit_until: string | null;
+            /**
+             * Format: int32
+             * @description Bridge requests allowed in any rolling 24 hours.
+             */
+            request_cap: number;
+            /**
+             * Format: int32
+             * @description Of those, how many are left now.
+             */
+            requests_left: number;
+            /** @description The daily sync time, `HH:MM` in the household timezone. */
+            time: string;
         };
         /** @description A tag, as the tag filter offers it. */
         Tag: {
@@ -2179,6 +2274,77 @@ export interface operations {
             };
             /** @description `not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSyncRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The runs, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncHistory"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeSyncSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncSettingsChange"];
+            };
+        };
+        responses: {
+            /** @description Changed; the connection screen now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankConnection"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed` with `sync_time` if it isn't `HH:MM`. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

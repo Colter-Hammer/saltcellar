@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT r.sync_run_id AS \"run_id!: i64\", r.account_id AS \"account_id!: i64\", a.name,\n             r.ok AS \"ok!: bool\", r.error_code, r.error, r.provider_balance_date\n           FROM sync_account_results r JOIN accounts a ON a.id = r.account_id\n           ORDER BY r.sync_run_id, a.name, a.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "sync_run_id"
+          }
+        }
+      },
+      {
+        "name": "account_id!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "ok!: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "ok"
+          }
+        }
+      },
+      {
+        "name": "error_code",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "error_code"
+          }
+        }
+      },
+      {
+        "name": "error",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "name": "provider_balance_date",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "provider_balance_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ab6c61b98f65aac99e924d20a968ba10afd1181126fcff397a703b572b90bb3d"
+}

@@ -78,4 +78,22 @@ test('claim, then track two new accounts and ignore one, and see the rows', asyn
   await page.getByRole('button', { name: 'Sync now' }).click()
   await expect(page.getByRole('button', { name: 'Sync now' })).toBeEnabled()
   await expect(page.getByTestId('last-sync')).toHaveText('Last sync: No changes')
+
+  // The schedule and the budget: two back-fills of two requests each and a Sync now, of the 100
+  // e2e allows (BUDGET_SYNC_REQUEST_CAP).
+  await expect(page.getByTestId('sync-schedule')).toHaveText(
+    'Syncs daily around 6 AM · 95 of 100 requests left today',
+  )
+  const runs = page.getByRole('list', { name: 'Recent syncs' }).getByRole('listitem')
+  await expect(runs).toHaveCount(3)
+  await expect(runs.first()).toContainText('Sync now')
+  await expect(runs.first()).toContainText('No changes · 1 request')
+  await expect(runs.nth(1)).toContainText('Back-fill')
+
+  // A new sync time reads loosely, and is kept.
+  await page.getByLabel('Daily sync time').fill('07:41')
+  await page.getByRole('button', { name: 'Save time' }).click()
+  await expect(page.getByTestId('sync-schedule')).toContainText('Syncs daily around 8 AM')
+  await page.reload()
+  await expect(page.getByLabel('Daily sync time')).toHaveValue('07:41')
 })

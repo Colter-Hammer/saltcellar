@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(finished_at) AS \"at: String\" FROM sync_runs WHERE trigger <> 'backfill'",
+  "describe": {
+    "columns": [
+      {
+        "name": "at: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "0119d7f316c13b70f052fb53617a18b2502724db2dd98d295b817e2cf269ea94"
+}

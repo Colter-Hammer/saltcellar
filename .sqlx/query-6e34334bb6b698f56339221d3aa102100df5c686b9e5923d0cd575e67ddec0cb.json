@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM sync_raw_responses",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "6e34334bb6b698f56339221d3aa102100df5c686b9e5923d0cd575e67ddec0cb"
+}

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createApp, defineComponent, h } from 'vue'
 import { ApiError } from './client'
-import { useClaimSetupToken, useDisconnectBank, useSyncNow } from './bank'
+import { useChangeSyncSettings, useClaimSetupToken, useDisconnectBank, useSyncNow } from './bank'
 
 function answer(status: number, body: string) {
   vi.stubGlobal(
@@ -49,6 +49,15 @@ afterEach(() => {
 const connected = {
   secret_key_set: true,
   connection: { label: 'SimpleFIN Bridge', status: 'ok', paused: false, last_sync: null },
+  sync: {
+    time: '06:13',
+    keep_raw_responses: false,
+    request_cap: 12,
+    requests_left: 12,
+    last_synced_at: null,
+    cooldown_until: null,
+    limit_until: null,
+  },
 }
 
 describe('useClaimSetupToken', () => {
@@ -88,6 +97,7 @@ describe('useDisconnectBank', () => {
 
 describe('useSyncNow', () => {
   const run = {
+    id: 1,
     trigger: 'manual',
     started_at: '2026-10-28T09:00:00Z',
     finished_at: '2026-10-28T09:00:02Z',
@@ -113,5 +123,18 @@ describe('useSyncNow', () => {
     const { result } = inApp(useSyncNow)
     const error: unknown = await result.mutateAsync().catch((e: unknown) => e)
     expect(error).toMatchObject({ status: 409, code: 'sync_paused' })
+  })
+})
+
+describe('useChangeSyncSettings', () => {
+  it('sends the settings and keeps the connection it answers', async () => {
+    answer(200, JSON.stringify(connected))
+    const { result, queryClient } = inApp(useChangeSyncSettings)
+    const settings = { sync_time: '07:41', keep_raw_responses: true }
+    expect(await result.mutateAsync(settings)).toEqual(connected)
+    expect(sent().method).toBe('PUT')
+    expect(new URL(sent().url).pathname).toBe('/api/v1/bank-connection/sync-settings')
+    expect(await sent().json()).toEqual(settings)
+    expect(queryClient.getQueryData(['bank-connection'])).toEqual(connected)
   })
 })

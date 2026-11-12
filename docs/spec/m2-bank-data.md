@@ -114,6 +114,17 @@ What the protocol and the live Bridge actually do, so code doesn't rediscover it
 - **Paused:** while the connection is `token_revoked` or `unpaid`, no scheduled calls; a banner on every screen: "Bank sync stopped. Get a new setup token from SimpleFIN and paste it in Settings" (or "SimpleFIN subscription unpaid"). Replacing the token clears it.
 - **Run history:** every run, with per-account results (ok, error code, sanitized message, `balance-date`), counts added and updated, and requests made, kept 90 days, listed in Settings › Bank connection & sync. One container log line per run (trigger, counts, requests, error codes), never amounts, merchants or the access URL.
 - **Raw responses:** only behind **Keep raw bank responses for troubleshooting** (off by default), kept 7 days, encrypted with `BUDGET_SECRET_KEY`, never logged.
+- **Details of the schedule** *(agent)*:
+  - The rules are pure functions in `domain::sync_schedule`, tested on a fake clock; the API's `schedule` module runs them, looking for due work every 30 s. What waits (a retry, this start's catch-up) is kept in memory: a restart forgets retries, and the catch-up stands in for them.
+  - The scheduled run starts within 1 hour of its slot, once; later than that, only a restart's catch-up makes up for it. A time a clock change skips runs just after it. Changing the time to one already past today runs it tomorrow.
+  - The cooldown counts from the newest finished run that isn't a back-fill, so tracking an account doesn't lock Sync now. Sync now answers 409 `sync_cooling_down` ("Synced 12 min ago. Sync now works again in 18 min.") or 409 `sync_limit_reached` ("Sync limit reached, try again after 3:40 pm.", in the household timezone). A press while a sync runs still joins it.
+  - Every run asks the budget for the requests it will make (a back-fill's two included); only the scheduled run may take the held-back twelfth. Claiming a setup token isn't a sync run and isn't counted. The cap is `BankConfig::sync_request_cap`, raised only by the development setting below.
+  - Transient: no answer, a 5xx, `act.failed`, `act.missingdata`, and `con.*` but `con.auth`, on the run or on any account. Retries follow scheduled, catch-up and retry runs only; Sync now and back-fills show their result instead. The second retry is 2 hours after the first failure, not after the first retry. Any successful run cancels a waiting retry; a non-transient failure ends them.
+  - The catch-up runs 3 minutes after start when the last successful run of any trigger (a run without a run-level error) is over 20 hours old: a fresh Sync now makes it pointless. It checks again when due.
+  - Retries and catch-ups that would land in the first 3 minutes of an hour move to minute 7.
+  - Run history and raw responses are pruned after every run. Turning raw responses off deletes the kept ones. They are sealed like the access URL but bound to their own purpose (`simplefin::seal_raw_response`), in `sync_raw_responses` (migration `0016`).
+  - The API: `GET /api/v1/bank-connection` carries `sync` (time, keep raw, cap, requests left, last synced, cooldown and limit ends); `PUT /api/v1/bank-connection/sync-settings` (`sync_time` `HH:MM`, `keep_raw_responses`; 422 on `sync_time`); `GET /api/v1/bank-connection/sync-runs` (newest first, each run with its accounts' results).
+  - The screen says the time rounded to the nearest hour, in the login's locale ("around 6 AM"). Recent syncs lists each run's time, trigger, summary and requests, and each failed account's message.
 
 ## Matching a synced row
 
@@ -253,7 +264,7 @@ Details of the flag actions *(agent)*: every action clears its flag (`POST /api/
 - **Banks:** one row per bank link with its accounts count, state (ok, balances only, stale with "bank hasn't updated in 4 days", needs reconnecting with **Fix at SimpleFIN ↗**) and last refresh.
 - **Recent syncs:** the run history, newest first.
 - **Keep raw bank responses for troubleshooting** checkbox.
-- Until the run history lands, the screen shows the last run in a line ("Last sync: 3 rows added, 1 row updated", "No changes", or the run's error) under the connection *(agent)*.
+- The screen also shows the last run in a line ("Last sync: 3 rows added, 1 row updated", "No changes", or the run's error) under the connection *(agent)*.
 
 ## Configuration added
 
@@ -262,5 +273,7 @@ Details of the flag actions *(agent)*: every action clears its flag (`POST /api/
 | `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the connection's access URL and kept raw responses. Required to claim a setup token. Keep a copy outside the data dir; backups don't include it. |
 
 | `BUDGET_SIMPLEFIN_CLAIM_HOSTS` | none | Development only *(agent)*. A comma-separated list of `host[:port]`. When set, a setup token may point only at these hosts, over `http://` as well as `https://`, so the [fake SimpleFIN server](../../fixtures/simplefin-fake/README.md) works. Unset (production), any `https://` claim URL is accepted. |
+| `BUDGET_SYNC_COOLDOWN_MINUTES` | `30` | Development only *(agent)*. Sync now's cooldown in minutes; the e2e tests set `0`, since their specs press Sync now minutes apart. |
+| `BUDGET_SYNC_REQUEST_CAP` | `12` | Development only *(agent)*. The Bridge requests allowed in any rolling 24 hours, 2 or more. The e2e tests set `100`, since their specs sync more often than a real install may. Leave unset in production: the real Bridge allows 24. |
 
 Settings keys: `sync.time` (`"06:13"`), `sync.keep_raw_responses` (`false`).

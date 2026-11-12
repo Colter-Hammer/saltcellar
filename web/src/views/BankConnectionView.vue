@@ -1,17 +1,78 @@
 <script setup lang="ts">
-// Settings › Bank connection & sync (docs/spec/m2-bank-data.md#the-connection): paste a setup
-// token to claim it, replace it, or disconnect; Sync now, and what the last sync did. The access
-// URL it yields is never shown; the server keeps it sealed.
-import { computed, ref } from 'vue'
-import { useBankConnection, useClaimSetupToken, useDisconnectBank, useSyncNow } from '@/api/bank'
+// Settings › Bank connection & sync (docs/spec/m2-bank-data.md#settings--bank-connection--sync):
+// paste a setup token to claim it, replace it, or disconnect; Sync now with its cooldown and the
+// requests left, the daily sync time, keeping raw responses, and Recent syncs. The access URL it
+// yields is never shown; the server keeps it sealed.
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  useBankConnection,
+  useChangeSyncSettings,
+  useClaimSetupToken,
+  useDisconnectBank,
+  useSyncHistory,
+  useSyncNow,
+} from '@/api/bank'
 import { ApiError } from '@/api/client'
+import { useHousehold } from '@/api/household'
 import FormField from '@/components/FormField.vue'
-import { runSummary } from '@/lib/sync'
+import { formatInstant, useFormatting } from '@/lib/format'
+import { accountProblem, runSummary, scheduleLine, syncNowWait, triggerName } from '@/lib/sync'
 
 const bank = useBankConnection()
 const claim = useClaimSetupToken()
 const disconnect = useDisconnectBank()
 const syncNow = useSyncNow()
+const changeSettings = useChangeSyncSettings()
+const history = useSyncHistory()
+const household = useHousehold()
+const formatting = useFormatting()
+
+const timeZone = computed(() => household.data.value?.timezone ?? 'UTC')
+const syncState = computed(() => bank.data.value?.sync ?? null)
+
+/** The clock "Synced 12 min ago" and the waits read, moved on every 15 seconds. */
+const now = ref(new Date())
+const clock = globalThis.setInterval(() => {
+  now.value = new Date()
+}, 15_000)
+onBeforeUnmount(() => {
+  globalThis.clearInterval(clock)
+})
+
+const wait = computed(() =>
+  syncState.value === null
+    ? null
+    : syncNowWait(syncState.value, now.value, timeZone.value, formatting.value),
+)
+
+const syncTime = ref('')
+const timeError = ref('')
+const settingsFailure = ref('')
+watch(
+  () => syncState.value?.time,
+  (time) => {
+    if (time !== undefined) syncTime.value = time
+  },
+  { immediate: true },
+)
+
+async function saveSettings(keepRaw: boolean) {
+  timeError.value = ''
+  settingsFailure.value = ''
+  try {
+    await changeSettings.mutateAsync({ sync_time: syncTime.value, keep_raw_responses: keepRaw })
+  } catch (error) {
+    if (error instanceof ApiError && error.fields.sync_time) {
+      timeError.value = error.fields.sync_time
+    } else {
+      settingsFailure.value = error instanceof Error ? error.message : 'Something went wrong.'
+    }
+  }
+}
+
+function toggleRaw(event: Event) {
+  if (event.target instanceof HTMLInputElement) void saveSettings(event.target.checked)
+}
 
 const connection = computed(() => bank.data.value?.connection ?? null)
 const keySet = computed(() => bank.data.value?.secret_key_set ?? false)
@@ -94,6 +155,9 @@ async function confirmDisconnect() {
         <template v-if="connection">
           <template v-if="!connection.paused">
             <p data-testid="connection-state">{{ connection.label }} · connected</p>
+            <p v-if="syncState" data-testid="sync-schedule" class="text-sm text-muted-foreground">
+              {{ scheduleLine(syncState, formatting) }}
+            </p>
             <p v-if="lastSync" data-testid="last-sync" class="text-sm text-muted-foreground">
               Last sync: {{ runSummary(lastSync) }}
             </p>
@@ -101,11 +165,14 @@ async function confirmDisconnect() {
               <button
                 type="button"
                 class="rounded-md border px-3 py-2 disabled:opacity-50"
-                :disabled="syncNow.isPending.value"
+                :disabled="syncNow.isPending.value || wait !== null"
                 @click="sync"
               >
                 {{ syncNow.isPending.value ? 'Syncing…' : 'Sync now' }}
               </button>
+              <p v-if="wait" data-testid="sync-wait" class="text-sm text-muted-foreground">
+                {{ wait }}
+              </p>
               <p v-if="syncFailure" role="alert" class="text-sm text-destructive">
                 {{ syncFailure }}
               </p>
@@ -216,6 +283,91 @@ async function confirmDisconnect() {
             </div>
           </template>
         </div>
+      </section>
+
+      <section
+        v-if="connection && syncState"
+        aria-labelledby="schedule-heading"
+        class="flex flex-col gap-3"
+      >
+        <h2 id="schedule-heading" class="font-semibold">Schedule</h2>
+        <form
+          class="flex flex-col gap-3"
+          @submit.prevent="saveSettings(syncState.keep_raw_responses)"
+        >
+          <FormField
+            v-model="syncTime"
+            name="sync_time"
+            label="Daily sync time"
+            hint="In the household's timezone. Off the hour is kinder to the bank's servers."
+            :error="timeError"
+            type="time"
+            required
+          />
+          <div>
+            <button
+              type="submit"
+              class="rounded-md border px-3 py-2 disabled:opacity-50"
+              :disabled="changeSettings.isPending.value || syncTime === syncState.time"
+            >
+              Save time
+            </button>
+          </div>
+        </form>
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            class="mt-0.5"
+            :checked="syncState.keep_raw_responses"
+            :disabled="changeSettings.isPending.value"
+            @change="toggleRaw"
+          />
+          <span>
+            Keep raw bank responses for troubleshooting
+            <span class="block text-muted-foreground">
+              Kept encrypted for 7 days. Turning this off deletes them.
+            </span>
+          </span>
+        </label>
+        <p v-if="settingsFailure" role="alert" class="text-sm text-destructive">
+          {{ settingsFailure }}
+        </p>
+      </section>
+
+      <section v-if="connection" aria-labelledby="runs-heading" class="flex flex-col gap-3">
+        <h2 id="runs-heading" class="font-semibold">Recent syncs</h2>
+        <p v-if="history.isError.value" role="alert" class="text-sm text-destructive">
+          {{ history.error.value?.message }}
+        </p>
+        <p
+          v-else-if="history.data.value && history.data.value.runs.length === 0"
+          class="text-sm text-muted-foreground"
+        >
+          No syncs yet.
+        </p>
+        <ul v-else-if="history.data.value" aria-label="Recent syncs" class="flex flex-col divide-y">
+          <li
+            v-for="entry in history.data.value.runs"
+            :key="entry.run.id"
+            class="flex flex-col gap-0.5 py-2 text-sm"
+          >
+            <span class="font-medium">
+              {{ formatInstant(entry.run.started_at, timeZone, formatting) }} ·
+              {{ triggerName(entry.run.trigger) }}
+            </span>
+            <span class="text-muted-foreground">
+              {{ runSummary(entry.run) }} ·
+              {{ entry.run.requests === 1 ? '1 request' : `${entry.run.requests} requests` }}
+            </span>
+            <span
+              v-for="account in entry.accounts.filter((a) => !a.ok)"
+              :key="account.account_id"
+              class="text-destructive"
+            >
+              {{ accountProblem(account) }}
+            </span>
+          </li>
+        </ul>
       </section>
     </template>
   </div>

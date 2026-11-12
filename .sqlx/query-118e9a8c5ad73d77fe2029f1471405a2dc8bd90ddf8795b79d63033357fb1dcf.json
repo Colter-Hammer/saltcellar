@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(finished_at) AS \"at: String\" FROM sync_runs WHERE error_code IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "at: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "118e9a8c5ad73d77fe2029f1471405a2dc8bd90ddf8795b79d63033357fb1dcf"
+}

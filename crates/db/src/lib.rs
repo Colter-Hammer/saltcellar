@@ -13,6 +13,7 @@ mod profile;
 mod reset;
 mod sync;
 mod sync_flags;
+mod sync_schedule;
 mod synced_rows;
 mod transactions;
 mod undecided;
@@ -66,6 +67,11 @@ pub use sync::{
 };
 pub use sync_flags::{
     NewSplitLine, Resolution, ResolveError, SplitError, resolve_sync_flag, set_splits,
+};
+pub use sync_schedule::{
+    RunAccount, RunWithAccounts, SyncSettings, keep_raw_response, last_finished_sync,
+    last_scheduled_sync, last_successful_sync, prune_sync_history, requests_since,
+    set_sync_settings, sync_history, sync_settings,
 };
 pub use synced_rows::{Applied, DeleteBankRowError, apply_synced_rows, delete_bank_row};
 pub use transactions::{
@@ -231,6 +237,7 @@ mod tests {
                 "sessions",
                 "settings",
                 "sync_account_results",
+                "sync_raw_responses",
                 "sync_runs",
                 "tags",
                 "transaction_splits",

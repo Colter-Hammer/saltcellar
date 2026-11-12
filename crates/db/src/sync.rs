@@ -29,7 +29,7 @@ impl SyncTrigger {
         }
     }
 
-    fn parse(text: &str) -> Result<SyncTrigger, Error> {
+    pub(crate) fn parse(text: &str) -> Result<SyncTrigger, Error> {
         match text {
             "scheduled" => Ok(SyncTrigger::Scheduled),
             "manual" => Ok(SyncTrigger::Manual),

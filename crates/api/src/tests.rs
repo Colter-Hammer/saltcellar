@@ -12,6 +12,8 @@ use tower::ServiceExt;
 
 struct App {
     router: Router,
+    /// The state behind the router, for the sync schedule's steps.
+    state: crate::AppState,
     pool: db::SqlitePool,
     /// The setup code, until setup is finished.
     code: Option<String>,
@@ -51,7 +53,8 @@ async fn app_with_bank(bank: crate::BankConfig) -> App {
         .with_clock(move || *clock.lock().unwrap());
     let code = state.setup_code().map(ToString::to_string);
     App {
-        router: crate::router(state),
+        router: crate::router(state.clone()),
+        state,
         pool,
         code,
         now,
@@ -1228,6 +1231,7 @@ mod import;
 mod manual;
 mod manual_adoption;
 mod matching;
+mod schedule;
 mod sync;
 mod sync_flags;
 mod undo;

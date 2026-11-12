@@ -60,15 +60,18 @@ pub struct Connection {
 pub struct BankConnection {
     /// Whether `BUDGET_SECRET_KEY` is set. Without it no setup token can be claimed.
     secret_key_set: bool,
+    /// The schedule, the request budget and Sync now's wait.
+    sync: crate::sync::SyncState,
     /// Null until a setup token is claimed, and again after Disconnect.
     connection: Option<Connection>,
 }
 
-async fn current(state: &AppState) -> Result<BankConnection, ApiError> {
+pub(crate) async fn current(state: &AppState) -> Result<BankConnection, ApiError> {
     let connection = db::connection(&state.pool).await?;
     let last_sync = crate::sync::latest(state).await?;
     Ok(BankConnection {
         secret_key_set: state.bank.secret_key.is_some(),
+        sync: crate::sync::sync_state(state).await?,
         connection: connection.map(|connection| Connection {
             label: connection.label,
             paused: connection.status != db::ConnectionStatus::Ok,

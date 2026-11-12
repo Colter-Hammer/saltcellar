@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(started_at) AS \"at: String\" FROM sync_runs WHERE trigger = 'scheduled'",
+  "describe": {
+    "columns": [
+      {
+        "name": "at: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "bc0f24a083f752acdec24cad4a0e9d452b47983c33aca162f52f383eff79d8a0"
+}
