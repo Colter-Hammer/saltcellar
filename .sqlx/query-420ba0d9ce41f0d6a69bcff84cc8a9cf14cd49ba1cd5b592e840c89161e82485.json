@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM transactions t\n             WHERE t.account_id = d.account_id\n               AND t.external_id = d.snapshot ->> '$.transaction.external_id') AS \"back!: bool\"\n           FROM dropped_transactions d\n           WHERE d.id = ? AND d.user_edited = 1 AND d.restored_at IS NULL AND d.dropped_at >= ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "back!: bool",
+        "ordinal": 0,
+        "type_info": "Null",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "420ba0d9ce41f0d6a69bcff84cc8a9cf14cd49ba1cd5b592e840c89161e82485"
+}

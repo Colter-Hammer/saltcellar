@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n         SET category_id = ?, categorized_by = 'user',\n             sync_flag = CASE WHEN sync_flag = 'amount_changed_split' THEN NULL ELSE sync_flag END,\n             updated_at = ?, updated_by = ?\n         WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "1fefd6c88cf1674b04216cbfb6c6b1ef75f36a60a6801e0c7963d27bb599279e"
+}

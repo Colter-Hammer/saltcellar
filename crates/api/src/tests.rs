@@ -1229,4 +1229,5 @@ mod manual;
 mod manual_adoption;
 mod matching;
 mod sync;
+mod sync_flags;
 mod undo;

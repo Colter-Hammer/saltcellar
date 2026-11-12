@@ -42,6 +42,9 @@ pub enum Scenario {
     /// From day 1: rows the household may have entered by hand first, a check and a payment app
     /// transfer.
     ManualRowsArrive,
+    /// From day 1: a payment app row a day old, larger than the $50.00 the household may have
+    /// entered by hand for it (a possible manual match).
+    ManualMatchArrives,
     /// The second bank's link needs re-authorizing: `con.auth` in the error list, its accounts
     /// with a `balance-date` six days old.
     NeedsAuth,
@@ -62,7 +65,7 @@ pub enum Scenario {
 
 impl Scenario {
     /// Every scenario, in the order the README lists them.
-    pub const ALL: [Scenario; 15] = [
+    pub const ALL: [Scenario; 16] = [
         Scenario::Steady,
         Scenario::PendingPosts,
         Scenario::PendingAmountChanges,
@@ -71,6 +74,7 @@ impl Scenario {
         Scenario::PendingDropped,
         Scenario::PostedDropped,
         Scenario::ManualRowsArrive,
+        Scenario::ManualMatchArrives,
         Scenario::NeedsAuth,
         Scenario::Revoked,
         Scenario::Unpaid,
@@ -92,6 +96,7 @@ impl Scenario {
             Scenario::PendingDropped => "pending-dropped",
             Scenario::PostedDropped => "posted-dropped",
             Scenario::ManualRowsArrive => "manual-rows-arrive",
+            Scenario::ManualMatchArrives => "manual-match-arrives",
             Scenario::NeedsAuth => "needs-auth",
             Scenario::Revoked => "revoked",
             Scenario::Unpaid => "unpaid",

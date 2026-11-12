@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM dropped_transactions WHERE dropped_at < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a1ed053f9371f7709fee0bd542bb7515a5e9e07f35406a06c389cf70f3367aec"
+}

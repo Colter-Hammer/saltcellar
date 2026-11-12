@@ -97,6 +97,46 @@ impl Source {
     }
 }
 
+/// Why sync wants the household to look at a row
+/// (docs/spec/m2-bank-data.md#sync-health-in-the-ui): each comes with its own action in the detail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncFlag {
+    /// Maybe the same as the row it points at: **Merge** or **Keep both**.
+    PossibleDuplicate,
+    /// Maybe the manual row it points at, for a larger amount: **Yes** or **No**.
+    PossibleManualMatch,
+    /// The bank stopped sending it, or never sent a manual row: **Delete** or **Keep**.
+    NotSeenAtBank,
+    /// Split, and the bank changed its amount: the split needs fixing.
+    AmountChangedSplit,
+}
+
+impl SyncFlag {
+    /// The flag as the database stores it.
+    #[must_use]
+    pub fn as_stored(self) -> &'static str {
+        match self {
+            SyncFlag::PossibleDuplicate => "possible_duplicate",
+            SyncFlag::PossibleManualMatch => "possible_manual_match",
+            SyncFlag::NotSeenAtBank => "not_seen_at_bank",
+            SyncFlag::AmountChangedSplit => "amount_changed_split",
+        }
+    }
+
+    /// The flag the database stored as `text`, if it's one.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<SyncFlag> {
+        [
+            SyncFlag::PossibleDuplicate,
+            SyncFlag::PossibleManualMatch,
+            SyncFlag::NotSeenAtBank,
+            SyncFlag::AmountChangedSplit,
+        ]
+        .into_iter()
+        .find(|flag| flag.as_stored() == text)
+    }
+}
+
 /// What the Transactions search looks for: the text, in payee, raw description and memo, and the
 /// amount it reads as, if it reads as one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,6 +224,19 @@ mod tests {
         assert!(!lines_add_up(m(-3_005), [m(-3_005), m(-3_005)]));
         assert!(!lines_add_up(m(0), []));
         assert!(!lines_add_up(m(-1), [m(i64::MAX), m(i64::MAX)]));
+    }
+
+    #[test]
+    fn sync_flags_read_back_as_stored() {
+        for flag in [
+            SyncFlag::PossibleDuplicate,
+            SyncFlag::PossibleManualMatch,
+            SyncFlag::NotSeenAtBank,
+            SyncFlag::AmountChangedSplit,
+        ] {
+            assert_eq!(SyncFlag::from_stored(flag.as_stored()), Some(flag));
+        }
+        assert_eq!(SyncFlag::from_stored("other"), None);
     }
 
     #[test]

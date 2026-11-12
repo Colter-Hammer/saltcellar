@@ -3,7 +3,10 @@
 // search runs on the server as you stop typing, or at once on Enter *(agent)*. Each chip is a
 // pick-one list that reads "Any …" until set, and shows what it's set to after; the dates chip
 // opens a from and a to day; From Actual, undecided toggles *(agent)*. The parent keeps them in
-// the address. Imported, uncategorized joins the chips in milestone 3.
+// the address. Imported, uncategorized joins the chips in milestone 3. Needs a look toggles the
+// rows with a sync flag; Recently dropped by bank shows the dropped rows instead of the list, so it
+// clears the other filters when it turns on *(agent)*
+// (docs/spec/m2-bank-data.md#sync-health-in-the-ui).
 import { X } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useAccounts } from '@/api/accounts'
@@ -69,6 +72,14 @@ const dates = computed(() =>
 const datesOpen = ref(false)
 
 const undecided = computed(() => props.filter.undecided === 'true')
+const needsALook = computed(() => props.filter.needs_a_look === 'true')
+const dropped = computed(() => props.filter.dropped === 'true')
+
+function toggleDropped() {
+  text.value = ''
+  datesOpen.value = false
+  emit('change', dropped.value ? {} : { dropped: 'true' })
+}
 const filtered = computed(() => isFiltered(props.filter))
 
 function clear() {
@@ -157,6 +168,22 @@ const on = 'border-primary bg-primary/10 font-medium'
         @click="set('undecided', undecided ? undefined : 'true')"
       >
         From Actual, undecided
+      </button>
+      <button
+        type="button"
+        :class="[chip, needsALook && on]"
+        :aria-pressed="needsALook"
+        @click="set('needs_a_look', needsALook ? undefined : 'true')"
+      >
+        Needs a look
+      </button>
+      <button
+        type="button"
+        :class="[chip, dropped && on]"
+        :aria-pressed="dropped"
+        @click="toggleDropped"
+      >
+        Recently dropped by bank
       </button>
       <button
         v-if="filtered"

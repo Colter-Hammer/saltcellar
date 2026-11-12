@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n         SET payee_id = coalesce(?1, payee_id), memo = coalesce(?2, memo),\n             exclude_from_budget = max(exclude_from_budget, ?3),\n             possible_duplicate_of = NULL,\n             sync_flag = CASE\n               WHEN EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = ?6)\n                AND (SELECT sum(s.amount_minor) FROM transaction_splits s\n                      WHERE s.transaction_id = ?6) <> amount_minor\n               THEN 'amount_changed_split' END,\n             updated_at = ?4, updated_by = ?5\n         WHERE id = ?6",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "4a7c376bc298d564c9a3457a14196be39d4d9185fafa152033f1233bc6e2cbae"
+}

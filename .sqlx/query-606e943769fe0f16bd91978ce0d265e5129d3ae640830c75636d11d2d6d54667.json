@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT amount_minor,\n             EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)\n               AS \"split!: bool\"\n           FROM transactions t WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "amount_minor",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "split!: bool",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "606e943769fe0f16bd91978ce0d265e5129d3ae640830c75636d11d2d6d54667"
+}

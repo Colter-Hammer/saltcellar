@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM transfers WHERE from_txn_id = ? OR to_txn_id = ?)\n             AS \"transfer!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "transfer!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bd4e51fe65d08a921745207bc663078e15978f17cbacb0ea40c23bb940295c62"
+}

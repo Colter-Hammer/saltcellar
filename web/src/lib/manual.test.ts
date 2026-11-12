@@ -30,6 +30,7 @@ const row: Transaction = {
   transfer_account_id: null,
   tags: ['trip', 'weekly'],
   manual: true,
+  sync_flag: null,
   memo: 'milk',
   splits: [],
   source: 'manual',
@@ -37,6 +38,7 @@ const row: Transaction = {
   import_batch: null,
   undecided: false,
   excluded: false,
+  flagged_against: null,
 }
 
 describe('the entry form', () => {

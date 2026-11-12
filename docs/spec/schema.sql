@@ -336,6 +336,8 @@ CREATE TABLE transactions (                 -- M1
   last_seen_at        TEXT,                 -- M2: last successful run that returned this provider row
   pending_miss_count  INTEGER NOT NULL DEFAULT 0, -- M2: runs in a row that returned the account but not this pending
                                             -- row; removed at 2
+  kept_by_household   INTEGER NOT NULL DEFAULT 0, -- M2: Keep on not_seen_at_bank, or restored from Recently dropped by
+                                            -- bank: sync no longer flags it missing nor counts its misses *(agent)*
   sync_flag           TEXT CHECK (sync_flag IN ('possible_duplicate','not_seen_at_bank','amount_changed_split',
                                              'possible_manual_match')), -- M2: waits for the household
   possible_duplicate_of INTEGER REFERENCES transactions(id), -- M2: the row a possible_duplicate/_manual_match points at

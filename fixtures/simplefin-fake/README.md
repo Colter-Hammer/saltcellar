@@ -52,6 +52,7 @@ server.follow_system_clock(); // dates count back from the real time, not NOW
 | `pending-dropped` | Day 0: a pending checking row (a hotel deposit). From day 1: gone, never posted. |
 | `posted-dropped` | Day 0: a posted checking row ten days old. From day 1: the bank stops sending it. |
 | `manual-rows-arrive` | Day 0: nothing new. From day 1: two posted checking rows a day old, a $120.00 check and a $46.00 payment app transfer, for manual rows to meet. |
+| `manual-match-arrives` | Day 0: nothing new. From day 1: a posted checking row a day old, a $57.50 payment app transfer, up to a quarter larger than a $50.00 manual row (a possible manual match). |
 | `needs-auth` | `con.auth` for `CON-demo-2` in the error list; its accounts' `balance-date` is six days old. |
 | `revoked` | `GET /accounts` answers 403: the access URL was revoked. |
 | `unpaid` | `GET /accounts` answers 402. |

@@ -9,24 +9,33 @@ export type Transaction = components['schemas']['Transaction']
 type Tag = components['schemas']['Tag']
 type ListQuery = NonNullable<operations['getTransactions']['parameters']['query']>
 
-/** The search and filters as the API's query takes them. */
+/**
+ * The search and filters as the API's query takes them. `dropped` isn't one: it shows Recently
+ * dropped by bank instead of the list.
+ */
 function listQuery(filter: TransactionFilter): ListQuery {
-  const { account, tag, undecided, ...text } = filter
+  const { account, tag, undecided, needs_a_look } = filter
+  const text = (['q', 'category', 'from', 'to'] as const).flatMap((key) => {
+    const value = filter[key]
+    return value === undefined ? [] : [[key, value]]
+  })
   return {
-    ...text,
+    ...(Object.fromEntries(text) as Pick<ListQuery, 'q' | 'category' | 'from' | 'to'>),
     ...(account !== undefined && { account: Number(account) }),
     ...(tag !== undefined && { tag: Number(tag) }),
     ...(undecided !== undefined && { undecided: undecided === 'true' }),
+    ...(needs_a_look !== undefined && { needs_a_look: needs_a_look === 'true' }),
   }
 }
 
 /**
  * `GET /api/v1/transactions`, a page at a time: the ones `filter` picks, newest first by date then
- * id, each page starting after the last one's cursor.
+ * id, each page starting after the last one's cursor. Not while it shows Recently dropped by bank.
  */
 export function useTransactions(filter: MaybeRefOrGetter<TransactionFilter> = {}) {
   return useInfiniteQuery({
     queryKey: computed(() => ['transactions', 'list', toValue(filter)]),
+    enabled: computed(() => toValue(filter).dropped === undefined),
     queryFn: ({ pageParam }) =>
       call(
         client.GET('/api/v1/transactions', {

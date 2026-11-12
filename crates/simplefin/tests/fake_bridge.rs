@@ -340,6 +340,18 @@ async fn manual_rows_arrive_from_day_1() {
 }
 
 #[tokio::test]
+async fn a_manual_match_arrives_from_day_1() {
+    let (_, day0) = scenario_feed(Scenario::ManualMatchArrives, 0).await;
+    let (_, day1) = scenario_feed(Scenario::ManualMatchArrives, 1).await;
+    let tutor = "TRN-demo-tutor-1".to_owned();
+    assert!(!ids(&rows(&day0, "ACT-demo-checking")).contains(&tutor));
+    let arrived = rows(&day1, "ACT-demo-checking");
+    let found = arrived.iter().find(|r| r["id"] == tutor.as_str()).unwrap();
+    assert_eq!(found["amount"], "-57.50");
+    assert_eq!(found["transacted_at"], NOW - 86_400);
+}
+
+#[tokio::test]
 async fn the_failure_scenarios_say_what_they_say() {
     let (status, needs_auth) = scenario_feed(Scenario::NeedsAuth, 0).await;
     assert_eq!(status, 200);

@@ -1,0 +1,64 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT category_id, categorized_by, categorization_reason,\n             EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)\n               AS \"split!: bool\",\n             EXISTS (SELECT 1 FROM transfers tr WHERE tr.from_txn_id = t.id OR tr.to_txn_id = t.id)\n               AS \"transfer!: bool\"\n           FROM transactions t WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "category_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "category_id"
+          }
+        }
+      },
+      {
+        "name": "categorized_by",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorized_by"
+          }
+        }
+      },
+      {
+        "name": "categorization_reason",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorization_reason"
+          }
+        }
+      },
+      {
+        "name": "split!: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "transfer!: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7a9ff441dc980dc07ddea3679558aab35280038debbfdce95754b2ee2eca19b8"
+}

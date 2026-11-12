@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM categories WHERE id = ?) AS \"known!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "known!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e7ffe16746cb20cc3f248fc5553444012c1b591ed5fa603a3fd26e3701320cd1"
+}

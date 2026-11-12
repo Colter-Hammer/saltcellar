@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transfers\n                 SET from_txn_id = CASE WHEN from_txn_id = ?1 THEN ?2 ELSE from_txn_id END,\n                     to_txn_id = CASE WHEN to_txn_id = ?1 THEN ?2 ELSE to_txn_id END\n                 WHERE from_txn_id = ?1 OR to_txn_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1cecc3ea8b8890105fa0ddfb946a70442203a2290a720a99b1fe3da798b2304a"
+}

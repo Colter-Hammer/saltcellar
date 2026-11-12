@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id)\n         SELECT ?, tag_id FROM transaction_tags WHERE transaction_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7cee7605523803c7a07e65541f90a1e6698e679b83fe64ee7cebe4d319f10435"
+}

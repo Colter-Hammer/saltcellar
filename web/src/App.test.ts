@@ -1621,6 +1621,7 @@ describe('Transactions', () => {
     transfer_account: null,
     transfer_account_id: null,
     manual: false,
+    sync_flag: null,
     tags: [],
     memo: null,
     splits: [],
@@ -1629,6 +1630,7 @@ describe('Transactions', () => {
     import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
     undecided: false,
     excluded: false,
+    flagged_against: null,
     ...fields,
   })
 
@@ -1866,6 +1868,8 @@ describe('Transactions', () => {
     expect(chips.map((b) => b.text())).toEqual([
       'Jan 1, 2026 – Jan 31, 2026',
       'From Actual, undecided',
+      'Needs a look',
+      'Recently dropped by bank',
       'Clear all',
     ])
     expect(chips[1]?.attributes('aria-pressed')).toBe('true')
@@ -1976,6 +1980,7 @@ describe('From Actual, undecided', () => {
     transfer_account: null,
     transfer_account_id: null,
     manual: false,
+    sync_flag: null,
     tags: [],
     memo: null,
     splits: [],
@@ -1984,6 +1989,7 @@ describe('From Actual, undecided', () => {
     import_batch: { id: 1, file_name: 'export.zip', imported_at: '2026-02-01T10:00:00Z' },
     undecided: true,
     excluded: false,
+    flagged_against: null,
   })
 
   beforeEach(() => {

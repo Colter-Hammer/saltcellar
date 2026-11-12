@@ -9,6 +9,8 @@
 // The + button opens the manual entry form where a transaction's detail opens, the account filter's
 // account chosen if one is set *(agent)*; an entered row opens in its detail. Deleting a manual row
 // shows an Undo toast, which enters it again (docs/spec/m2-bank-data.md#manual-entry).
+// A row with a sync flag carries its badge; Needs a look lists only those. Recently dropped by
+// bank replaces the list with the dropped rows (docs/spec/m2-bank-data.md#sync-health-in-the-ui).
 import { Plus } from '@lucide/vue'
 import { FlexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/vue-table'
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -21,6 +23,7 @@ import {
   useManualEdits,
   useTransactions,
 } from '@/api/transactions'
+import DroppedList from '@/components/DroppedList.vue'
 import GroupMark from '@/components/GroupMark.vue'
 import ManualEntryForm from '@/components/ManualEntryForm.vue'
 import TransactionDetail from '@/components/TransactionDetail.vue'
@@ -29,6 +32,7 @@ import UndoToast from '@/components/UndoToast.vue'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
 import { blankFields, type EntryErrors, todayIn } from '@/lib/manual'
+import { flagBadge } from '@/lib/syncFlags'
 import {
   categoryLabel,
   isUncategorized,
@@ -43,6 +47,7 @@ const route = useRoute()
 const router = useRouter()
 const filter = computed(() => readFilter(route.query))
 const filtered = computed(() => isFiltered(filter.value))
+const showingDropped = computed(() => filter.value.dropped === 'true')
 const pages = useTransactions(filter)
 const formatting = useFormatting()
 
@@ -66,6 +71,11 @@ function link(row: TransactionRow) {
 
 function close() {
   void router.push({ path: '/transactions', query: filter.value })
+}
+
+/** A restored row opens in its detail, in the whole list *(agent)*. */
+function restored(id: number) {
+  void router.push({ path: `/transactions/${String(id)}` })
 }
 
 // Manual entry.
@@ -152,8 +162,20 @@ const columns: ColumnDef<typeof features, TransactionRow>[] = [
         row.original.manual
           ? h(
               'span',
-              { class: 'ml-1.5 rounded border px-1 text-xs text-muted-foreground' },
+              {
+                class: 'ml-1.5 rounded border px-1 text-xs whitespace-nowrap text-muted-foreground',
+              },
               'Manual',
+            )
+          : null,
+        row.original.sync_flag
+          ? h(
+              'span',
+              {
+                class:
+                  'ml-1.5 rounded border border-primary px-1 text-xs whitespace-nowrap text-primary',
+              },
+              flagBadge(row.original.sync_flag),
             )
           : null,
       ]),
@@ -239,7 +261,11 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <p v-if="empty && filtered" class="text-sm text-muted-foreground">No transactions match.</p>
+    <DroppedList v-if="showingDropped" @restored="restored" />
+
+    <p v-else-if="empty && filtered" class="text-sm text-muted-foreground">
+      No transactions match.
+    </p>
 
     <template v-else-if="empty">
       <p class="text-sm text-muted-foreground">No transactions yet.</p>
@@ -257,7 +283,7 @@ onBeforeUnmount(() => {
     </template>
 
     <div
-      v-if="rows.length > 0 || panel"
+      v-if="!showingDropped && (rows.length > 0 || panel)"
       class="lg:grid lg:items-start lg:gap-6"
       :class="panel && 'lg:grid-cols-[1fr_22rem]'"
     >
@@ -285,6 +311,11 @@ onBeforeUnmount(() => {
                       v-if="row.manual"
                       class="rounded border px-1 text-xs text-muted-foreground"
                       >Manual</span
+                    >
+                    <span
+                      v-if="row.sync_flag"
+                      class="rounded border border-primary px-1 text-xs whitespace-nowrap text-primary"
+                      >{{ flagBadge(row.sync_flag) }}</span
                     >
                   </span>
                   <span

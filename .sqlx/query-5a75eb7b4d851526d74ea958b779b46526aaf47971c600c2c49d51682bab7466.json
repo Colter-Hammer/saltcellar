@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id, external_id, payee_id, memo,\n             exclude_from_budget AS \"excluded!: bool\"\n           FROM transactions WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "external_id"
+          }
+        }
+      },
+      {
+        "name": "payee_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "payee_id"
+          }
+        }
+      },
+      {
+        "name": "memo",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "memo"
+          }
+        }
+      },
+      {
+        "name": "excluded!: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "exclude_from_budget"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "5a75eb7b4d851526d74ea958b779b46526aaf47971c600c2c49d51682bab7466"
+}

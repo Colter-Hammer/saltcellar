@@ -298,6 +298,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dropped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/dropped`: **Recently dropped by bank**, the pending rows the household had
+         *     edited that the bank stopped sending, from the last 30 days.
+         */
+        get: operations["getDropped"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dropped/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/dropped/{id}/restore`: brings a dropped row back with the household's edits.
+         *     Sync won't drop it again; the bank sending it again or posting it still matches it.
+         */
+        post: operations["restoreDropped"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -734,6 +774,43 @@ export interface paths {
          *     (docs/spec/m2-bank-data.md#deleting-a-synced-row).
          */
         put: operations["setTransactionExcluded"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transactions/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/transactions/{id}/resolve`: answers the row's sync flag, which goes. */
+        post: operations["resolveSyncFlag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transactions/{id}/splits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * `PUT /api/v1/transactions/{id}/splits`: replaces a split transaction's lines, as fixing an
+         *     `amount_changed_split` flag does; the flag goes. Review takes this over in milestone 3.
+         */
+        put: operations["setTransactionSplits"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1185,6 +1262,37 @@ export interface components {
              */
             category_id: number;
         };
+        /** @description Every row listed under Recently dropped by bank. */
+        DroppedList: {
+            /** @description The latest dropped first. */
+            rows: components["schemas"]["DroppedRow"][];
+        };
+        /** @description A row the bank dropped, as **Recently dropped by bank** lists it. */
+        DroppedRow: {
+            account: string;
+            /** Format: int64 */
+            account_id: number;
+            /**
+             * Format: int64
+             * @description In minor units: negative is money out, positive money in.
+             */
+            amount_minor: number;
+            /** @description Null when it was split or uncategorized. */
+            category: string | null;
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** @description RFC 3339, UTC. **Restore** works for 30 days after. */
+            dropped_at: string;
+            /**
+             * Format: int64
+             * @description The dropped row's id, for **Restore**.
+             */
+            id: number;
+            memo: string | null;
+            payee: string | null;
+            raw_description: string;
+            split: boolean;
+        };
         ErrorBody: {
             /** @description What went wrong, for code to branch on: `snake_case`, stable. */
             code: string;
@@ -1238,6 +1346,11 @@ export interface components {
             timezone: string;
             username: string;
         };
+        /**
+         * @description The household's answer to a row's sync flag.
+         * @enum {string}
+         */
+        FlagAction: "merge" | "keep_both" | "accept_match" | "reject_match" | "keep";
         /**
          * @description Where an Actual category's rows go.
          * @enum {string}
@@ -1422,6 +1535,10 @@ export interface components {
             message: string;
             name: string;
         };
+        /** @description What to do about a row's sync flag. */
+        Resolve: {
+            action: components["schemas"]["FlagAction"];
+        };
         Session: {
             display_name: string;
             username: string;
@@ -1435,6 +1552,11 @@ export interface components {
             /** @description The token from SimpleFIN Bridge: base64 of a claim URL, or the claim URL itself. */
             setup_token: string;
         };
+        /** @description A split transaction's new lines. */
+        SplitEntry: {
+            /** @description They add up to the transaction's amount. One line leaves it unsplit, in that category. */
+            lines: components["schemas"]["SplitLineEntry"][];
+        };
         /** @description One of a split transaction's lines. */
         SplitLine: {
             /**
@@ -1446,6 +1568,17 @@ export interface components {
             /** Format: int64 */
             category_id: number;
             memo: string | null;
+        };
+        /** @description A split line as the household fixes it. */
+        SplitLineEntry: {
+            /**
+             * Format: int64
+             * @description In minor units, the same way round as the transaction's amount.
+             */
+            amount_minor: number;
+            /** Format: int64 */
+            category_id: number;
+            memo?: string | null;
         };
         /** @description One sync run, as the screen shows it. */
         SyncRun: {
@@ -1515,6 +1648,7 @@ export interface components {
             categorization_reason: string | null;
             /** @description Excluded from budgets: `PUT /api/v1/transactions/{id}/excluded` sets it. */
             excluded: boolean;
+            flagged_against: components["schemas"]["TransactionRow"] | null;
             import_batch: components["schemas"]["ImportBatchRef"] | null;
             memo: string | null;
             source: components["schemas"]["TransactionSource"];
@@ -1569,6 +1703,7 @@ export interface components {
              */
             split_categories: number;
             status: components["schemas"]["TransactionStatus"];
+            sync_flag: components["schemas"]["TransactionSyncFlag"] | null;
             /** @description Its tags' names, in name order. */
             tags: string[];
             /** @description The other account of the transfer it's a leg of; null for any other transaction. */
@@ -1589,6 +1724,14 @@ export interface components {
          * @enum {string}
          */
         TransactionStatus: "pending" | "posted";
+        /**
+         * @description What sync wants the household to look at (docs/spec/m2-bank-data.md#sync-health-in-the-ui),
+         *     each with its action: `possible_duplicate` (**Merge** / **Keep both**),
+         *     `possible_manual_match` (**Yes** / **No**), `not_seen_at_bank` (**Delete** / **Keep**) and
+         *     `amount_changed_split` (fix the split).
+         * @enum {string}
+         */
+        TransactionSyncFlag: "possible_duplicate" | "possible_manual_match" | "not_seen_at_bank" | "amount_changed_split";
         /** @description The undecided rows that came in under one Actual category. */
         UndecidedGroup: {
             /** @description The category's name in Actual; empty when the export kept none. */
@@ -2574,6 +2717,85 @@ export interface operations {
             };
             /** @description `foreign_currency`: its currency isn't the household's. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getDropped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rows, the latest dropped first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DroppedList"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    restoreDropped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The dropped row. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transaction, back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: no such row is listed: restored already, or dropped more than 30 days ago. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `back_from_bank`: the bank has sent it again; it's in the list. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3609,6 +3831,8 @@ export interface operations {
                  *     value is the rows whose export kept none *(agent)*.
                  */
                 actual_category?: string;
+                /** @description `true` for only the rows with a sync flag: **Needs a look**. */
+                needs_a_look?: boolean;
             };
             header?: never;
             path?: never;
@@ -3625,7 +3849,7 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionPage"];
                 };
             };
-            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided` or `actual_category` can't be read. */
+            /** @description `invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided`, `actual_category` or `needs_a_look` can't be read. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3929,6 +4153,123 @@ export interface operations {
             };
             /** @description `not_found`: there's no such transaction. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resolveSyncFlag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The flagged transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resolve"];
+            };
+        };
+        responses: {
+            /** @description The transaction, its flag answered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_flagged`: it doesn't have the flag that action answers (any more). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setTransactionSplits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The split transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitEntry"];
+            };
+        };
+        responses: {
+            /** @description The transaction, its split fixed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_split`: it isn't split. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed`: `lines` don't add up to the amount, or name a category there isn't. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1107,6 +1107,100 @@
         }
       }
     },
+    "/api/v1/dropped": {
+      "get": {
+        "tags": [
+          "sync_flags"
+        ],
+        "summary": "`GET /api/v1/dropped`: **Recently dropped by bank**, the pending rows the household had\nedited that the bank stopped sending, from the last 30 days.",
+        "operationId": "getDropped",
+        "responses": {
+          "200": {
+            "description": "The rows, the latest dropped first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DroppedList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dropped/{id}/restore": {
+      "post": {
+        "tags": [
+          "sync_flags"
+        ],
+        "summary": "`POST /api/v1/dropped/{id}/restore`: brings a dropped row back with the household's edits.\nSync won't drop it again; the bank sending it again or posting it still matches it.",
+        "operationId": "restoreDropped",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The dropped row.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The transaction, back.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such row is listed: restored already, or dropped more than 30 days ago.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`back_from_bank`: the bank has sent it again; it's in the list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -2355,6 +2449,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "needs_a_look",
+            "in": "query",
+            "description": "`true` for only the rows with a sync flag: **Needs a look**.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -2369,7 +2472,7 @@
             }
           },
           "400": {
-            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided` or `actual_category` can't be read.",
+            "description": "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided`, `actual_category` or `needs_a_look` can't be read.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2753,6 +2856,162 @@
           },
           "404": {
             "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}/resolve": {
+      "post": {
+        "tags": [
+          "sync_flags"
+        ],
+        "summary": "`POST /api/v1/transactions/{id}/resolve`: answers the row's sync flag, which goes.",
+        "operationId": "resolveSyncFlag",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The flagged transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resolve"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction, its flag answered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_flagged`: it doesn't have the flag that action answers (any more).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}/splits": {
+      "put": {
+        "tags": [
+          "sync_flags"
+        ],
+        "summary": "`PUT /api/v1/transactions/{id}/splits`: replaces a split transaction's lines, as fixing an\n`amount_changed_split` flag does; the flag goes. Review takes this over in milestone 3.",
+        "operationId": "setTransactionSplits",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The split transaction.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction, its split fixed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`not_split`: it isn't split.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`: `lines` don't add up to the amount, or name a category there isn't.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3856,6 +4115,91 @@
           }
         }
       },
+      "DroppedList": {
+        "type": "object",
+        "description": "Every row listed under Recently dropped by bank.",
+        "required": [
+          "rows"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DroppedRow"
+            },
+            "description": "The latest dropped first."
+          }
+        }
+      },
+      "DroppedRow": {
+        "type": "object",
+        "description": "A row the bank dropped, as **Recently dropped by bank** lists it.",
+        "required": [
+          "id",
+          "account_id",
+          "account",
+          "date",
+          "amount_minor",
+          "payee",
+          "raw_description",
+          "category",
+          "split",
+          "memo",
+          "dropped_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units: negative is money out, positive money in."
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null when it was split or uncategorized."
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "dropped_at": {
+            "type": "string",
+            "description": "RFC 3339, UTC. **Restore** works for 30 days after."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The dropped row's id, for **Restore**."
+          },
+          "memo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payee": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "raw_description": {
+            "type": "string"
+          },
+          "split": {
+            "type": "boolean"
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "required": [
@@ -3987,6 +4331,17 @@
             "type": "string"
           }
         }
+      },
+      "FlagAction": {
+        "type": "string",
+        "description": "The household's answer to a row's sync flag.",
+        "enum": [
+          "merge",
+          "keep_both",
+          "accept_match",
+          "reject_match",
+          "keep"
+        ]
       },
       "GoesTo": {
         "type": "string",
@@ -4424,6 +4779,18 @@
           }
         }
       },
+      "Resolve": {
+        "type": "object",
+        "description": "What to do about a row's sync flag.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/FlagAction"
+          }
+        }
+      },
       "Session": {
         "type": "object",
         "required": [
@@ -4464,6 +4831,22 @@
           }
         }
       },
+      "SplitEntry": {
+        "type": "object",
+        "description": "A split transaction's new lines.",
+        "required": [
+          "lines"
+        ],
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SplitLineEntry"
+            },
+            "description": "They add up to the transaction's amount. One line leaves it unsplit, in that category."
+          }
+        }
+      },
       "SplitLine": {
         "type": "object",
         "description": "One of a split transaction's lines.",
@@ -4481,6 +4864,31 @@
           },
           "category": {
             "type": "string"
+          },
+          "category_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SplitLineEntry": {
+        "type": "object",
+        "description": "A split line as the household fixes it.",
+        "required": [
+          "category_id",
+          "amount_minor"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units, the same way round as the transaction's amount."
           },
           "category_id": {
             "type": "integer",
@@ -4633,7 +5041,8 @@
               "categorization_reason",
               "import_batch",
               "undecided",
-              "excluded"
+              "excluded",
+              "flagged_against"
             ],
             "properties": {
               "categorization_reason": {
@@ -4646,6 +5055,17 @@
               "excluded": {
                 "type": "boolean",
                 "description": "Excluded from budgets: `PUT /api/v1/transactions/{id}/excluded` sets it."
+              },
+              "flagged_against": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TransactionRow",
+                    "description": "The row a `possible_duplicate` or `possible_manual_match` flag points at; null otherwise."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "import_batch": {
                 "oneOf": [
@@ -4725,7 +5145,8 @@
           "transfer_account",
           "transfer_account_id",
           "tags",
-          "manual"
+          "manual",
+          "sync_flag"
         ],
         "properties": {
           "account": {
@@ -4790,6 +5211,17 @@
           "status": {
             "$ref": "#/components/schemas/TransactionStatus"
           },
+          "sync_flag": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TransactionSyncFlag",
+                "description": "What sync wants the household to look at; null when nothing. Listed under **Needs a look**."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -4829,6 +5261,16 @@
         "enum": [
           "pending",
           "posted"
+        ]
+      },
+      "TransactionSyncFlag": {
+        "type": "string",
+        "description": "What sync wants the household to look at (docs/spec/m2-bank-data.md#sync-health-in-the-ui),\neach with its action: `possible_duplicate` (**Merge** / **Keep both**),\n`possible_manual_match` (**Yes** / **No**), `not_seen_at_bank` (**Delete** / **Keep**) and\n`amount_changed_split` (fix the split).",
+        "enum": [
+          "possible_duplicate",
+          "possible_manual_match",
+          "not_seen_at_bank",
+          "amount_changed_split"
         ]
       },
       "UndecidedGroup": {

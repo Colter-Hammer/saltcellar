@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n         SET sync_flag = CASE WHEN date < date(?, '-14 days')\n                              THEN 'not_seen_at_bank' END\n         WHERE account_id = ? AND source = 'manual' AND external_id IS NULL\n           AND (sync_flag IS NULL OR sync_flag = 'not_seen_at_bank')\n           AND kept_by_household = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8b5b896608d82132df6a83ef58d77646cf2e7fb326a98a8c67db14100aed0464"
+}

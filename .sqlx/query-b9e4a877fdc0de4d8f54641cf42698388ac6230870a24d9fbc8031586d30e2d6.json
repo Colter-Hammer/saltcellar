@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT sync_flag, possible_duplicate_of FROM transactions WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "sync_flag",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "sync_flag"
+          }
+        }
+      },
+      {
+        "name": "possible_duplicate_of",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "possible_duplicate_of"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "b9e4a877fdc0de4d8f54641cf42698388ac6230870a24d9fbc8031586d30e2d6"
+}
