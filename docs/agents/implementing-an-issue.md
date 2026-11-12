@@ -22,6 +22,7 @@ The rules every agent follows when it builds an implementation issue, so a brief
 
 - While iterating, run only the tests you're changing (`cargo nextest run -p <crate> <filter>`, `npm --prefix web run test -- <file>`).
 - Before pushing, run `just check-quiet` once. It prints one line per check and only a failing check's last lines; the full logs are in `target/check-quiet/`.
+- Manual testing is required in every test session, and you do it yourself: start the real app (and the fake SimpleFIN Bridge when sync is involved), drive the change in a browser with a Playwright script, and screenshot every screen and state that matters, on a phone and a desktop where layout matters. Cover as much as you can: before and after, edge cases, errors. Never hand the owner click-through steps instead. Fake data only. Check each screenshot actually shows what you meant to capture.
 - Commit everything before pushing: the pre-push hook runs `just e2e` (under `flock /tmp/saltcellar-e2e.lock`, so parallel pushes take turns) and refuses a push with uncommitted tracked changes. Never `--no-verify`.
 
 ## Open the PR
@@ -35,4 +36,4 @@ The rules every agent follows when it builds an implementation issue, so a brief
 
 ## Report
 
-Keep it short: what was built, deviations and unsure assumptions, the details you placed, the owner's steps to check it in the browser, and a last line `PR <url>, head <sha>, checks <state>`.
+Keep it short: what was built, deviations and unsure assumptions, the details you placed, the manual-testing screenshots (embedded, each with one line on what it shows), anything left that only a human can check and why, and a last line `PR <url>, head <sha>, checks <state>`.
