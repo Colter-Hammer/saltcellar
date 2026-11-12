@@ -1226,6 +1226,7 @@ mod categories;
 mod connection_accounts;
 mod import;
 mod manual;
+mod manual_adoption;
 mod matching;
 mod sync;
 mod undo;

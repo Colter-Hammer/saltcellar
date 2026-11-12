@@ -39,6 +39,9 @@ pub enum Scenario {
     PendingDropped,
     /// A posted row ten days old; from day 1 the bank stops sending it.
     PostedDropped,
+    /// From day 1: rows the household may have entered by hand first, a check and a payment app
+    /// transfer.
+    ManualRowsArrive,
     /// The second bank's link needs re-authorizing: `con.auth` in the error list, its accounts
     /// with a `balance-date` six days old.
     NeedsAuth,
@@ -59,7 +62,7 @@ pub enum Scenario {
 
 impl Scenario {
     /// Every scenario, in the order the README lists them.
-    pub const ALL: [Scenario; 14] = [
+    pub const ALL: [Scenario; 15] = [
         Scenario::Steady,
         Scenario::PendingPosts,
         Scenario::PendingAmountChanges,
@@ -67,6 +70,7 @@ impl Scenario {
         Scenario::IdsReissuedTogether,
         Scenario::PendingDropped,
         Scenario::PostedDropped,
+        Scenario::ManualRowsArrive,
         Scenario::NeedsAuth,
         Scenario::Revoked,
         Scenario::Unpaid,
@@ -87,6 +91,7 @@ impl Scenario {
             Scenario::IdsReissuedTogether => "ids-reissued-together",
             Scenario::PendingDropped => "pending-dropped",
             Scenario::PostedDropped => "posted-dropped",
+            Scenario::ManualRowsArrive => "manual-rows-arrive",
             Scenario::NeedsAuth => "needs-auth",
             Scenario::Revoked => "revoked",
             Scenario::Unpaid => "unpaid",

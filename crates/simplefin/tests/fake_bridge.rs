@@ -327,6 +327,19 @@ async fn a_pending_row_and_a_posted_row_stop_coming() {
 }
 
 #[tokio::test]
+async fn manual_rows_arrive_from_day_1() {
+    let (_, day0) = scenario_feed(Scenario::ManualRowsArrive, 0).await;
+    let (_, day1) = scenario_feed(Scenario::ManualRowsArrive, 1).await;
+    let check = "TRN-demo-check-1".to_owned();
+    assert!(!ids(&rows(&day0, "ACT-demo-checking")).contains(&check));
+    let arrived = rows(&day1, "ACT-demo-checking");
+    let found = |id: &str| arrived.iter().find(|r| r["id"] == id).copied().unwrap();
+    assert_eq!(found("TRN-demo-check-1")["amount"], "-120.00");
+    assert_eq!(found("TRN-demo-sitter-1")["amount"], "-46.00");
+    assert_eq!(found("TRN-demo-check-1")["transacted_at"], NOW - 86_400);
+}
+
+#[tokio::test]
 async fn the_failure_scenarios_say_what_they_say() {
     let (status, needs_auth) = scenario_feed(Scenario::NeedsAuth, 0).await;
     assert_eq!(status, 200);
