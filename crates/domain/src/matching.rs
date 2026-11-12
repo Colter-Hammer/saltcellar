@@ -1,7 +1,8 @@
 //! Matching a synced row to a stored one (docs/spec/m2-bank-data.md#matching-a-synced-row),
-//! steps 1 to 4: the same id, a pending row posting under a new id, an id the bank re-issued, and
-//! an imported row with no bank id taken over. Step 0 (an id the household deleted) is the
-//! caller's: those rows never reach here. Steps 5 (manual rows) and 6 (insert) are what's left.
+//! steps 1 to 5: the same id, a pending row posting under a new id, an id the bank re-issued, an
+//! imported row with no bank id taken over, and a manual row taken over. Step 0 (an id the
+//! household deleted) is the caller's: those rows never reach here. Step 6 (insert) is what's
+//! left.
 //!
 //! Pure: the caller loads the account's stored rows near the incoming dates and applies what
 //! comes back.
@@ -24,6 +25,8 @@ pub struct StoredRow {
     pub raw_description: String,
     /// It came from a file or the Actual import (`source = 'import'`).
     pub imported: bool,
+    /// The household typed it in (`source = 'manual'`); with no bank id, sync may adopt it.
+    pub manual: bool,
 }
 
 /// What to do with one incoming row.
@@ -36,8 +39,11 @@ pub enum Match {
     Posts(i64),
     /// Step 3: the stored row the bank re-issued under this new id.
     Reissued(i64),
-    /// Step 4: the imported row with no bank id it takes over.
+    /// Step 4 or 5: the imported or manual row with no bank id it takes over.
     Adopts(i64),
+    /// Step 5: insert it, flagged `possible_manual_match` with this manual row, whose amount it
+    /// exceeds by up to a quarter. Only the household merges them.
+    PossibleManualMatch(i64),
     /// Insert it, flagged `possible_duplicate` of this stored row.
     PossibleDuplicate(i64),
     /// Insert it.
@@ -50,12 +56,16 @@ const POSTING_DAYS: i32 = 7;
 const REISSUE_DAYS: i32 = 1;
 /// Days either side an imported row's date may sit from the bank's.
 const ADOPT_DAYS: i32 = 3;
+/// Days before a manual row's date the bank's may be: a card payment entered a little late.
+const MANUAL_DAYS_BEFORE: i32 = 3;
+/// Days after a manual row's date the bank's may be: a check cashed later.
+const MANUAL_DAYS_AFTER: i32 = 14;
 
 /// The earliest date a stored row can be and still match an incoming row dated `date`: the
 /// caller loads stored rows from here on.
 #[must_use]
 pub fn earliest_candidate(date: Date) -> Option<Date> {
-    date.plus_days(-POSTING_DAYS.max(ADOPT_DAYS))
+    date.plus_days(-POSTING_DAYS.max(ADOPT_DAYS).max(MANUAL_DAYS_AFTER))
 }
 
 /// "Similar description" *(agent)*: after the shared normalization, one text starts with the
@@ -88,6 +98,31 @@ fn posts_for(amount: Money, pending: Money) -> bool {
     posted >= held && posted * 4 <= held * 5
 }
 
+/// Step 5 among `candidates`, the manual rows with no bank id in `row`'s window: exactly one of
+/// the same amount is adopted, several are a possible duplicate (of the oldest). With none,
+/// exactly one the bank amount exceeds by up to a quarter is a possible manual match *(agent:
+/// candidates of another amount, or more than a quarter smaller, don't count against it)*.
+fn manual_adoption(row: &SyncedRow, mut candidates: Vec<&StoredRow>) -> Match {
+    candidates.sort_by_key(|s| (s.date, s.id));
+    let exact: Vec<&&StoredRow> = candidates
+        .iter()
+        .filter(|s| s.amount == row.amount)
+        .collect();
+    match exact.as_slice() {
+        [only] => return Match::Adopts(only.id),
+        [first, ..] => return Match::PossibleDuplicate(first.id),
+        [] => {}
+    }
+    let near: Vec<&&StoredRow> = candidates
+        .iter()
+        .filter(|s| posts_for(row.amount, s.amount))
+        .collect();
+    match near.as_slice() {
+        [only] => Match::PossibleManualMatch(only.id),
+        _ => Match::New,
+    }
+}
+
 /// Step 4 among `candidates`, the imported rows `row` could be: the nearest date wins, then a
 /// similar description; copies of the same row are taken one each, and a real tie is flagged
 /// *(agent)*.
@@ -113,6 +148,31 @@ fn adoption(row: &SyncedRow, mut candidates: Vec<&StoredRow>) -> Match {
     } else {
         Match::Adopts(best.id)
     }
+}
+
+/// Steps 4 and 5 for `row` among `stored`, the rows in `taken` aside: an imported row with no
+/// bank id, else a manual one, by its current (edited) values.
+fn adopt(row: &SyncedRow, stored: &[StoredRow], taken: &BTreeSet<i64>) -> Match {
+    let free = |s: &&StoredRow| !taken.contains(&s.id) && s.external_id.is_none();
+    let imported: Vec<&StoredRow> = stored
+        .iter()
+        .filter(free)
+        .filter(|s| s.imported && s.amount == row.amount)
+        .filter(|s| s.date.days_until(row.date).abs() <= ADOPT_DAYS)
+        .collect();
+    let found = adoption(row, imported);
+    if found != Match::New {
+        return found;
+    }
+    let manual: Vec<&StoredRow> = stored
+        .iter()
+        .filter(free)
+        .filter(|s| s.manual)
+        .filter(|s| {
+            (-MANUAL_DAYS_BEFORE..=MANUAL_DAYS_AFTER).contains(&s.date.days_until(row.date))
+        })
+        .collect();
+    manual_adoption(row, manual)
 }
 
 /// What each of `incoming` (one account's rows from this run's response) matches among
@@ -210,14 +270,7 @@ pub fn match_rows(incoming: &[SyncedRow], stored: &[StoredRow]) -> Vec<Match> {
             }
         }
 
-        // Step 4: an imported row with no bank id.
-        let candidates: Vec<&StoredRow> = stored
-            .iter()
-            .filter(free)
-            .filter(|s| s.imported && s.external_id.is_none() && s.amount == row.amount)
-            .filter(|s| s.date.days_until(row.date).abs() <= ADOPT_DAYS)
-            .collect();
-        matches[i] = adoption(row, candidates);
+        matches[i] = adopt(row, stored, &taken);
         if let Match::Adopts(id) = matches[i] {
             taken.insert(id);
         }
@@ -253,6 +306,7 @@ mod tests {
             pending: false,
             raw_description: text.to_owned(),
             imported: false,
+            manual: false,
         }
     }
 
@@ -495,11 +549,91 @@ mod tests {
         assert_eq!(match_rows(&rows, &kept), [Match::PossibleDuplicate(7)]);
     }
 
+    fn manual(id: i64, day: &str, minor: i64) -> StoredRow {
+        StoredRow {
+            manual: true,
+            ..stored(id, None, day, minor, "")
+        }
+    }
+
     #[test]
-    fn the_earliest_candidate_is_a_week_back() {
+    fn a_manual_row_is_adopted_from_3_days_before_to_14_after_its_date() {
+        let kept = [manual(7, "2026-10-10", -12000)];
+        for day in ["2026-10-07", "2026-10-10", "2026-10-24"] {
+            let rows = [incoming("T1", day, -12000, false, "CHECK 1042")];
+            assert_eq!(match_rows(&rows, &kept), [Match::Adopts(7)], "{day}");
+        }
+        // A day further either way, another amount, or a row with a bank id: inserted.
+        for day in ["2026-10-06", "2026-10-25"] {
+            let rows = [incoming("T1", day, -12000, false, "CHECK 1042")];
+            assert_eq!(match_rows(&rows, &kept), [Match::New], "{day}");
+        }
+        let rows = [incoming("T1", "2026-10-11", 12000, false, "CHECK 1042")];
+        assert_eq!(match_rows(&rows, &kept), [Match::New]);
+        let synced = [StoredRow {
+            external_id: Some("OLD".to_owned()),
+            ..manual(7, "2026-10-10", -12000)
+        }];
+        let rows = [incoming("T1", "2026-10-11", -12000, false, "CHECK 1042")];
+        assert_eq!(match_rows(&rows, &synced), [Match::New]);
+        // A pending bank row adopts it too.
+        let rows = [incoming("T1", "2026-10-11", -12000, true, "CHECK 1042")];
+        assert_eq!(match_rows(&rows, &kept), [Match::Adopts(7)]);
+    }
+
+    #[test]
+    fn two_manual_rows_of_the_amount_make_a_possible_duplicate_and_one_row_takes_one() {
+        let kept = [
+            manual(8, "2026-10-12", -2500),
+            manual(7, "2026-10-11", -2500),
+        ];
+        let rows = [incoming("T1", "2026-10-12", -2500, false, "DEMO PAY APP")];
+        assert_eq!(match_rows(&rows, &kept), [Match::PossibleDuplicate(7)]);
+        // Each bank row takes one manual row at most.
+        let kept = [manual(7, "2026-10-11", -2500)];
+        let rows = [
+            incoming("T1", "2026-10-12", -2500, false, "DEMO PAY APP"),
+            incoming("T2", "2026-10-13", -2500, false, "DEMO PAY APP"),
+        ];
+        assert_eq!(match_rows(&rows, &kept), [Match::Adopts(7), Match::New]);
+    }
+
+    #[test]
+    fn a_bank_amount_up_to_a_quarter_larger_is_a_possible_manual_match() {
+        let kept = [manual(7, "2026-10-11", -4000)];
+        let rows = [incoming("T1", "2026-10-12", -4600, false, "DEMO SITTER")];
+        assert_eq!(match_rows(&rows, &kept), [Match::PossibleManualMatch(7)]);
+        let rows = [incoming("T1", "2026-10-12", -5000, false, "DEMO SITTER")];
+        assert_eq!(match_rows(&rows, &kept), [Match::PossibleManualMatch(7)]);
+        // More than a quarter, or smaller: inserted.
+        for minor in [-5001, -3900] {
+            let rows = [incoming("T1", "2026-10-12", minor, false, "DEMO SITTER")];
+            assert_eq!(match_rows(&rows, &kept), [Match::New], "{minor}");
+        }
+        // Two candidates: no guess.
+        let kept = [
+            manual(7, "2026-10-11", -4000),
+            manual(8, "2026-10-12", -4200),
+        ];
+        let rows = [incoming("T1", "2026-10-12", -4600, false, "DEMO SITTER")];
+        assert_eq!(match_rows(&rows, &kept), [Match::New]);
+    }
+
+    #[test]
+    fn an_imported_row_is_adopted_before_a_manual_one() {
+        let kept = [
+            manual(7, "2026-10-11", -900),
+            imported(8, "2026-10-12", -900, "DEMO DELI"),
+        ];
+        let rows = [incoming("T1", "2026-10-12", -900, false, "DEMO DELI")];
+        assert_eq!(match_rows(&rows, &kept), [Match::Adopts(8)]);
+    }
+
+    #[test]
+    fn the_earliest_candidate_is_two_weeks_back() {
         assert_eq!(
             earliest_candidate(date("2026-10-28")),
-            Some(date("2026-10-21"))
+            Some(date("2026-10-14"))
         );
     }
 }

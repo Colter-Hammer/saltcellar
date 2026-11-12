@@ -62,6 +62,7 @@ export default defineConfig({
         'manual-accounts.spec.ts',
         'new-accounts.spec.ts',
         'manual-entry.spec.ts',
+        'manual-adoption.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -82,6 +83,7 @@ export default defineConfig({
         'manual-accounts.spec.ts',
         'new-accounts.spec.ts',
         'manual-entry.spec.ts',
+        'manual-adoption.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -152,6 +154,14 @@ export default defineConfig({
       name: 'manual-entry',
       testMatch: 'manual-entry.spec.ts',
       dependencies: ['new-accounts'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Then a manual row on the tracked checking account, which a sync adopts: it switches the
+    // fake Bridge's scenario, so nothing runs beside it.
+    {
+      name: 'manual-adoption',
+      testMatch: 'manual-adoption.spec.ts',
+      dependencies: ['manual-entry'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

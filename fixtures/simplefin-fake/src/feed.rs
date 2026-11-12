@@ -162,6 +162,16 @@ fn scenario_rows(scenario: Scenario, day: u32) -> Vec<Row> {
             "DEMO GYM",
             "Demo Gym",
         )],
+        Scenario::ManualRowsArrive if day > 0 => vec![
+            posted("TRN-demo-check-1", 1, "-120.00", "CHECK 1042", "Check 1042"),
+            posted(
+                "TRN-demo-sitter-1",
+                1,
+                "-46.00",
+                "DEMO PAY APP *SITTER",
+                "Demo Pay App",
+            ),
+        ],
         _ => Vec::new(),
     }
 }
