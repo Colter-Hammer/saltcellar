@@ -184,7 +184,11 @@ pub async fn sync_history(pool: &SqlitePool) -> Result<Vec<RunWithAccounts>, Err
                     ok: r.ok,
                     error_code: r.error_code.clone(),
                     error: r.error.clone(),
-                    balance_date: r.provider_balance_date.clone().map(parse_stamp).transpose()?,
+                    balance_date: r
+                        .provider_balance_date
+                        .clone()
+                        .map(parse_stamp)
+                        .transpose()?,
                 })
             })
             .collect::<Result<Vec<_>, Error>>()?;

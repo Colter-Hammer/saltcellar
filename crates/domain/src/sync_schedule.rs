@@ -75,9 +75,7 @@ impl SyncTime {
         if on_today <= now {
             return on_today;
         }
-        today
-            .checked_sub(1.day())
-            .map_or(on_today, slot)
+        today.checked_sub(1.day()).map_or(on_today, slot)
     }
 }
 
@@ -140,7 +138,12 @@ pub fn allows(spent: &[Spent], now: Timestamp, asker: Asker, needed: u32) -> boo
 /// of the spent requests leave the window. `None` too if it never could (it asks for more than
 /// the cap).
 #[must_use]
-pub fn allowed_from(spent: &[Spent], now: Timestamp, asker: Asker, needed: u32) -> Option<Timestamp> {
+pub fn allowed_from(
+    spent: &[Spent],
+    now: Timestamp,
+    asker: Asker,
+    needed: u32,
+) -> Option<Timestamp> {
     if allows(spent, now, asker, needed) {
         return None;
     }
@@ -272,7 +275,11 @@ mod tests {
         let slot = at("2026-10-28T11:13:00Z");
         assert!(!scheduled_due(slot, None, slot - mins(1)));
         assert!(scheduled_due(slot, None, slot));
-        assert!(scheduled_due(slot, Some(slot - mins(60 * 24)), slot + mins(59)));
+        assert!(scheduled_due(
+            slot,
+            Some(slot - mins(60 * 24)),
+            slot + mins(59)
+        ));
         assert!(!scheduled_due(slot, None, slot + mins(60)));
         assert!(!scheduled_due(slot, Some(slot), slot + mins(1)));
     }

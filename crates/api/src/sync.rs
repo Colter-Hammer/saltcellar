@@ -334,7 +334,16 @@ pub(crate) async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<Ra
         end.updated += applied.updated;
     }
     let results: Vec<db::AccountResult> = read.into_values().map(|a| a.result).collect();
-    finish(state, trigger, connection_id, run_id, &links, &end, &results).await
+    finish(
+        state,
+        trigger,
+        connection_id,
+        run_id,
+        &links,
+        &end,
+        &results,
+    )
+    .await
 }
 
 /// Records the run's end, marks what it back-filled, prunes the history and logs the run's line.
@@ -396,8 +405,8 @@ async fn keep_raw_response(
     n: usize,
     body: &str,
 ) -> Result<(), ApiError> {
-    let sealed =
-        simplefin::seal_raw_response(key, body.as_bytes()).map_err(|error| ApiError::internal(&error))?;
+    let sealed = simplefin::seal_raw_response(key, body.as_bytes())
+        .map_err(|error| ApiError::internal(&error))?;
     let seq = i64::try_from(n).unwrap_or(i64::MAX);
     db::keep_raw_response(&state.pool, run_id, seq, state.now(), &sealed).await?;
     Ok(())

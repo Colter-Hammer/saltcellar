@@ -14,10 +14,7 @@ fn at(text: &str) -> Timestamp {
 #[tokio::test]
 async fn sync_settings_read_back_and_turning_raw_off_deletes_the_kept_ones() {
     let (_dir, pool) = migrated().await;
-    assert_eq!(
-        sync_settings(&pool).await.unwrap(),
-        SyncSettings::default()
-    );
+    assert_eq!(sync_settings(&pool).await.unwrap(), SyncSettings::default());
     set_sync_settings(&pool, "07:41", true).await.unwrap();
     assert_eq!(
         sync_settings(&pool).await.unwrap(),
@@ -107,16 +104,29 @@ async fn the_history_lists_runs_newest_first_with_their_accounts_and_prunes() {
                 error: None,
                 balance_date: None,
             };
-            finish_sync_run(&pool, run, &end, &[result], started + SignedDuration::from_secs(2))
+            finish_sync_run(
+                &pool,
+                run,
+                &end,
+                &[result],
+                started + SignedDuration::from_secs(2),
+            )
+            .await
+            .unwrap();
+            keep_raw_response(&pool, run, 0, started, b"sealed")
                 .await
                 .unwrap();
-            keep_raw_response(&pool, run, 0, started, b"sealed").await.unwrap();
             run
         }
     };
     let old = run_at(SyncTrigger::Scheduled, "2026-07-01T11:13:00Z", None).await;
     let scheduled = run_at(SyncTrigger::Scheduled, "2026-10-20T11:13:00Z", None).await;
-    let manual = run_at(SyncTrigger::Manual, "2026-10-28T09:00:00Z", Some("unreachable")).await;
+    let manual = run_at(
+        SyncTrigger::Manual,
+        "2026-10-28T09:00:00Z",
+        Some("unreachable"),
+    )
+    .await;
     run_at(SyncTrigger::Backfill, "2026-10-28T09:10:00Z", None).await;
 
     assert_eq!(
@@ -132,8 +142,13 @@ async fn the_history_lists_runs_newest_first_with_their_accounts_and_prunes() {
         Some(at("2026-10-28T09:00:02Z"))
     );
     assert_eq!(
-        requests_since(&pool, at("2026-10-27T09:10:00Z")).await.unwrap(),
-        [(at("2026-10-28T09:00:00Z"), 1), (at("2026-10-28T09:10:00Z"), 1)]
+        requests_since(&pool, at("2026-10-27T09:10:00Z"))
+            .await
+            .unwrap(),
+        [
+            (at("2026-10-28T09:00:00Z"), 1),
+            (at("2026-10-28T09:10:00Z"), 1)
+        ]
     );
 
     let history = sync_history(&pool).await.unwrap();
@@ -167,9 +182,10 @@ async fn the_history_lists_runs_newest_first_with_their_accounts_and_prunes() {
         .map(|r| r.run.id)
         .collect();
     assert_eq!(ids[1..], [manual, scheduled]);
-    let kept: Vec<i64> = sqlx::query_scalar("SELECT sync_run_id FROM sync_raw_responses ORDER BY 1")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let kept: Vec<i64> =
+        sqlx::query_scalar("SELECT sync_run_id FROM sync_raw_responses ORDER BY 1")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     assert_eq!(kept, [manual, ids[0]]);
 }

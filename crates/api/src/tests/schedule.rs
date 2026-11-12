@@ -74,7 +74,10 @@ async fn the_cap_holds_one_request_back_for_the_scheduled_run() {
     }
     let state = screen(&app).await;
     assert_eq!(
-        (&state["sync"]["requests_left"], &state["sync"]["request_cap"]),
+        (
+            &state["sync"]["requests_left"],
+            &state["sync"]["request_cap"]
+        ),
         (&json!(1), &json!(12))
     );
     // The last request is the scheduled run's: the back-fill's two leave the window at 09:00
@@ -310,11 +313,17 @@ async fn the_history_lists_each_run_with_its_accounts() {
             .clone()
     };
     assert_eq!(
-        (result(checking)["ok"].clone(), result(checking)["error_code"].clone()),
+        (
+            result(checking)["ok"].clone(),
+            result(checking)["error_code"].clone()
+        ),
         (json!(true), Value::Null)
     );
     assert_eq!(
-        (result(card)["ok"].clone(), result(card)["error_code"].clone()),
+        (
+            result(card)["ok"].clone(),
+            result(card)["error_code"].clone()
+        ),
         (json!(false), json!("act.missingdata"))
     );
     assert!(result(card)["error"].is_string());
@@ -368,5 +377,8 @@ async fn a_sync_time_must_be_hh_mm() {
     assert_eq!(screen(&app).await["sync"]["time"], "06:13");
     let (status, body) = set_sync(&app, "6 am", false).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["error"]["fields"]["sync_time"], "Enter a time like 06:13.");
+    assert_eq!(
+        body["error"]["fields"]["sync_time"],
+        "Enter a time like 06:13."
+    );
 }

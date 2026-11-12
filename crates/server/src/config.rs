@@ -138,7 +138,11 @@ impl Config {
                 .parse::<u16>()
                 .map(|mins| jiff::SignedDuration::from_mins(i64::from(mins)))
                 .map_err(|_| {
-                    invalid("BUDGET_SYNC_COOLDOWN_MINUTES", &value, "a whole number of minutes")
+                    invalid(
+                        "BUDGET_SYNC_COOLDOWN_MINUTES",
+                        &value,
+                        "a whole number of minutes",
+                    )
                 })?,
         };
 

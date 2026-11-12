@@ -10,7 +10,9 @@ mod feed;
 mod secret;
 
 pub use claim::{AccessUrl, ClaimError, ClaimPolicy, ClaimUrl, TokenError, claim};
-pub use feed::{Feed, FeedAccount, FeedProblem, FetchError, fetch, fetch_accounts, fetch_with_body};
+pub use feed::{
+    Feed, FeedAccount, FeedProblem, FetchError, fetch, fetch_accounts, fetch_with_body,
+};
 pub use secret::{
     KeyError, OpenError, SealError, SecretKey, open, open_raw_response, seal, seal_raw_response,
 };

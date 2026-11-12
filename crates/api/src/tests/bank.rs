@@ -454,7 +454,10 @@ async fn the_access_url_is_in_no_response_and_no_log_line() {
         synced_url.as_str(),
         "/simplefin",
     ] {
-        assert!(!log.contains(row_text), "{row_text:?} leaked into the log:\n{log}");
+        assert!(
+            !log.contains(row_text),
+            "{row_text:?} leaked into the log:\n{log}"
+        );
     }
     for secret in [
         claimed.as_str(),
