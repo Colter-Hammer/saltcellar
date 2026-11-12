@@ -12,6 +12,7 @@ pub mod feed;
 pub mod import;
 pub mod login;
 pub mod manual;
+pub mod matching;
 mod money;
 pub mod profile;
 mod setup_code;

@@ -96,10 +96,10 @@ struct Account {
     rows: Vec<Row>,
 }
 
-/// The one extra checking row a scenario adds, if any.
-fn scenario_row(scenario: Scenario, day: u32) -> Option<Row> {
+/// The extra checking rows a scenario adds on `day`.
+fn scenario_rows(scenario: Scenario, day: u32) -> Vec<Row> {
     match scenario {
-        Scenario::PendingPosts => Some(Row {
+        Scenario::PendingPosts => vec![Row {
             id: "TRN-demo-pend-1",
             transacted_days_ago: 1,
             posted_days_ago: i64::from(day != 0),
@@ -107,8 +107,8 @@ fn scenario_row(scenario: Scenario, day: u32) -> Option<Row> {
             description: "DEMO PHARMACY",
             payee: "Demo Pharmacy",
             pending: day == 0,
-        }),
-        Scenario::PendingAmountChanges if day == 0 => Some(Row {
+        }],
+        Scenario::PendingAmountChanges if day == 0 => vec![Row {
             id: "TRN-demo-tab-1",
             transacted_days_ago: 1,
             posted_days_ago: 0,
@@ -116,15 +116,15 @@ fn scenario_row(scenario: Scenario, day: u32) -> Option<Row> {
             description: "DEMO BISTRO",
             payee: "Demo Bistro",
             pending: true,
-        }),
-        Scenario::PendingAmountChanges => Some(posted(
+        }],
+        Scenario::PendingAmountChanges => vec![posted(
             "TRN-demo-tab-2",
             1,
             "-48.00",
             "DEMO BISTRO",
             "Demo Bistro",
-        )),
-        Scenario::IdReissued => Some(posted(
+        )],
+        Scenario::IdReissued => vec![posted(
             if day == 0 {
                 "TRN-demo-cafe-2"
             } else {
@@ -134,8 +134,35 @@ fn scenario_row(scenario: Scenario, day: u32) -> Option<Row> {
             "-4.50",
             "DEMO COFFEE ROASTERS",
             "Demo Coffee Roasters",
-        )),
-        _ => None,
+        )],
+        Scenario::IdsReissuedTogether => {
+            let (older, newer) = if day == 0 {
+                ("TRN-demo-park-1", "TRN-demo-park-2")
+            } else {
+                ("TRN-demo-park-3", "TRN-demo-park-4")
+            };
+            vec![
+                posted(older, 3, "-6.00", "DEMO PARKING", "Demo Parking"),
+                posted(newer, 2, "-6.00", "DEMO PARKING", "Demo Parking"),
+            ]
+        }
+        Scenario::PendingDropped if day == 0 => vec![Row {
+            id: "TRN-demo-hold-1",
+            transacted_days_ago: 1,
+            posted_days_ago: 0,
+            amount: "-150.00",
+            description: "DEMO HOTEL DEPOSIT",
+            payee: "Demo Hotel",
+            pending: true,
+        }],
+        Scenario::PostedDropped if day == 0 => vec![posted(
+            "TRN-demo-gym-1",
+            10,
+            "-35.00",
+            "DEMO GYM",
+            "Demo Gym",
+        )],
+        _ => Vec::new(),
     }
 }
 
@@ -170,7 +197,7 @@ fn accounts(scenario: Scenario, day: u32, currency: &str) -> Vec<Account> {
             "Demo Power Co",
         ),
     ];
-    checking.extend(scenario_row(scenario, day));
+    checking.extend(scenario_rows(scenario, day));
     let card = if scenario == Scenario::MissingData {
         Vec::new()
     } else {

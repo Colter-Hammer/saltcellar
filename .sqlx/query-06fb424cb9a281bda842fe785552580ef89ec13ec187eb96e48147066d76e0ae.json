@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO deleted_bank_rows (account_id, external_id, deleted_by, deleted_at)\n         VALUES (?, ?, ?, ?)\n         ON CONFLICT (account_id, external_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "06fb424cb9a281bda842fe785552580ef89ec13ec187eb96e48147066d76e0ae"
+}

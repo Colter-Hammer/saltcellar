@@ -4,7 +4,9 @@
 // import it came in with. A From Actual, undecided row gets a category picker
 // (docs/spec/m1-ledger-import.md#from-actual-undecided). A manual row no bank row has adopted
 // carries the manual badge, and Edit (the entry form, in place of the details) and Delete, which
-// is immediate: the screen offers Undo (docs/spec/m2-bank-data.md#manual-entry).
+// is immediate: the screen offers Undo (docs/spec/m2-bank-data.md#manual-entry). A row from the
+// bank can be deleted too, after a warning that suggests excluding it from budgets instead; its
+// id is kept so sync never brings it back (docs/spec/m2-bank-data.md#deleting-a-synced-row).
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/client'
 import { type ManualEntry, useManualEdits, useTransaction } from '@/api/transactions'
@@ -46,11 +48,14 @@ const manual = useManualEdits()
 const editing = ref(false)
 const saving = ref(false)
 const refused = ref<EntryErrors>()
+// Deleting a bank row asks first.
+const confirming = ref(false)
 watch(
   () => props.id,
   () => {
     editing.value = false
     refused.value = undefined
+    confirming.value = false
   },
 )
 
@@ -69,6 +74,27 @@ async function save(entry: ManualEntry) {
     }
   } finally {
     saving.value = false
+  }
+}
+
+async function removeBankRow() {
+  failure.value = ''
+  try {
+    await manual.remove(props.id)
+    confirming.value = false
+    emit('close')
+  } catch (error) {
+    failure.value = error instanceof ApiError ? error.message : 'Something went wrong.'
+  }
+}
+
+async function exclude(excluded: boolean) {
+  failure.value = ''
+  try {
+    await manual.exclude(props.id, excluded)
+    confirming.value = false
+  } catch (error) {
+    failure.value = error instanceof ApiError ? error.message : 'Something went wrong.'
   }
 }
 
@@ -140,6 +166,48 @@ const batch = computed(() => {
           Delete
         </button>
       </div>
+      <div v-else-if="transaction.source === 'provider' && !confirming" class="flex gap-2">
+        <button
+          type="button"
+          class="rounded-md border px-3 py-1 text-destructive"
+          @click="confirming = true"
+        >
+          Delete
+        </button>
+      </div>
+      <section
+        v-if="confirming"
+        role="alertdialog"
+        aria-labelledby="delete-bank-row"
+        aria-describedby="delete-bank-row-why"
+        class="flex flex-col gap-2 rounded-md border border-destructive p-3"
+      >
+        <h3 id="delete-bank-row" class="font-medium">Delete this bank transaction?</h3>
+        <p id="delete-bank-row-why" class="text-muted-foreground">
+          The bank still has it. Once deleted, syncing won't bring it back. To keep it in the list
+          but out of your budgets, exclude it instead.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-if="!transaction.excluded"
+            type="button"
+            class="rounded-md bg-primary px-3 py-1 text-primary-foreground"
+            @click="exclude(true)"
+          >
+            Exclude from budgets instead
+          </button>
+          <button
+            type="button"
+            class="rounded-md border px-3 py-1 text-destructive"
+            @click="removeBankRow"
+          >
+            Delete
+          </button>
+          <button type="button" class="rounded-md border px-3 py-1" @click="confirming = false">
+            Cancel
+          </button>
+        </div>
+      </section>
       <dl aria-label="Details" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
         <dt class="text-muted-foreground">Date</dt>
         <dd>{{ formatDate(transaction.date, formatting) }}</dd>
@@ -178,6 +246,18 @@ const batch = computed(() => {
         <dd>{{ statusLabel(transaction.status) }}</dd>
         <dt class="text-muted-foreground">Source</dt>
         <dd>{{ sourceLabel(transaction.source) }}</dd>
+        <dt class="text-muted-foreground">In budgets</dt>
+        <dd class="flex flex-wrap items-center gap-2">
+          {{ transaction.excluded ? 'Excluded' : 'Counted' }}
+          <button
+            v-if="transaction.excluded"
+            type="button"
+            class="rounded-md border px-3 py-1"
+            @click="exclude(false)"
+          >
+            Count it again
+          </button>
+        </dd>
         <dt class="text-muted-foreground">Categorized</dt>
         <dd>{{ transaction.categorization_reason ?? '—' }}</dd>
         <dt class="text-muted-foreground">Import</dt>

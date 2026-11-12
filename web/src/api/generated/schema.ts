@@ -691,8 +691,11 @@ export interface paths {
         put: operations["changeTransaction"];
         post?: never;
         /**
-         * `DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted, with
-         *     its tags and its transfer. The screen's **Undo** enters it again *(agent)*.
+         * `DELETE /api/v1/transactions/{id}`: deletes a manual transaction no bank row has adopted,
+         *     with its tags and its transfer (the screen's **Undo** enters it again *(agent)*), or a row from
+         *     the bank (docs/spec/m2-bank-data.md#deleting-a-synced-row). A bank row's id is kept, so the
+         *     next sync doesn't bring it back; the screen warns first and suggests excluding it from budgets
+         *     instead. A row from a file without a bank id is undone with its import instead.
          */
         delete: operations["deleteTransaction"];
         options?: never;
@@ -710,6 +713,27 @@ export interface paths {
         get?: never;
         /** `PUT /api/v1/transactions/{id}/category`: gives one undecided row its category, as above. */
         put: operations["setTransactionCategory"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transactions/{id}/excluded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * `PUT /api/v1/transactions/{id}/excluded`: excludes a transaction from budgets, or counts it
+         *     again. Offered in place of deleting a row from the bank
+         *     (docs/spec/m2-bank-data.md#deleting-a-synced-row).
+         */
+        put: operations["setTransactionExcluded"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1175,6 +1199,11 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** @description Whether a transaction counts in budgets. */
+        Excluded: {
+            /** @description True: left out of budgets. False: counted again. */
+            excluded: boolean;
+        };
         /** @description An account the connection reports that isn't tracked. */
         FeedAccount: {
             /**
@@ -1484,6 +1513,8 @@ export interface components {
         Transaction: components["schemas"]["TransactionRow"] & {
             /** @description How it got its category, in words; null when nothing gave it one. */
             categorization_reason: string | null;
+            /** @description Excluded from budgets: `PUT /api/v1/transactions/{id}/excluded` sets it. */
+            excluded: boolean;
             import_batch: components["schemas"]["ImportBatchRef"] | null;
             memo: string | null;
             source: components["schemas"]["TransactionSource"];
@@ -3797,7 +3828,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `not_manual`: it came from the bank or a file, or a bank row has adopted it. */
+            /** @description `not_manual`: it came from a file and has no bank id. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3853,6 +3884,51 @@ export interface operations {
             };
             /** @description `validation_failed`: there's no such category. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setTransactionExcluded: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The transaction. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Excluded"];
+            };
+        };
+        responses: {
+            /** @description The transaction, changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such transaction. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

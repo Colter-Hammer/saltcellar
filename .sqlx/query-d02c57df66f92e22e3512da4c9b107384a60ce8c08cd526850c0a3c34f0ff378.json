@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET exclude_from_budget = ?, updated_at = ?, updated_by = ?\n         WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "d02c57df66f92e22e3512da4c9b107384a60ce8c08cd526850c0a3c34f0ff378"
+}

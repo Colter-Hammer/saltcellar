@@ -51,6 +51,24 @@ impl Date {
         let day = self.0.yesterday().ok()?;
         (day.year() >= 1).then_some(Date(day))
     }
+
+    /// The date `days` later (earlier when negative); `None` off the calendar.
+    #[must_use]
+    pub fn plus_days(self, days: i32) -> Option<Date> {
+        let day = self
+            .0
+            .checked_add(jiff::Span::new().try_days(days).ok()?)
+            .ok()?;
+        (day.year() >= 1).then_some(Date(day))
+    }
+
+    /// Days from `self` to `later`: negative when `later` is before it.
+    #[must_use]
+    pub fn days_until(self, later: Date) -> i32 {
+        // Days are the largest unit a civil date's span takes, so this is the whole difference;
+        // it can't fail between two dates on the calendar.
+        later.0.since(self.0).map_or(0, |span| span.get_days())
+    }
 }
 
 /// Exactly `YYYY-MM-DD`: four-digit year, two-digit month and day, nothing before or after.
@@ -97,6 +115,17 @@ mod tests {
         assert_eq!(date("2026-03-01").previous_day(), Some(date("2026-02-28")));
         assert_eq!(date("2025-01-01").previous_day(), Some(date("2024-12-31")));
         assert_eq!(date("0001-01-01").previous_day(), None);
+    }
+
+    #[test]
+    fn counts_and_moves_by_days() {
+        assert_eq!(date("2026-02-27").plus_days(3), Some(date("2026-03-02")));
+        assert_eq!(date("2026-01-02").plus_days(-2), Some(date("2025-12-31")));
+        assert_eq!(date("0001-01-01").plus_days(-1), None);
+        assert_eq!(date("9999-12-31").plus_days(1), None);
+        assert_eq!(date("2026-02-27").days_until(date("2026-03-02")), 3);
+        assert_eq!(date("2026-03-02").days_until(date("2026-02-27")), -3);
+        assert_eq!(date("2025-01-01").days_until(date("2026-01-01")), 365);
     }
 
     #[test]
