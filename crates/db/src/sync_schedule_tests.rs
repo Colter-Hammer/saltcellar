@@ -78,56 +78,85 @@ async fn connected_account(pool: &SqlitePool) -> (i64, i64) {
     (connection, account)
 }
 
+/// A finished run of `trigger` with one request, started at `started`, failed with `error` if
+/// given, with a kept raw response; resolves to its id.
+async fn run_at(
+    pool: &SqlitePool,
+    connection: i64,
+    account: i64,
+    trigger: SyncTrigger,
+    started: &str,
+    error: Option<&str>,
+) -> i64 {
+    let started = at(started);
+    let error = error.map(str::to_owned);
+    let run = start_sync_run(pool, connection, trigger, started)
+        .await
+        .unwrap();
+    let end = RunEnd {
+        requests: 1,
+        error_code: error.clone(),
+        error: error.clone(),
+        ..RunEnd::default()
+    };
+    let result = AccountResult {
+        account_id: account,
+        ok: error.is_none(),
+        error_code: None,
+        error: None,
+        balance_date: None,
+    };
+    let finished = started + SignedDuration::from_secs(2);
+    finish_sync_run(pool, run, &end, &[result], finished)
+        .await
+        .unwrap();
+    keep_raw_response(pool, run, 0, started, b"sealed")
+        .await
+        .unwrap();
+    run
+}
+
 #[tokio::test]
 async fn the_history_lists_runs_newest_first_with_their_accounts_and_prunes() {
     let (_dir, pool) = migrated().await;
     let (connection, account) = connected_account(&pool).await;
 
-    let run_at = |trigger, started: &str, error: Option<&str>| {
-        let pool = pool.clone();
-        let started = at(started);
-        let error = error.map(str::to_owned);
-        async move {
-            let run = start_sync_run(&pool, connection, trigger, started)
-                .await
-                .unwrap();
-            let end = RunEnd {
-                requests: 1,
-                error_code: error.clone(),
-                error: error.clone(),
-                ..RunEnd::default()
-            };
-            let result = AccountResult {
-                account_id: account,
-                ok: error.is_none(),
-                error_code: None,
-                error: None,
-                balance_date: None,
-            };
-            finish_sync_run(
-                &pool,
-                run,
-                &end,
-                &[result],
-                started + SignedDuration::from_secs(2),
-            )
-            .await
-            .unwrap();
-            keep_raw_response(&pool, run, 0, started, b"sealed")
-                .await
-                .unwrap();
-            run
-        }
-    };
-    let old = run_at(SyncTrigger::Scheduled, "2026-07-01T11:13:00Z", None).await;
-    let scheduled = run_at(SyncTrigger::Scheduled, "2026-10-20T11:13:00Z", None).await;
+    let old = run_at(
+        &pool,
+        connection,
+        account,
+        SyncTrigger::Scheduled,
+        "2026-07-01T11:13:00Z",
+        None,
+    )
+    .await;
+    let scheduled = run_at(
+        &pool,
+        connection,
+        account,
+        SyncTrigger::Scheduled,
+        "2026-10-20T11:13:00Z",
+        None,
+    )
+    .await;
     let manual = run_at(
+        &pool,
+        connection,
+        account,
         SyncTrigger::Manual,
         "2026-10-28T09:00:00Z",
         Some("unreachable"),
     )
     .await;
-    run_at(SyncTrigger::Backfill, "2026-10-28T09:10:00Z", None).await;
+    run_at(
+        &pool,
+        connection,
+        account,
+        SyncTrigger::Backfill,
+        "2026-10-28T09:10:00Z",
+        None,
+    )
+    .await;
 
     assert_eq!(
         last_scheduled_sync(&pool).await.unwrap(),
