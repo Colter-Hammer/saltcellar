@@ -130,6 +130,18 @@ impl Config {
                 .map(str::to_owned),
         );
 
+        // A dev setting: e2e presses Sync now in one spec after another, minutes apart.
+        let sync_cooldown = match get("BUDGET_SYNC_COOLDOWN_MINUTES") {
+            None => BankConfig::default().sync_cooldown,
+            Some(value) => value
+                .trim()
+                .parse::<u16>()
+                .map(|mins| jiff::SignedDuration::from_mins(i64::from(mins)))
+                .map_err(|_| {
+                    invalid("BUDGET_SYNC_COOLDOWN_MINUTES", &value, "a whole number of minutes")
+                })?,
+        };
+
         Ok(Config {
             data_dir,
             listen,
@@ -139,6 +151,7 @@ impl Config {
             bank: BankConfig {
                 secret_key,
                 claim_policy,
+                sync_cooldown,
             },
         })
     }
@@ -210,6 +223,7 @@ mod tests {
                 "BUDGET_SIMPLEFIN_CLAIM_HOSTS",
                 "127.0.0.1:8190, Fake.example.test",
             ),
+            ("BUDGET_SYNC_COOLDOWN_MINUTES", "0"),
         ])
         .unwrap();
         assert_eq!(c.data_dir, PathBuf::from("/srv/budget"));
@@ -231,6 +245,7 @@ mod tests {
             c.bank.claim_policy.hosts(),
             ["127.0.0.1:8190", "fake.example.test"]
         );
+        assert_eq!(c.bank.sync_cooldown, jiff::SignedDuration::ZERO);
     }
 
     /// 32 bytes of base64, made up for the tests.
@@ -284,6 +299,10 @@ mod tests {
     fn invalid_values_name_the_variable() {
         error_names(&[("BUDGET_AUTH_MODE", "nonsense")], "BUDGET_AUTH_MODE");
         error_names(&[("BUDGET_LISTEN", "8080")], "BUDGET_LISTEN");
+        error_names(
+            &[("BUDGET_SYNC_COOLDOWN_MINUTES", "soon")],
+            "BUDGET_SYNC_COOLDOWN_MINUTES",
+        );
         error_names(
             &[("BUDGET_BASE_URL", "budget.example.test")],
             "BUDGET_BASE_URL",

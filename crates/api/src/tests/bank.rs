@@ -24,6 +24,7 @@ fn bank(server: &FakeServer, key: Option<SecretKey>) -> BankConfig {
     BankConfig {
         secret_key: key,
         claim_policy: ClaimPolicy::only_hosts([server.host()]),
+        ..BankConfig::default()
     }
 }
 
@@ -55,6 +56,19 @@ async fn state(app: &App) -> Value {
     call(&app.router, &app.cookie, "GET", &Value::Null).await.1
 }
 
+/// The screen's sync part before any sync, with nothing set.
+fn fresh_sync() -> Value {
+    json!({
+        "time": "06:13",
+        "keep_raw_responses": false,
+        "request_cap": 12,
+        "requests_left": 12,
+        "last_synced_at": null,
+        "cooldown_until": null,
+        "limit_until": null
+    })
+}
+
 async fn sealed_secret(app: &App) -> Vec<u8> {
     sqlx::query_scalar("SELECT secret_encrypted FROM connections")
         .fetch_one(&app.pool)
@@ -77,7 +91,7 @@ async fn claiming_stores_an_encrypted_secret_and_the_screen_shows_connected() {
     let app = set_up_with_bank(bank(&server, Some(key(1)))).await;
     assert_eq!(
         state(&app).await,
-        json!({ "secret_key_set": true, "connection": null })
+        json!({ "secret_key_set": true, "connection": null, "sync": fresh_sync() })
     );
 
     let (status, body) = claim(&app, &server.setup_token()).await;
@@ -86,7 +100,8 @@ async fn claiming_stores_an_encrypted_secret_and_the_screen_shows_connected() {
         body,
         json!({
             "secret_key_set": true,
-            "connection": { "label": "SimpleFIN Bridge", "status": "ok", "paused": false, "last_sync": null }
+            "connection": { "label": "SimpleFIN Bridge", "status": "ok", "paused": false, "last_sync": null },
+            "sync": fresh_sync()
         })
     );
     assert_eq!(state(&app).await, body);
@@ -135,7 +150,7 @@ async fn without_a_secret_key_claiming_is_refused_with_a_clear_message() {
     let app = set_up_with_bank(bank(&server, None)).await;
     assert_eq!(
         state(&app).await,
-        json!({ "secret_key_set": false, "connection": null })
+        json!({ "secret_key_set": false, "connection": null, "sync": fresh_sync() })
     );
     let (status, body) = claim(&app, &server.setup_token()).await;
     assert_eq!(status, StatusCode::CONFLICT);
@@ -300,7 +315,7 @@ async fn disconnecting_deletes_the_secret_and_leaves_accounts_and_rows() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert_eq!(
         state(&app).await,
-        json!({ "secret_key_set": true, "connection": null })
+        json!({ "secret_key_set": true, "connection": null, "sync": fresh_sync() })
     );
     assert_eq!(count(&app, "connections").await, 0);
     assert_eq!(
@@ -402,11 +417,45 @@ async fn the_access_url_is_in_no_response_and_no_log_line() {
         .unwrap();
     let (user, pass) = login.split_once(':').unwrap();
 
+    // A back-fill and a Sync now with rows in them: their log lines carry no amount, bank text
+    // or payee, and no access URL.
+    let (_synced_bridge, synced) = super::sync::claimed_app(Scenario::Steady).await;
+    super::sync::track(&synced, "ACT-demo-checking", false).await;
+    let (status, run) = super::sync::sync_now(&synced).await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    let synced_url = simplefin::open(
+        &SecretKey::from_base64(&base64::engine::general_purpose::STANDARD.encode([7_u8; 32]))
+            .unwrap(),
+        &sealed_secret(&synced).await,
+    )
+    .unwrap()
+    .expose()
+    .to_owned();
+
     let log = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
     assert!(
         log.contains("bank connection claimed"),
         "the log was captured:\n{log}"
     );
+    assert!(
+        log.contains("bank sync ran") && log.contains("trigger=\"manual\""),
+        "the sync's line was captured:\n{log}"
+    );
+    for row_text in [
+        "2400.00",
+        "1200.00",
+        "86.12",
+        "64.30",
+        "DEMO EMPLOYER PAYROLL",
+        "DEMO GROCER",
+        "Demo Employer",
+        "Demo Grocer",
+        "Demo Properties",
+        synced_url.as_str(),
+        "/simplefin",
+    ] {
+        assert!(!log.contains(row_text), "{row_text:?} leaked into the log:\n{log}");
+    }
     for secret in [
         claimed.as_str(),
         login.as_str(),

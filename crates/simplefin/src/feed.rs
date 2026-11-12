@@ -162,6 +162,15 @@ pub fn fetch_accounts(access: &AccessUrl, start_date: i64) -> Result<Vec<FeedAcc
 /// # Errors
 /// [`FetchError`]: the Bridge can't be reached, refuses, or answers something that isn't a feed.
 pub fn fetch(access: &AccessUrl, window: Window) -> Result<Feed, FetchError> {
+    fetch_with_body(access, window).map(|(feed, _)| feed)
+}
+
+/// [`fetch`], with the answer's text as received, for keeping when the household asks to. The
+/// text carries amounts and descriptions: seal it, never log it.
+///
+/// # Errors
+/// As [`fetch`].
+pub fn fetch_with_body(access: &AccessUrl, window: Window) -> Result<(Feed, String), FetchError> {
     let (base, login) = split(access).ok_or(FetchError::BadAnswer)?;
     let end = window
         .end
@@ -199,7 +208,8 @@ pub fn fetch(access: &AccessUrl, window: Window) -> Result<Feed, FetchError> {
         .limit(MAX_ANSWER)
         .read_to_string()
         .map_err(|_| FetchError::BadAnswer)?;
-    read(&text).ok_or(FetchError::BadAnswer)
+    let feed = read(&text).ok_or(FetchError::BadAnswer)?;
+    Ok((feed, text))
 }
 
 /// A v2 feed's text; `None` if it isn't one.

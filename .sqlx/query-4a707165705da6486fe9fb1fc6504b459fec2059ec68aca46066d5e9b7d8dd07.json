@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO sync_raw_responses (sync_run_id, seq, received_at, body) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "4a707165705da6486fe9fb1fc6504b459fec2059ec68aca46066d5e9b7d8dd07"
+}

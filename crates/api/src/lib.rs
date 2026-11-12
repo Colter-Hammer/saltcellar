@@ -14,6 +14,7 @@ mod manual;
 mod middleware;
 mod profile;
 mod reset;
+mod schedule;
 mod session;
 mod setup;
 mod sync;
@@ -66,6 +67,8 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         bank::claim,
         bank::disconnect,
         sync::sync_now,
+        sync::change_settings,
+        sync::history,
         connection_accounts::list,
         connection_accounts::track,
         connection_accounts::ignore,
@@ -111,12 +114,24 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 }
 
 /// What the bank connection needs from the environment.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BankConfig {
     /// `BUDGET_SECRET_KEY`, if set. Without it no setup token is claimed.
     pub secret_key: Option<SecretKey>,
     /// Where claim URLs may point: any `https://` one unless the dev setting narrows it.
     pub claim_policy: ClaimPolicy,
+    /// How long Sync now waits after a sync: 30 minutes unless the dev setting changes it.
+    pub sync_cooldown: jiff::SignedDuration,
+}
+
+impl Default for BankConfig {
+    fn default() -> Self {
+        BankConfig {
+            secret_key: None,
+            claim_policy: ClaimPolicy::default(),
+            sync_cooldown: sync::DEFAULT_COOLDOWN,
+        }
+    }
 }
 
 /// What every handler can reach.
@@ -129,6 +144,8 @@ pub struct AppState {
     clock: Arc<dyn Fn() -> Timestamp + Send + Sync>,
     /// Held while a bank sync runs: one at a time.
     sync_lock: Arc<tokio::sync::Mutex<()>>,
+    /// The retry and catch-up waiting to run, and the scheduled slot already handled.
+    schedule: Arc<std::sync::Mutex<schedule::Pending>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -160,6 +177,7 @@ impl AppState {
             uploads: Arc::new(import::Uploads::new(data_dir)),
             clock: Arc::new(Timestamp::now),
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
+            schedule: Arc::default(),
         })
     }
 
@@ -267,6 +285,8 @@ pub fn router(state: AppState) -> Router {
             get(bank::get).put(bank::claim).delete(bank::disconnect),
         )
         .route("/bank-connection/sync", post(sync::sync_now))
+        .route("/bank-connection/sync-settings", put(sync::change_settings))
+        .route("/bank-connection/sync-runs", get(sync::history))
         .route("/connection-accounts", get(connection_accounts::list))
         .route(
             "/connection-accounts/{external_account_id}/track",

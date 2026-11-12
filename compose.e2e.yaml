@@ -8,6 +8,8 @@ services:
     environment:
       BUDGET_SECRET_KEY: ${E2E_SECRET_KEY:?a throwaway key}
       BUDGET_SIMPLEFIN_CLAIM_HOSTS: bridge:8190
+      # Specs press Sync now minutes apart; the cooldown has its own tests.
+      BUDGET_SYNC_COOLDOWN_MINUTES: "0"
   bridge:
     image: ${BRIDGE_IMAGE:-saltcellar-fake:e2e}
     build:

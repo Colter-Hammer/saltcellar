@@ -3,8 +3,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import {
+  formatAroundHour,
   formatDate,
+  formatInstant,
   formatInstantDay,
+  formatInstantTime,
   formatMoney,
   parseMoney,
   localeWeekStart,
@@ -249,5 +252,22 @@ describe('parseMoney', () => {
     expect(parseMoney('12.50', eur)).toBeNull()
     expect(parseMoney('15.5', { currency: 'JPY', locale: 'ja-JP' })).toBeNull()
     expect(parseMoney('99999999999999999', usd)).toBeNull()
+  })
+})
+
+describe('instants and times of day', () => {
+  it('formats an instant in the household timezone', () => {
+    const at = '2026-10-28T14:40:00Z'
+    expect(formatInstantTime(at, 'Europe/Berlin', { locale: 'en-US' })).toBe('3:40 PM')
+    expect(formatInstantTime(at, 'Europe/Berlin', { locale: 'de-DE' })).toBe('15:40')
+    expect(formatInstant(at, 'Europe/Berlin', { locale: 'en-US' })).toBe('Oct 28, 2026, 3:40 PM')
+  })
+
+  it('rounds a time of day to the nearest hour', () => {
+    expect(formatAroundHour('06:13', { locale: 'en-US' })).toBe('6 AM')
+    expect(formatAroundHour('06:30', { locale: 'en-US' })).toBe('7 AM')
+    expect(formatAroundHour('23:41', { locale: 'en-US' })).toBe('12 AM')
+    expect(formatAroundHour('06:13', { locale: 'de-DE' })).toBe('06 Uhr')
+    expect(() => formatAroundHour('soon')).toThrow(RangeError)
   })
 })

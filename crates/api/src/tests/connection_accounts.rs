@@ -18,6 +18,7 @@ async fn connected_app(scenario: Scenario) -> (FakeServer, App) {
     let app = set_up_with_bank(BankConfig {
         secret_key: Some(SecretKey::from_base64(&key).unwrap()),
         claim_policy: ClaimPolicy::only_hosts([server.host()]),
+        ..BankConfig::default()
     })
     .await;
     (server, app)

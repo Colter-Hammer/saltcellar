@@ -11,14 +11,24 @@ use crate::{BankConfig, ClaimPolicy, SecretKey};
 
 pub(super) const DAY: i64 = 86_400;
 
-/// An install in EUR, claimed against a fake Bridge whose accounts report EUR.
+/// An install in EUR, claimed against a fake Bridge whose accounts report EUR. Sync now has no
+/// cooldown, so tests can press it again at once; [`claimed_app_with_cooldown`] has one.
 pub(super) async fn claimed_app(scenario: Scenario) -> (FakeServer, App) {
+    claimed_app_with_cooldown(scenario, jiff::SignedDuration::ZERO).await
+}
+
+/// [`claimed_app`], with Sync now waiting `cooldown` after a sync.
+pub(super) async fn claimed_app_with_cooldown(
+    scenario: Scenario,
+    cooldown: jiff::SignedDuration,
+) -> (FakeServer, App) {
     let server = FakeServer::start(scenario).await.unwrap();
     server.set_currency("EUR");
     let key = base64::engine::general_purpose::STANDARD.encode([7_u8; 32]);
     let app = set_up_with_bank(BankConfig {
         secret_key: Some(SecretKey::from_base64(&key).unwrap()),
         claim_policy: ClaimPolicy::only_hosts([server.host()]),
+        sync_cooldown: cooldown,
     })
     .await;
     let request = axum::http::Request::put("/api/v1/bank-connection")

@@ -34,8 +34,9 @@ Only what's needed before anyone can log in, or what touches the host. Everythin
 | `BUDGET_TRUSTED_PROXY` | none | Header mode: the proxy address (IP or CIDR) whose header is trusted. Required in header mode. |
 | `BUDGET_AUTH_HEADER` | `Remote-User` | Header mode: the header carrying the username. |
 | `BUDGET_BACKUP_DIR` | `$BUDGET_DATA_DIR/backups` | Where nightly backups are written. |
-| `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the bank connection's access URL. Required to connect a bank: without it Settings › Bank connection & sync says so and claims nothing. Keep a copy outside the data dir; backups don't include it. If it's lost or changed, sync shows paused until you paste a new setup token. Never logged. |
+| `BUDGET_SECRET_KEY` | none | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the bank connection's access URL and any kept raw bank responses. Required to connect a bank: without it Settings › Bank connection & sync says so and claims nothing. Keep a copy outside the data dir; backups don't include it. If it's lost or changed, sync shows paused until you paste a new setup token. Never logged. |
 | `BUDGET_SIMPLEFIN_CLAIM_HOSTS` | none | Development only. A comma-separated list of `host[:port]`: setup tokens may then point only at these, over plain `http://` too, so a fake SimpleFIN server on localhost works. Leave unset in production, where any `https://` setup token is accepted. |
+| `BUDGET_SYNC_COOLDOWN_MINUTES` | `30` | Development only. How long Sync now waits after a sync. The e2e tests set `0`, since their specs press Sync now minutes apart. Leave unset in production. |
 
 `compose.yaml` passes `BUDGET_BASE_URL` and `BUDGET_SECRET_KEY` through from your shell or a `.env` file next to it. Add the others under `environment:` as you need them.
 
