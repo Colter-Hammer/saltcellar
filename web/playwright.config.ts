@@ -63,6 +63,7 @@ export default defineConfig({
         'new-accounts.spec.ts',
         'manual-entry.spec.ts',
         'manual-adoption.spec.ts',
+        'sync-flags.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -84,6 +85,7 @@ export default defineConfig({
         'new-accounts.spec.ts',
         'manual-entry.spec.ts',
         'manual-adoption.spec.ts',
+        'sync-flags.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -162,6 +164,14 @@ export default defineConfig({
       name: 'manual-adoption',
       testMatch: 'manual-adoption.spec.ts',
       dependencies: ['manual-entry'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Then sync flags and Recently dropped by bank, on the same account: it switches the fake
+    // Bridge's scenario too.
+    {
+      name: 'sync-flags',
+      testMatch: 'sync-flags.spec.ts',
+      dependencies: ['manual-adoption'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

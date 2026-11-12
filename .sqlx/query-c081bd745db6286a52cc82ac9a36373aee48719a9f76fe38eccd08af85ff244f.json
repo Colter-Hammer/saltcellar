@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transaction_splits (transaction_id, category_id, amount_minor, memo)\n                 VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "c081bd745db6286a52cc82ac9a36373aee48719a9f76fe38eccd08af85ff244f"
+}

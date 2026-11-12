@@ -144,10 +144,9 @@ pub async fn update_manual_transaction(
 pub async fn delete_manual_transaction(pool: &SqlitePool, id: i64) -> Result<(), ManualError> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     check_editable(&mut tx, id).await?;
-    // Tags and the transfer go with it (ON DELETE CASCADE).
-    sqlx::query!("DELETE FROM transactions WHERE id = ?", id)
-        .execute(&mut *tx)
-        .await?;
+    // Tags and the transfer go with it (ON DELETE CASCADE); a bank row flagged as maybe this one
+    // isn't any more.
+    crate::synced_rows::remove(&mut tx, id).await?;
     tx.commit().await?;
     Ok(())
 }

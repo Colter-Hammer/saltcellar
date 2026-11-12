@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "UPDATE transactions SET pending_miss_count = pending_miss_count + 1\n           WHERE account_id = ? AND status = 'pending' AND external_id IS NOT NULL\n             AND external_id NOT IN (SELECT value FROM json_each(?))\n           RETURNING id AS \"id!: i64\", pending_miss_count",
+  "query": "UPDATE transactions SET pending_miss_count = pending_miss_count + 1\n           WHERE account_id = ? AND status = 'pending' AND external_id IS NOT NULL\n             AND kept_by_household = 0\n             AND external_id NOT IN (SELECT value FROM json_each(?))\n           RETURNING id AS \"id!: i64\", pending_miss_count",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "7f16c1c0eadfd9c9b51b222a52cb382c91f052bc27192f259a7a272650e6ef85"
+  "hash": "8711fe31f3f1d201c8a1391a82bfdec7d56809da4ca8306149da651933fd1745"
 }

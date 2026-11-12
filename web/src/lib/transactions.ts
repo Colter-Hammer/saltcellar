@@ -63,9 +63,20 @@ export function sourceLabel(source: Transaction['source']): string {
 /**
  * The list's search and filters, named as the API's query names them. The address carries them
  * the same way, `/transactions?account=3&from=2026-01-01`, so a link reproduces the view *(agent)*.
- * `category` is an id or `uncategorized`; `undecided` is `true` when set.
+ * `category` is an id or `uncategorized`; `undecided` and `needs_a_look` are `true` when set.
+ * `dropped` (`true`) shows Recently dropped by bank in place of the list *(agent)*.
  */
-const FILTER_KEYS = ['q', 'account', 'category', 'from', 'to', 'tag', 'undecided'] as const
+const FILTER_KEYS = [
+  'q',
+  'account',
+  'category',
+  'from',
+  'to',
+  'tag',
+  'undecided',
+  'needs_a_look',
+  'dropped',
+] as const
 export type FilterKey = (typeof FILTER_KEYS)[number]
 export type TransactionFilter = Partial<Record<FilterKey, string>>
 

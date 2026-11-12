@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET sync_flag = 'not_seen_at_bank'\n         WHERE account_id = ? AND source = 'provider' AND status = 'posted'\n           AND external_id IS NOT NULL\n           AND external_id NOT IN (SELECT value FROM json_each(?))\n           AND date >= ? AND last_seen_at < ? AND sync_flag IS NULL\n           AND kept_by_household = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "ae8f82fde4c28f4496b40faf576744fece1bf44fa1f19c930d9956498532f50e"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transaction_splits SET transaction_id = ? WHERE transaction_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "63127eec0e4fcf2c887e141d95427405673ec1de9af4b515ceeceedb5b145ab6"
+}

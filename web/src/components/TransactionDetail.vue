@@ -7,6 +7,7 @@
 // is immediate: the screen offers Undo (docs/spec/m2-bank-data.md#manual-entry). A row from the
 // bank can be deleted too, after a warning that suggests excluding it from budgets instead; its
 // id is kept so sync never brings it back (docs/spec/m2-bank-data.md#deleting-a-synced-row).
+// A row with a sync flag shows it first, with its action (docs/spec/m2-bank-data.md#sync-health-in-the-ui).
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/client'
 import { type ManualEntry, useManualEdits, useTransaction } from '@/api/transactions'
@@ -15,8 +16,10 @@ import CategoryPicker from '@/components/CategoryPicker.vue'
 import GroupMark from '@/components/GroupMark.vue'
 import ManualEntryForm from '@/components/ManualEntryForm.vue'
 import Money from '@/components/Money.vue'
+import SyncFlagPanel from '@/components/SyncFlagPanel.vue'
 import { formatDate, useFormatting } from '@/lib/format'
 import { type EntryErrors, entryOf, fieldsOf } from '@/lib/manual'
+import { flagBadge } from '@/lib/syncFlags'
 import { categoryLabel, payeeLabel, sourceLabel, statusLabel } from '@/lib/transactions'
 
 const props = defineProps<{ id: number }>()
@@ -29,6 +32,8 @@ const emit = defineEmits<{
 const query = useTransaction(() => props.id)
 const formatting = useFormatting()
 const transaction = computed(() => query.data.value)
+// Not seen at the bank: its flag's panel has the Delete.
+const notSeen = computed(() => transaction.value?.sync_flag === 'not_seen_at_bank')
 
 const decide = useDecide()
 const chosen = ref('')
@@ -157,16 +162,30 @@ const batch = computed(() => {
         <span v-if="transaction.manual" class="rounded border px-1 text-xs text-muted-foreground"
           >Manual</span
         >
+        <span
+          v-if="transaction.sync_flag"
+          class="rounded border border-primary px-1 text-xs text-primary"
+          >{{ flagBadge(transaction.sync_flag) }}</span
+        >
       </p>
+      <SyncFlagPanel :transaction="transaction" @deleted="$emit('close')" />
       <div v-if="transaction.manual" class="flex gap-2">
         <button type="button" class="rounded-md border px-3 py-1" @click="editing = true">
           Edit
         </button>
-        <button type="button" class="rounded-md border px-3 py-1 text-destructive" @click="remove">
+        <button
+          v-if="!notSeen"
+          type="button"
+          class="rounded-md border px-3 py-1 text-destructive"
+          @click="remove"
+        >
           Delete
         </button>
       </div>
-      <div v-else-if="transaction.source === 'provider' && !confirming" class="flex gap-2">
+      <div
+        v-else-if="transaction.source === 'provider' && !confirming && !notSeen"
+        class="flex gap-2"
+      >
         <button
           type="button"
           class="rounded-md border px-3 py-1 text-destructive"

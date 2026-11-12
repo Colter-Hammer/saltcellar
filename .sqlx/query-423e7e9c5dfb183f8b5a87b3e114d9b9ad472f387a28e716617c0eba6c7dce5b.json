@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transaction_splits (transaction_id, category_id, amount_minor, memo)\n         SELECT ?, l.value ->> '$.category_id', l.value ->> '$.amount_minor',\n                l.value ->> '$.memo'\n         FROM dropped_transactions d, json_each(d.snapshot, '$.splits') l\n         WHERE d.id = ? AND l.value ->> '$.category_id' IN (SELECT id FROM categories)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "423e7e9c5dfb183f8b5a87b3e114d9b9ad472f387a28e716617c0eba6c7dce5b"
+}

@@ -2,7 +2,7 @@
 //! searched and filtered, and one at a time in full. The Actual importer, sync and file imports
 //! write them; manual entry (`crate::manual`) writes and edits rows typed in by hand.
 
-use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status};
+use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status, SyncFlag};
 use domain::{Date, Money};
 
 use crate::{Error, SqlitePool, parse_stamp};
@@ -34,6 +34,8 @@ pub struct TransactionRow {
     /// Entered by hand and not yet adopted by a bank row: it shows the manual badge, and every
     /// field can be edited or the row deleted.
     pub manual: bool,
+    /// What sync wants the household to look at, if anything.
+    pub sync_flag: Option<SyncFlag>,
 }
 
 /// One page of transactions, and where the next one starts.
@@ -62,6 +64,8 @@ pub struct Filter {
     pub undecided: bool,
     /// With `undecided`: only those that came in under this Actual category (empty: none kept).
     pub actual_category: Option<String>,
+    /// Only rows with a sync flag: **Needs a look**.
+    pub needs_a_look: bool,
 }
 
 /// Up to `limit` of the transactions `filter` lets through, newest first by date then id, starting
@@ -122,6 +126,8 @@ pub struct TransactionDetail {
     pub undecided: bool,
     /// Excluded from budgets.
     pub excluded: bool,
+    /// The row a `possible_duplicate` or `possible_manual_match` flag points at.
+    pub flagged_against: Option<TransactionRow>,
 }
 
 /// Transaction `id` in full; `None` if there's no such transaction.
@@ -138,7 +144,7 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
     };
     let more = sqlx::query!(
         r#"SELECT memo, source, categorization_reason,
-             exclude_from_budget AS "excluded!: bool"
+             exclude_from_budget AS "excluded!: bool", possible_duplicate_of
            FROM transactions WHERE id = ?"#,
         id
     )
@@ -183,6 +189,13 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
     let undecided = !rows(pool, Some(id), &only_undecided, None, 1)
         .await?
         .is_empty();
+    let flagged_against = match more.possible_duplicate_of {
+        Some(other) => rows(pool, Some(other), &Filter::default(), None, 1)
+            .await?
+            .into_iter()
+            .next(),
+        None => None,
+    };
     Ok(Some(TransactionDetail {
         row,
         memo: more.memo,
@@ -195,6 +208,7 @@ pub async fn transaction(pool: &SqlitePool, id: i64) -> Result<Option<Transactio
         batch,
         undecided,
         excluded: more.excluded,
+        flagged_against,
     }))
 }
 
@@ -273,7 +287,8 @@ async fn rows(
              (SELECT json_group_array(name) FROM
                (SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id
                  WHERE tt.transaction_id = t.id ORDER BY g.name)) AS "tags!: String",
-             (t.source = 'manual' AND t.external_id IS NULL) AS "manual!: bool"
+             (t.source = 'manual' AND t.external_id IS NULL) AS "manual!: bool",
+             t.sync_flag
            FROM transactions t
            JOIN accounts a ON a.id = t.account_id
            LEFT JOIN payees p ON p.id = t.payee_id
@@ -304,6 +319,7 @@ async fn rows(
                               JOIN import_batches b ON b.id = ib.batch_id
                             WHERE b.undone_at IS NULL AND ib.source_disposition = 'undecided'
                               AND (?14 IS NULL OR coalesce(ib.source_category, '') = ?14))))
+             AND (NOT ?15 OR t.sync_flag IS NOT NULL)
            ORDER BY t.date DESC, t.id DESC
            LIMIT ?4"#,
         only,
@@ -319,7 +335,8 @@ async fn rows(
         to,
         filter.tag_id,
         filter.undecided,
-        filter.actual_category
+        filter.actual_category,
+        filter.needs_a_look
     )
     .fetch_all(pool)
     .await?;
@@ -344,6 +361,7 @@ struct Found {
     transfer_account_id: Option<i64>,
     tags: String,
     manual: bool,
+    sync_flag: Option<String>,
 }
 
 impl TryFrom<Found> for TransactionRow {
@@ -367,6 +385,15 @@ impl TryFrom<Found> for TransactionRow {
             transfer_account_id: row.transfer_account_id,
             tags: read_tags(&row.tags)?,
             manual: row.manual,
+            sync_flag: row
+                .sync_flag
+                .map(|flag| {
+                    SyncFlag::from_stored(&flag).ok_or(Error::Unreadable {
+                        what: "a sync flag",
+                        value: flag,
+                    })
+                })
+                .transpose()?,
         })
     }
 }
@@ -524,6 +551,7 @@ mod tests {
                 transfer_account_id: None,
                 tags: vec!["gift \"big\"".to_owned(), "trip".to_owned()],
                 manual: false,
+                sync_flag: None,
             }
         );
         let refund = &page.transactions[1];
@@ -700,6 +728,7 @@ mod tests {
             tag_id: Some(2),
             undecided: false,
             actual_category: None,
+            needs_a_look: false,
         };
         assert_eq!(ids(&pool, everything).await, [3]);
         let none = Filter {
@@ -905,6 +934,7 @@ mod tests {
                     tag_id: Some(1),
                     undecided: true,
                     actual_category: None,
+                    needs_a_look: true,
                 },
             ),
         ];

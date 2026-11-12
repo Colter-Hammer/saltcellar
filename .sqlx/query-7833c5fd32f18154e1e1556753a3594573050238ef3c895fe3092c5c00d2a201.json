@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT memo, source, categorization_reason,\n             exclude_from_budget AS \"excluded!: bool\"\n           FROM transactions WHERE id = ?",
+  "query": "SELECT memo, source, categorization_reason,\n             exclude_from_budget AS \"excluded!: bool\", possible_duplicate_of\n           FROM transactions WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "exclude_from_budget"
           }
         }
+      },
+      {
+        "name": "possible_duplicate_of",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "possible_duplicate_of"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +66,9 @@
       true,
       false,
       true,
-      false
+      false,
+      true
     ]
   },
-  "hash": "4f0fd160d947adf53dadcb851a2960a4ac83eaf9a5201dfe93b6992f183e4e7e"
+  "hash": "7833c5fd32f18154e1e1556753a3594573050238ef3c895fe3092c5c00d2a201"
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions\n                 SET sync_flag = NULL, kept_by_household = 1, updated_at = ?, updated_by = ?\n                 WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "40692f5f54e8e8671658bc1e3df716873dc31b06664be70f4d53717be8fd7c11"
+}

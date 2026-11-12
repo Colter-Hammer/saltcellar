@@ -48,7 +48,8 @@ const NOT_SEEN_FOR: SignedDuration = SignedDuration::from_hours(7 * 24);
 /// `not_seen_at_bank`, its `last_seen_at` kept. A flagged row that comes back loses the flag.
 /// Last, a manual row no bank row has adopted is flagged `not_seen_at_bank` once its date is more
 /// than 14 days before `now`'s UTC date *(agent)*, and loses the flag if an edit brings it back
-/// inside them.
+/// inside them. A row the household kept (**Keep**, or restored) is neither counted nor flagged.
+/// Dropped rows older than 30 days are pruned.
 ///
 /// # Errors
 /// If the database fails; nothing is written then.
@@ -123,7 +124,8 @@ pub async fn apply_synced_rows(
          WHERE account_id = ? AND source = 'provider' AND status = 'posted'
            AND external_id IS NOT NULL
            AND external_id NOT IN (SELECT value FROM json_each(?))
-           AND date >= ? AND last_seen_at < ? AND sync_flag IS NULL",
+           AND date >= ? AND last_seen_at < ? AND sync_flag IS NULL
+           AND kept_by_household = 0",
         account_id,
         ids,
         from,
@@ -137,12 +139,15 @@ pub async fn apply_synced_rows(
          SET sync_flag = CASE WHEN date < date(?, '-14 days')
                               THEN 'not_seen_at_bank' END
          WHERE account_id = ? AND source = 'manual' AND external_id IS NULL
-           AND (sync_flag IS NULL OR sync_flag = 'not_seen_at_bank')",
+           AND (sync_flag IS NULL OR sync_flag = 'not_seen_at_bank')
+           AND kept_by_household = 0",
         at,
         account_id
     )
     .execute(&mut *tx)
     .await?;
+
+    crate::dropped::prune(&mut tx, now).await?;
 
     tx.commit().await?;
     Ok(applied)
@@ -296,6 +301,7 @@ async fn missed_pending(
     let missed = sqlx::query!(
         r#"UPDATE transactions SET pending_miss_count = pending_miss_count + 1
            WHERE account_id = ? AND status = 'pending' AND external_id IS NOT NULL
+             AND kept_by_household = 0
              AND external_id NOT IN (SELECT value FROM json_each(?))
            RETURNING id AS "id!: i64", pending_miss_count"#,
         account_id,
@@ -356,7 +362,10 @@ async fn drop_row(
 }
 
 /// Deletes row `id`; a row flagged as a possible duplicate of it isn't one any more.
-async fn remove(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, id: i64) -> Result<(), Error> {
+pub(crate) async fn remove(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    id: i64,
+) -> Result<(), Error> {
     sqlx::query!(
         "UPDATE transactions
          SET possible_duplicate_of = NULL,

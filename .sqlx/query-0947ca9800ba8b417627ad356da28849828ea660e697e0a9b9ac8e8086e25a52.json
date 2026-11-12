@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dropped_transactions SET restored_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0947ca9800ba8b417627ad356da28849828ea660e697e0a9b9ac8e8086e25a52"
+}

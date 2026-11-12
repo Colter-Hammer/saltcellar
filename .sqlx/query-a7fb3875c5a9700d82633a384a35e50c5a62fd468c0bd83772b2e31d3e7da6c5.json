@@ -1,0 +1,121 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT d.id AS \"id!: i64\", d.account_id, a.name AS account, d.dropped_at,\n             d.snapshot ->> '$.transaction.date' AS \"date!: String\",\n             d.snapshot ->> '$.transaction.amount_minor' AS \"amount_minor!: i64\",\n             d.snapshot ->> '$.transaction.raw_description' AS \"raw_description!: String\",\n             d.snapshot ->> '$.transaction.memo' AS \"memo?: String\",\n             p.name AS \"payee?\", c.name AS \"category?\",\n             json_array_length(d.snapshot, '$.splits') > 0 AS \"split!: bool\"\n           FROM dropped_transactions d\n           JOIN accounts a ON a.id = d.account_id\n           LEFT JOIN payees p ON p.id = d.snapshot ->> '$.transaction.payee_id'\n           LEFT JOIN categories c ON c.id = d.snapshot ->> '$.transaction.category_id'\n           WHERE d.user_edited = 1 AND d.restored_at IS NULL AND d.dropped_at >= ?\n           ORDER BY d.dropped_at DESC, d.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dropped_transactions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "account_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dropped_transactions",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "account",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "dropped_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dropped_transactions",
+            "name": "dropped_at"
+          }
+        }
+      },
+      {
+        "name": "date!: String",
+        "ordinal": 4,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "amount_minor!: i64",
+        "ordinal": 5,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "raw_description!: String",
+        "ordinal": 6,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "memo?: String",
+        "ordinal": 7,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "payee?",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payees",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "category?",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "categories",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "split!: bool",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      null,
+      null,
+      null,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "a7fb3875c5a9700d82633a384a35e50c5a62fd468c0bd83772b2e31d3e7da6c5"
+}

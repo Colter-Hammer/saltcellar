@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transactions\n             (id, account_id, date, amount_minor, status, payee_id, raw_description, bank_category,\n              memo, category_id, exclude_from_budget, categorized_by, categorization_reason,\n              source, external_id, dedupe_key, last_seen_at, kept_by_household, created_at,\n              updated_at, updated_by)\n           SELECT\n             CASE WHEN EXISTS (SELECT 1 FROM transactions o WHERE o.id = s.t ->> '$.id')\n                  THEN NULL ELSE s.t ->> '$.id' END,\n             s.account_id, s.t ->> '$.date', s.t ->> '$.amount_minor', s.t ->> '$.status',\n             (SELECT p.id FROM payees p WHERE p.id = s.t ->> '$.payee_id'),\n             s.t ->> '$.raw_description', s.t ->> '$.bank_category', s.t ->> '$.memo',\n             (SELECT c.id FROM categories c WHERE c.id = s.t ->> '$.category_id'),\n             s.t ->> '$.exclude_from_budget', s.t ->> '$.categorized_by',\n             s.t ->> '$.categorization_reason', s.t ->> '$.source', s.t ->> '$.external_id',\n             s.t ->> '$.dedupe_key', s.t ->> '$.last_seen_at', 1, s.t ->> '$.created_at', ?, ?\n           FROM (SELECT account_id, snapshot -> '$.transaction' AS t\n                 FROM dropped_transactions WHERE id = ?) s\n           RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a1b84ed5303d7e9776e101c70042aea7bd381993d6b8650c2413ab2afc36d4c2"
+}

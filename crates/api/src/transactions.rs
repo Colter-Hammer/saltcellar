@@ -5,7 +5,7 @@
 use axum::Json;
 use axum::extract::{Extension, Query, State};
 use axum::http::StatusCode;
-use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status};
+use domain::transactions::{CategoryFilter, Cursor, Search, Source, Status, SyncFlag};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -54,6 +54,30 @@ impl From<Source> for TransactionSource {
     }
 }
 
+/// What sync wants the household to look at (docs/spec/m2-bank-data.md#sync-health-in-the-ui),
+/// each with its action: `possible_duplicate` (**Merge** / **Keep both**),
+/// `possible_manual_match` (**Yes** / **No**), `not_seen_at_bank` (**Delete** / **Keep**) and
+/// `amount_changed_split` (fix the split).
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TransactionSyncFlag {
+    PossibleDuplicate,
+    PossibleManualMatch,
+    NotSeenAtBank,
+    AmountChangedSplit,
+}
+
+impl From<SyncFlag> for TransactionSyncFlag {
+    fn from(flag: SyncFlag) -> Self {
+        match flag {
+            SyncFlag::PossibleDuplicate => TransactionSyncFlag::PossibleDuplicate,
+            SyncFlag::PossibleManualMatch => TransactionSyncFlag::PossibleManualMatch,
+            SyncFlag::NotSeenAtBank => TransactionSyncFlag::NotSeenAtBank,
+            SyncFlag::AmountChangedSplit => TransactionSyncFlag::AmountChangedSplit,
+        }
+    }
+}
+
 /// A transaction as the list shows it.
 #[derive(Serialize, ToSchema)]
 pub struct TransactionRow {
@@ -90,6 +114,9 @@ pub struct TransactionRow {
     /// Entered by hand and not yet adopted by a bank row: it shows the **manual** badge, and
     /// `PUT` and `DELETE /api/v1/transactions/{id}` can edit or delete it.
     manual: bool,
+    /// What sync wants the household to look at; null when nothing. Listed under **Needs a look**.
+    #[schema(required = true)]
+    sync_flag: Option<TransactionSyncFlag>,
 }
 
 impl From<db::TransactionRow> for TransactionRow {
@@ -111,6 +138,7 @@ impl From<db::TransactionRow> for TransactionRow {
             transfer_account_id: row.transfer_account_id,
             tags: row.tags,
             manual: row.manual,
+            sync_flag: row.sync_flag.map(Into::into),
         }
     }
 }
@@ -155,6 +183,9 @@ pub struct PageQuery {
     /// With `undecided=true`: only the rows that came in under this Actual category; an empty
     /// value is the rows whose export kept none *(agent)*.
     actual_category: Option<String>,
+    /// `true` for only the rows with a sync flag: **Needs a look**.
+    #[param(value_type = Option<bool>)]
+    needs_a_look: Option<String>,
 }
 
 /// A filter parameter that can't be read.
@@ -199,6 +230,11 @@ impl PageQuery {
             Some("true") => true,
             Some(_) => return Err(invalid_filter()),
         };
+        let needs_a_look = match self.needs_a_look.as_deref() {
+            None | Some("false") => false,
+            Some("true") => true,
+            Some(_) => return Err(invalid_filter()),
+        };
         let mut filter = db::Filter {
             search: None,
             account_id: read_id(self.account.as_deref())?,
@@ -208,6 +244,7 @@ impl PageQuery {
             tag_id: read_id(self.tag.as_deref())?,
             undecided,
             actual_category: self.actual_category.clone(),
+            needs_a_look,
         };
         if let Some(text) = self.q.as_deref().filter(|text| !text.trim().is_empty()) {
             // Behind the setup gate, so the household exists unless the database lost it.
@@ -229,7 +266,7 @@ impl PageQuery {
     params(PageQuery),
     responses(
         (status = 200, description = "A page of transactions.", body = TransactionPage),
-        (status = 400, description = "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided` or `actual_category` can't be read.", body = ErrorEnvelope),
+        (status = 400, description = "`invalid_page`: `after` isn't a cursor this API wrote, or `limit` is out of range. `invalid_filter`: `account`, `category`, `from`, `to`, `tag`, `undecided`, `actual_category` or `needs_a_look` can't be read.", body = ErrorEnvelope),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
     ),
 )]
@@ -342,6 +379,9 @@ pub struct Transaction {
     undecided: bool,
     /// Excluded from budgets: `PUT /api/v1/transactions/{id}/excluded` sets it.
     excluded: bool,
+    /// The row a `possible_duplicate` or `possible_manual_match` flag points at; null otherwise.
+    #[schema(required = true)]
+    flagged_against: Option<TransactionRow>,
 }
 
 impl From<db::TransactionDetail> for Transaction {
@@ -368,6 +408,7 @@ impl From<db::TransactionDetail> for Transaction {
             }),
             undecided: detail.undecided,
             excluded: detail.excluded,
+            flagged_against: detail.flagged_against.map(Into::into),
         }
     }
 }

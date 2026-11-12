@@ -5,12 +5,14 @@ mod auth;
 mod categories;
 mod connection;
 mod connection_accounts;
+mod dropped;
 mod household;
 mod imports;
 mod manual;
 mod profile;
 mod reset;
 mod sync;
+mod sync_flags;
 mod synced_rows;
 mod transactions;
 mod undecided;
@@ -42,6 +44,7 @@ pub use connection_accounts::{
     connection_accounts, ignore_connection_account, record_connection_accounts,
     track_connection_account,
 };
+pub use dropped::{DroppedRow, RestoreError, dropped_rows, restore_dropped};
 pub use household::{Household, household};
 pub use imports::{
     ActualCommit, Batch, Committed, CommittedAccount, ImportError, UndoError, Undone,
@@ -60,6 +63,9 @@ pub use sqlx::SqlitePool;
 pub use sync::{
     AccountResult, FeedLink, RunEnd, SyncRun, SyncTrigger, finish_sync_run, latest_sync_run,
     mark_backfilled, start_sync_run, tracked_feed_accounts,
+};
+pub use sync_flags::{
+    NewSplitLine, Resolution, ResolveError, SplitError, resolve_sync_flag, set_splits,
 };
 pub use synced_rows::{Applied, DeleteBankRowError, apply_synced_rows, delete_bank_row};
 pub use transactions::{

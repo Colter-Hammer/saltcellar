@@ -155,7 +155,8 @@ Live behaviour behind these rules: at the banks observed, a pending row normally
 
 Details *(agent)*:
 
-- **Edited**, for a removed pending row: categorized by hand, changed by a login (`updated_by`), or given a memo, a split, a tag or exclude-from-budget. Unedited removed rows are kept in `dropped_transactions` too, with `user_edited = 0`, so they aren't listed. Listing and undoing them, and the 30-day cleanup, aren't built yet.
+- **Edited**, for a removed pending row: categorized by hand, changed by a login (`updated_by`), or given a memo, a split, a tag or exclude-from-budget. Unedited removed rows are kept in `dropped_transactions` too, with `user_edited = 0`, so they aren't listed. Every dropped row is pruned 30 days after it went, at the next sync.
+- **Recently dropped by bank** *(agent)*: a chip beside **Needs a look** that shows the dropped rows in place of the list (turning it on clears the other filters), the latest first, each with **Restore** (`GET /api/v1/dropped`, `POST /api/v1/dropped/{id}/restore`). A restored row comes back from its snapshot with the household's edits, under its old id when that's free, and opens in its detail; its bank id stays, so the bank sending or posting it still matches it. It is **kept by the household** (`transactions.kept_by_household`): sync no longer counts its misses, so it isn't dropped again. A payee, category or tag deleted since is left off; the transfer it was a leg of doesn't come back. If the bank has sent its id again since, Restore refuses (`409 back_from_bank`): it's in the list already.
 - **The fetch window** for `not_seen_at_bank` is the earliest window that brought the account's rows that run (the back-fill's older half when it ran). The flag is only set on a row with no other flag, and goes when the bank sends the row again.
 - A removed or deleted row that another row is flagged a possible duplicate of leaves that row unflagged.
 
@@ -238,6 +239,13 @@ Actual may itself have been syncing from SimpleFIN, so its accounts and rows can
 - **Account detail:** the full explanation and fix. Drift shows the bank's balance against the app's, **See suspect rows** and **Accept $X as balance adjustment**. The footer gives the last sync and "bank data as of <date>".
 - **Paused banner** on every screen while the connection is paused.
 - **Sync flags on rows** (`possible_duplicate`, `possible_manual_match`, `not_seen_at_bank`, `amount_changed_split`) show as a badge and an action in the transaction detail, and under a **Needs a look** filter in Transactions *(agent)*.
+
+Details of the flag actions *(agent)*: every action clears its flag (`POST /api/v1/transactions/{id}/resolve` with `merge`, `keep_both`, `accept_match`, `reject_match` or `keep`; `409 not_flagged` when the row doesn't carry the flag the action answers). The badges read **Duplicate?**, **Manual match?**, **Not at bank** and **Fix split**.
+
+- **Merge** (`possible_duplicate`) and **Yes** (`possible_manual_match`, "Is this your $X manual entry?") merge the two rows: the flagged row, the newer one with the bank's id, amount and date, survives and takes the household's fields from the row it points at (its category, split lines or transfer, payee, memo and tags, exclude-from-budget), which is deleted; a bank id it had goes into `deleted_bank_rows`. Split lines that no longer add up flag the survivor `amount_changed_split`. Another row flagged a possible duplicate of the deleted one points at the oldest other row it could be (same account, amount and status, within 3 days, a similar description, not itself a new possible duplicate), so rows re-issued together are resolved one by one; with none, it is unflagged.
+- **Keep both** and **No** clear the flag and the pointer.
+- **Keep** (`not_seen_at_bank`) clears the flag and marks the row kept by the household, so sync doesn't flag it again. **Delete** is the row's ordinary delete: a manual row goes as manual rows do, a bank row as in [Deleting a synced row](#deleting-a-synced-row), without the warning, since the bank no longer sends it. Deleting a manual row a bank row is flagged against leaves that row unflagged.
+- **Fix the split** (`amount_changed_split`, "Amount changed from $X to $Y, fix the split", $X being the lines' sum) opens the lines in place: category, amount (typed in the row's direction) and memo per line, lines added or removed, what's left to split shown; saving needs them to add up (`PUT /api/v1/transactions/{id}/splits`, `422` otherwise) and clears the flag. One line leaves the row unsplit in that category. Review takes this over in milestone 3.
 
 ## Settings › Bank connection & sync
 

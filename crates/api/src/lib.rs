@@ -17,6 +17,7 @@ mod reset;
 mod session;
 mod setup;
 mod sync;
+mod sync_flags;
 #[cfg(test)]
 mod tests;
 mod transactions;
@@ -76,6 +77,10 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         manual::change,
         manual::delete,
         manual::payees,
+        sync_flags::resolve,
+        sync_flags::set_splits,
+        sync_flags::dropped,
+        sync_flags::restore,
         undecided::list,
         undecided::move_group,
         undecided::set_category,
@@ -282,6 +287,7 @@ pub fn router(state: AppState) -> Router {
                 .delete(manual::delete),
         )
         .route("/transactions/{id}/category", put(undecided::set_category))
+        .merge(sync_flags::routes())
         .route(
             "/transactions/{id}/excluded",
             put(transactions::set_excluded),

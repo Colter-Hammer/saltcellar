@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transaction_tags (transaction_id, tag_id)\n         SELECT ?, g.value\n         FROM dropped_transactions d, json_each(d.snapshot, '$.tags') g\n         WHERE d.id = ? AND g.value IN (SELECT id FROM tags)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "100937cd40022c05610f32f7f48d860ad23411f432c5290ed3c0b7249e26104b"
+}

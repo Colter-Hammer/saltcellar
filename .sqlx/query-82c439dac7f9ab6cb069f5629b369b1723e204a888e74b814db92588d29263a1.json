@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\", raw_description FROM transactions\n               WHERE account_id = ? AND amount_minor = ? AND status = ?\n                 AND date BETWEEN date(?, '-3 days') AND date(?, '+3 days')\n                 AND id NOT IN (?, ?, ?)\n                 AND sync_flag IS NOT 'possible_duplicate'\n               ORDER BY date, id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "raw_description",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "raw_description"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "82c439dac7f9ab6cb069f5629b369b1723e204a888e74b814db92588d29263a1"
+}

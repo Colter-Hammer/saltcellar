@@ -31,6 +31,7 @@ function row(id: number, fields: Partial<TransactionRow> = {}): TransactionRow {
     transfer_account_id: null,
     tags: [],
     manual: false,
+    sync_flag: null,
     ...fields,
   }
 }
