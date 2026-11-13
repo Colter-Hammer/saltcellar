@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT transaction_id, change, date, amount_minor, description\n           FROM sync_row_changes\n           WHERE account_id = ? AND sync_run_id > ? AND sync_run_id <= ?\n           ORDER BY date DESC, rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "transaction_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sync_row_changes",
+            "name": "transaction_id"
+          }
+        }
+      },
+      {
+        "name": "change",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_row_changes",
+            "name": "change"
+          }
+        }
+      },
+      {
+        "name": "date",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_row_changes",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "name": "amount_minor",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sync_row_changes",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "description",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_row_changes",
+            "name": "description"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cf5a70eb0c57879773e542b773db1fa1b395ec328d7d3320111309c7e16b5123"
+}

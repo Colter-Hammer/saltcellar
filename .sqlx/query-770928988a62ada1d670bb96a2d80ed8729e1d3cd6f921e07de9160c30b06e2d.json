@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT b.id AS \"id!: i64\", b.date, b.amount_minor, b.note, u.display_name AS \"who?\",\n             b.accepted_at, b.undone_at\n           FROM balance_adjustments b LEFT JOIN users u ON u.id = b.accepted_by\n           WHERE b.account_id = ? ORDER BY b.accepted_at DESC, b.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "date",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "name": "amount_minor",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "name": "who?",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "accepted_at",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "accepted_at"
+          }
+        }
+      },
+      {
+        "name": "undone_at",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "undone_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "770928988a62ada1d670bb96a2d80ed8729e1d3cd6f921e07de9160c30b06e2d"
+}

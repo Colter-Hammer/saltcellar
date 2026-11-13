@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (\n                 SELECT 1 FROM accounts a\n                 WHERE a.id = ?1 AND a.opening_balance_minor IS NOT NULL\n                   AND EXISTS (SELECT 1 FROM balance_snapshots s\n                               WHERE s.account_id = a.id AND s.source = 'provider')\n               ) AS \"synced!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "synced!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "09a6c67f5937eda2e1dd87e02a96fac78042f8651bac2c33ff6779678e34ad88"
+}

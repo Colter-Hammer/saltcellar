@@ -2,6 +2,7 @@
 
 mod accounts;
 mod auth;
+mod balances;
 mod bank;
 mod batches;
 mod categories;
@@ -64,6 +65,8 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         accounts::update_balance,
         accounts::change,
         accounts::order,
+        balances::accept,
+        balances::undo,
         bank::get,
         bank::claim,
         bank::disconnect,
@@ -285,6 +288,8 @@ pub fn router(state: AppState) -> Router {
         .route("/accounts/order", put(accounts::order))
         .route("/accounts/{id}", get(accounts::get).patch(accounts::change))
         .route("/accounts/{id}/balance", post(accounts::update_balance))
+        .route("/accounts/{id}/balance-adjustments", post(balances::accept))
+        .route("/balance-adjustments/{id}/undo", post(balances::undo))
         .route(
             "/bank-connection",
             get(bank::get).put(bank::claim).delete(bank::disconnect),

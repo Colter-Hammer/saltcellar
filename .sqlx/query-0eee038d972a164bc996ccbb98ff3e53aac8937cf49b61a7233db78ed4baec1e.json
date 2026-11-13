@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET opening_balance_minor = o.opening_balance_minor,\n           opening_date = o.opening_date\n         FROM import_batch_openings o\n         WHERE o.batch_id = ? AND o.account_id = accounts.id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0eee038d972a164bc996ccbb98ff3e53aac8937cf49b61a7233db78ed4baec1e"
+}

@@ -175,6 +175,18 @@ CREATE TABLE balance_adjustments (
   undone_by    INTEGER REFERENCES users(id)
 ) STRICT;
 
+-- M2 *(agent)*. What each sync run added, changed or dropped on an account, copied as it was, so a
+-- drift flag can list its suspect rows. Goes with its run (kept 90 days).
+CREATE TABLE sync_row_changes (
+  sync_run_id    INTEGER NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
+  account_id     INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+  change         TEXT NOT NULL CHECK (change IN ('added','changed','dropped')),
+  date           TEXT NOT NULL,
+  amount_minor   INTEGER NOT NULL,
+  description    TEXT NOT NULL
+) STRICT;
+
 -- M2. Kept 90 days, shown in Settings › Bank connection & sync. One run at a time: a second request joins the
 -- running one.
 CREATE TABLE sync_runs (
@@ -242,6 +254,16 @@ CREATE TABLE import_batches (
   imported_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   undone_at    TEXT,
   CHECK ((account_id IS NULL) = (format = 'actual'))
+) STRICT;
+
+-- M2 *(agent)*. An account's opening balance before an import moved it back over older rows, so undoing the
+-- import puts it back.
+CREATE TABLE import_batch_openings (
+  batch_id              INTEGER NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  account_id            INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  opening_balance_minor INTEGER NOT NULL,
+  opening_date          TEXT NOT NULL,
+  PRIMARY KEY (batch_id, account_id)
 ) STRICT;
 
 CREATE TABLE import_batch_rows (            -- M1

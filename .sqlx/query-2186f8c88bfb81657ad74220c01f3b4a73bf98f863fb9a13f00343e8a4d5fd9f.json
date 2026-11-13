@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO import_batch_openings\n                   (batch_id, account_id, opening_balance_minor, opening_date)\n                 VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2186f8c88bfb81657ad74220c01f3b4a73bf98f863fb9a13f00343e8a4d5fd9f"
+}

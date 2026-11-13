@@ -14,6 +14,7 @@ use domain::feed::SyncedRow;
 use domain::matching::{Match, StoredRow, match_rows};
 use jiff::{SignedDuration, Timestamp};
 
+use crate::balances::{RowChange, move_opening_back, record_change};
 use crate::{Error, SqlitePool, stamp};
 
 /// What applying one account's rows did.
@@ -60,6 +61,35 @@ pub async fn apply_synced_rows(
     window_start: Date,
     now: Timestamp,
 ) -> Result<Applied, Error> {
+    apply(pool, None, account_id, rows, window_start, now).await
+}
+
+/// [`apply_synced_rows`] for run `run_id`, which records each row it adds, changes or drops
+/// (`sync_row_changes`), so a drift flag can list them as suspect rows. Older rows than the
+/// account's opening balance (a back-fill onto an account that had history) move it back, so
+/// drift doesn't change (docs/spec/m2-bank-data.md#balances).
+///
+/// # Errors
+/// If the database fails; nothing is written then.
+pub async fn apply_synced_rows_in_run(
+    pool: &SqlitePool,
+    run_id: i64,
+    account_id: i64,
+    rows: &[SyncedRow],
+    window_start: Date,
+    now: Timestamp,
+) -> Result<Applied, Error> {
+    apply(pool, Some(run_id), account_id, rows, window_start, now).await
+}
+
+async fn apply(
+    pool: &SqlitePool,
+    run: Option<i64>,
+    account_id: i64,
+    rows: &[SyncedRow],
+    window_start: Date,
+    now: Timestamp,
+) -> Result<Applied, Error> {
     let at = stamp(now);
     let mut applied = Applied::default();
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
@@ -86,34 +116,42 @@ pub async fn apply_synced_rows(
 
     let stored = candidates(&mut tx, account_id, &rows, &ids).await?;
     for (row, found) in rows.iter().zip(match_rows(&rows, &stored)) {
-        match found {
+        let (id, change) = match found {
             Match::SameId(id) => {
-                if take_over(&mut tx, id, account_id, row, &at).await? {
-                    applied.updated += 1;
+                if !take_over(&mut tx, id, account_id, row, &at).await? {
+                    continue;
                 }
+                (id, RowChange::Changed)
             }
             Match::Posts(id) | Match::Reissued(id) | Match::Adopts(id) => {
                 take_over(&mut tx, id, account_id, row, &at).await?;
-                applied.updated += 1;
+                (id, RowChange::Changed)
             }
             Match::PossibleDuplicate(of) => {
                 let flag = Some(("possible_duplicate", of));
-                insert(&mut tx, account_id, row, flag, &at).await?;
-                applied.added += 1;
+                let id = insert(&mut tx, account_id, row, flag, &at).await?;
+                (id, RowChange::Added)
             }
             Match::PossibleManualMatch(of) => {
                 let flag = Some(("possible_manual_match", of));
-                insert(&mut tx, account_id, row, flag, &at).await?;
-                applied.added += 1;
+                let id = insert(&mut tx, account_id, row, flag, &at).await?;
+                (id, RowChange::Added)
             }
             Match::New => {
-                insert(&mut tx, account_id, row, None, &at).await?;
-                applied.added += 1;
+                let id = insert(&mut tx, account_id, row, None, &at).await?;
+                (id, RowChange::Added)
             }
+        };
+        match change {
+            RowChange::Added => applied.added += 1,
+            _ => applied.updated += 1,
+        }
+        if let Some(run) = run {
+            record_change(&mut tx, run, account_id, id, change).await?;
         }
     }
 
-    missed_pending(&mut tx, account_id, &ids, &at).await?;
+    missed_pending(&mut tx, run, account_id, &ids, &at).await?;
     let from = window_start
         .plus_days(WINDOW_MARGIN_DAYS)
         .unwrap_or(window_start)
@@ -148,6 +186,9 @@ pub async fn apply_synced_rows(
     .await?;
 
     crate::dropped::prune(&mut tx, now).await?;
+    if run.is_some() {
+        move_opening_back(&mut tx, account_id).await?;
+    }
 
     tx.commit().await?;
     Ok(applied)
@@ -254,25 +295,26 @@ async fn take_over(
 }
 
 /// Inserts the feed row as the provider's, with `flag` (`possible_duplicate` or
-/// `possible_manual_match`, and the row it points at) when given.
+/// `possible_manual_match`, and the row it points at) when given. Resolves to its id.
 async fn insert(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     account_id: i64,
     row: &SyncedRow,
     flag: Option<(&str, i64)>,
     at: &str,
-) -> Result<(), Error> {
+) -> Result<i64, Error> {
     let date = row.date.to_string();
     let amount = row.amount.minor();
     let status = if row.pending { "pending" } else { "posted" };
     let key = domain::import::dedupe_key(account_id, row.date, row.amount, &row.raw_description);
     let (flag, duplicate_of) = flag.unzip();
     let payee = payee(tx, &row.payee_text).await?;
-    sqlx::query!(
-        "INSERT INTO transactions
+    let id = sqlx::query_scalar!(
+        r#"INSERT INTO transactions
            (account_id, date, amount_minor, status, payee_id, raw_description, source,
             external_id, dedupe_key, last_seen_at, sync_flag, possible_duplicate_of)
-         VALUES (?, ?, ?, ?, ?, ?, 'provider', ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, 'provider', ?, ?, ?, ?, ?)
+         RETURNING id AS "id!: i64""#,
         account_id,
         date,
         amount,
@@ -285,15 +327,16 @@ async fn insert(
         flag,
         duplicate_of
     )
-    .execute(&mut **tx)
+    .fetch_one(&mut **tx)
     .await?;
-    Ok(())
+    Ok(id)
 }
 
 /// Counts a miss on each pending row of the account with a bank id not in `ids` (a JSON array),
 /// and removes those that reach two.
 async fn missed_pending(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    run: Option<i64>,
     account_id: i64,
     ids: &str,
     at: &str,
@@ -311,6 +354,9 @@ async fn missed_pending(
     .await?;
     for row in missed {
         if row.pending_miss_count >= PENDING_MISSES {
+            if let Some(run) = run {
+                record_change(tx, run, account_id, row.id, RowChange::Dropped).await?;
+            }
             drop_row(tx, row.id, at).await?;
         }
     }

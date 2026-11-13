@@ -54,7 +54,8 @@ pub struct AccountBalance {
     pub rows: u64,
     /// The date of its latest transaction; `None` without one.
     pub last_transaction: Option<Date>,
-    /// Its opening balance plus its posted transactions; `None` without an opening balance.
+    /// Its opening balance plus its posted transactions and balance adjustments; `None` without an
+    /// opening balance.
     pub app_balance: Option<Money>,
     /// Its latest balance snapshot, the balance shown; `None` before it has one.
     pub snapshot: Option<Money>,
@@ -86,9 +87,11 @@ async fn balances(pool: &SqlitePool, only: Option<i64>) -> Result<Vec<AccountBal
              (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS "rows!: i64",
              (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS "last: String",
              (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
-               WHERE t.account_id = a.id AND t.status = 'posted') AS "posted!: i64",
+               WHERE t.account_id = a.id AND t.status = 'posted')
+             + (SELECT COALESCE(SUM(b.amount_minor), 0) FROM balance_adjustments b
+               WHERE b.account_id = a.id AND b.undone_at IS NULL) AS "posted!: i64",
              (SELECT s.balance_minor FROM balance_snapshots s WHERE s.account_id = a.id
-               ORDER BY s.as_of DESC LIMIT 1) AS "snapshot: i64"
+               ORDER BY s.as_of DESC LIMIT 1) AS "snapshot?: i64"
            FROM accounts a WHERE ?1 IS NULL OR a.id = ?1 ORDER BY a.sort_order, a.id"#,
         only
     )
@@ -297,26 +300,17 @@ async fn write_manual_snapshot(
     balance: Money,
     today: Date,
 ) -> Result<(), AccountError> {
-    let found = sqlx::query!(
-        r#"SELECT a.name, a.opening_balance_minor,
-             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
-               WHERE t.account_id = a.id AND t.status = 'posted') AS "posted!: i64",
-             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
-               WHERE t.account_id = a.id) AS "all!: i64"
-           FROM accounts a WHERE a.id = ?"#,
+    let opening = sqlx::query_scalar!(
+        "SELECT opening_balance_minor FROM accounts WHERE id = ?",
         id
     )
     .fetch_one(&mut **tx)
     .await?;
-    let unreadable = || Error::Unreadable {
-        what: "a balance",
-        value: found.name.clone(),
-    };
-    let (posted, pending) = match found.opening_balance_minor.map(Money::from_minor) {
-        Some(opening) => (
-            Some(app_balance(opening, [Money::from_minor(found.posted)]).ok_or_else(unreadable)?),
-            Some(app_balance(opening, [Money::from_minor(found.all)]).ok_or_else(unreadable)?),
-        ),
+    let (posted, pending) = match opening.map(Money::from_minor) {
+        Some(opening) => {
+            let app = crate::balances::sums(tx, id).await?.app(opening)?;
+            (Some(app.posted), Some(app.with_pending))
+        }
         None => (None, None),
     };
     let (as_of, balance) = (today.to_string(), balance.minor());

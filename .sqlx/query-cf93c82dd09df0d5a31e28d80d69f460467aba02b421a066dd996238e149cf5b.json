@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE balance_snapshots\n         SET app_balance_posted_minor = app_balance_posted_minor + ?3,\n             app_balance_pending_minor = app_balance_pending_minor + ?3\n         WHERE account_id = ?1 AND as_of >= ?2 AND app_balance_posted_minor IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "cf93c82dd09df0d5a31e28d80d69f460467aba02b421a066dd996238e149cf5b"
+}

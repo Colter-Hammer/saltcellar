@@ -105,8 +105,9 @@ pub struct Account {
     /// The balance shown, its latest balance snapshot, in minor units; null before it has one.
     #[schema(required = true)]
     balance_minor: Option<i64>,
-    /// The app's own balance, its opening balance plus its posted transactions, in minor units;
-    /// null without an opening balance. Where it differs from `balance_minor`, that's drift.
+    /// The app's own balance, its opening balance plus its posted transactions and balance
+    /// adjustments, in minor units; null without an opening balance. Drift is measured at
+    /// snapshots: see `drift`.
     #[schema(required = true)]
     app_balance_minor: Option<i64>,
     /// In minor units; null for a balances-only account.
@@ -125,6 +126,29 @@ pub struct Account {
     sync: Option<crate::sync_health::AccountSync>,
     /// Who enters its balance.
     balance_entry: BalanceEntry,
+    /// Its balance against the bank's: drift, its flag and the balance adjustments.
+    drift: crate::balances::AccountDrift,
+}
+
+impl Account {
+    fn with_drift(mut self, drift: crate::balances::AccountDrift) -> Self {
+        self.drift = drift;
+        self
+    }
+}
+
+/// Account `id` as its detail shows it: balances, bank data's health and drift.
+pub(crate) async fn detail(state: &AppState, id: i64) -> Result<Account, ApiError> {
+    let account = db::account_balance(&state.pool, id).await?.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "There's no such account.",
+        )
+    })?;
+    let health = crate::sync_health::Snapshot::load(state).await?;
+    let drift = crate::balances::drift(state, id).await?;
+    Ok(with_sync(account, &health).with_drift(drift))
 }
 
 /// Who enters an account's balance.
@@ -162,6 +186,7 @@ impl From<db::AccountBalance> for Account {
                 BalanceEntry::Bank
             },
             sync: None,
+            drift: crate::balances::AccountDrift::default(),
         }
     }
 }
@@ -196,15 +221,15 @@ pub struct AccountList {
 pub async fn list(State(state): State<AppState>) -> Result<Json<AccountList>, ApiError> {
     let accounts = db::account_balances(&state.pool).await?;
     let health = crate::sync_health::Snapshot::load(&state).await?;
-    Ok(Json(AccountList {
-        accounts: accounts
-            .into_iter()
-            .map(|account| with_sync(account, &health))
-            .collect(),
-    }))
+    let mut listed = Vec::with_capacity(accounts.len());
+    for account in accounts {
+        let drift = crate::balances::drift(&state, account.id).await?;
+        listed.push(with_sync(account, &health).with_drift(drift));
+    }
+    Ok(Json(AccountList { accounts: listed }))
 }
 
-/// `GET /api/v1/accounts/{id}`: one account, with its balances.
+/// `GET /api/v1/accounts/{id}`: one account, with its balances and drift.
 #[utoipa::path(
     get,
     path = "/api/v1/accounts/{id}",
@@ -217,15 +242,7 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<AccountList>, Ap
     ),
 )]
 pub async fn get(State(state): State<AppState>, Id(id): Id) -> Result<Json<Account>, ApiError> {
-    let account = db::account_balance(&state.pool, id).await?.ok_or_else(|| {
-        ApiError::new(
-            StatusCode::NOT_FOUND,
-            "not_found",
-            "There's no such account.",
-        )
-    })?;
-    let health = crate::sync_health::Snapshot::load(&state).await?;
-    Ok(Json(with_sync(account, &health)))
+    Ok(Json(detail(&state, id).await?))
 }
 
 /// A manual account: one with no connection, whose balance is entered by hand.
@@ -268,10 +285,7 @@ pub async fn create(
     let id = db::create_manual_account(&state.pool, &new)
         .await
         .map_err(|error| name_taken(error, Some(&name)))?;
-    let account = db::account_balance(&state.pool, id)
-        .await?
-        .ok_or_else(|| ApiError::internal(&"the new account is gone"))?;
-    Ok((StatusCode::CREATED, Json(account.into())))
+    Ok((StatusCode::CREATED, Json(detail(&state, id).await?)))
 }
 
 /// What's in a manual account today.

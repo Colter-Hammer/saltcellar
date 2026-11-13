@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id AS \"account_id!: i64\", date, amount_minor, undone_at\n           FROM balance_adjustments WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "date",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "name": "amount_minor",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "undone_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "undone_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "ba4f4524b6d130080be23b81929b5f0bb2f9222c0f3477f0942d4142c7cac541"
+}

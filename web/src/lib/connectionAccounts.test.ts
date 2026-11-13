@@ -21,6 +21,7 @@ function account(id: number, closed = false): Account {
     opening_date: null,
     rows: 0,
     last_transaction_date: null,
+    drift: { sign_corrected: false, bank_comparison: null, flag: null, adjustments: [] },
   }
 }
 

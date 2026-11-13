@@ -2,6 +2,7 @@
 
 mod accounts;
 mod auth;
+mod balances;
 mod categories;
 mod connection;
 mod connection_accounts;
@@ -32,6 +33,11 @@ pub use accounts::{
 pub use auth::{
     FinishSetupError, NewSetup, PasswordLogin, SessionLogin, end_session, finish_setup, log_in,
     password_login, recent_failures, record_failure, use_session,
+};
+pub use balances::{
+    Adjustment, AdjustmentError, BalanceRecorded, BankBalance, Drift, DriftFlag, LatestSnapshot,
+    RowChange, SuspectRow, accept_balance_adjustment, account_drift, record_bank_balance,
+    undo_balance_adjustment,
 };
 pub use categories::{
     Category, CategoryError, Group, add_category, add_group, category_groups, delete_category,
@@ -75,7 +81,9 @@ pub use sync_schedule::{
     last_scheduled_sync, last_successful_sync, prune_sync_history, requests_since,
     set_sync_settings, sync_history, sync_settings,
 };
-pub use synced_rows::{Applied, DeleteBankRowError, apply_synced_rows, delete_bank_row};
+pub use synced_rows::{
+    Applied, DeleteBankRowError, apply_synced_rows, apply_synced_rows_in_run, delete_bank_row,
+};
 pub use transactions::{
     BatchRef, Filter, SplitLine, Tag, TransactionDetail, TransactionPage, TransactionRow,
     set_excluded, tags, transaction, transactions,
@@ -222,6 +230,7 @@ mod tests {
             tables,
             [
                 "accounts",
+                "balance_adjustments",
                 "balance_snapshots",
                 "categories",
                 "category_groups",
@@ -230,6 +239,7 @@ mod tests {
                 "deleted_bank_rows",
                 "dropped_transactions",
                 "household",
+                "import_batch_openings",
                 "import_batch_rows",
                 "import_batches",
                 "login_failures",
@@ -240,6 +250,7 @@ mod tests {
                 "settings",
                 "sync_account_results",
                 "sync_raw_responses",
+                "sync_row_changes",
                 "sync_runs",
                 "tags",
                 "transaction_splits",

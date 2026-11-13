@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT as_of, balance_minor, sync_run_id, sign_corrected AS \"sign_corrected!: bool\",\n             app_balance_posted_minor, app_balance_pending_minor\n           FROM balance_snapshots WHERE account_id = ? ORDER BY as_of",
+  "describe": {
+    "columns": [
+      {
+        "name": "as_of",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "as_of"
+          }
+        }
+      },
+      {
+        "name": "balance_minor",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "balance_minor"
+          }
+        }
+      },
+      {
+        "name": "sync_run_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "sync_run_id"
+          }
+        }
+      },
+      {
+        "name": "sign_corrected!: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "sign_corrected"
+          }
+        }
+      },
+      {
+        "name": "app_balance_posted_minor",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "app_balance_posted_minor"
+          }
+        }
+      },
+      {
+        "name": "app_balance_pending_minor",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "app_balance_pending_minor"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "825843a49ecb6849cb38e0bbb20bd95e8b6702585076fd797bb14e42917b38fa"
+}

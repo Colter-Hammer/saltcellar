@@ -30,6 +30,7 @@ function account(id: number, fields: Partial<Account> = {}): Account {
     opening_date: '2026-01-01',
     rows: 0,
     last_transaction_date: null,
+    drift: { sign_corrected: false, bank_comparison: null, flag: null, adjustments: [] },
     ...fields,
   }
 }

@@ -184,6 +184,18 @@ impl Writer<'_> {
         for row in &planned.rows {
             self.row(id, row).await?;
         }
+        if !created && self.synced(id).await? {
+            // A synced account's balance is the bank's: its rows from Actual are older history,
+            // which moves the opening balance back so drift stays as it was, and Actual's
+            // balance isn't written over the bank's (docs/spec/m2-bank-data.md#balances).
+            self.move_opening_back(id).await?;
+            return Ok(CommittedAccount {
+                id,
+                name,
+                created,
+                rows: planned.rows.len() as u64,
+            });
+        }
 
         let as_of = planned.as_of.unwrap_or(today).to_string();
         let balance = planned.balance.minor();
@@ -229,6 +241,41 @@ impl Writer<'_> {
             created,
             rows: planned.rows.len() as u64,
         })
+    }
+
+    /// Moves account `id`'s opening balance back over the older rows just imported, keeping the
+    /// one it had for Undo.
+    async fn move_opening_back(&mut self, id: i64) -> Result<(), ImportError> {
+        if let Some(before) = crate::balances::move_opening_back(self.tx, id).await? {
+            let (minor, date) = (before.balance.minor(), before.date.to_string());
+            sqlx::query!(
+                "INSERT INTO import_batch_openings
+                   (batch_id, account_id, opening_balance_minor, opening_date)
+                 VALUES (?, ?, ?, ?)",
+                self.batch_id,
+                id,
+                minor,
+                date
+            )
+            .execute(&mut *self.tx)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Whether account `id` is synced: it has an opening balance and a bank's snapshot.
+    async fn synced(&mut self, id: i64) -> Result<bool, ImportError> {
+        Ok(sqlx::query_scalar!(
+            r#"SELECT EXISTS (
+                 SELECT 1 FROM accounts a
+                 WHERE a.id = ?1 AND a.opening_balance_minor IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM balance_snapshots s
+                               WHERE s.account_id = a.id AND s.source = 'provider')
+               ) AS "synced!: bool""#,
+            id
+        )
+        .fetch_one(&mut *self.tx)
+        .await?)
     }
 
     /// The opening balance from the account's Actual balance and every row it has now.
