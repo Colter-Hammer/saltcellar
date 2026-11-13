@@ -64,6 +64,7 @@ export default defineConfig({
         'manual-entry.spec.ts',
         'manual-adoption.spec.ts',
         'sync-flags.spec.ts',
+        'sync-errors.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -86,6 +87,7 @@ export default defineConfig({
         'manual-entry.spec.ts',
         'manual-adoption.spec.ts',
         'sync-flags.spec.ts',
+        'sync-errors.spec.ts',
         'smoke/**',
       ],
       dependencies: ['categories'],
@@ -172,6 +174,14 @@ export default defineConfig({
       name: 'sync-flags',
       testMatch: 'sync-flags.spec.ts',
       dependencies: ['manual-adoption'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    // Last, errors and a paused connection: they switch the fake Bridge's scenario and pause the
+    // connection until a new setup token, so nothing runs beside them.
+    {
+      name: 'sync-errors',
+      testMatch: 'sync-errors.spec.ts',
+      dependencies: ['sync-flags'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],

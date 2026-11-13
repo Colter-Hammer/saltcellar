@@ -7,14 +7,19 @@ export type SyncRun = components['schemas']['SyncRun']
 /** The daily schedule, the request budget and Sync now's wait. */
 export type SyncState = components['schemas']['SyncState']
 
+/** One bank link of the connection and its state, as Settings › Bank connection & sync shows it. */
+export type Bank = components['schemas']['Bank']
+
 /**
  * `GET /api/v1/bank-connection`: whether the server has its secret key, and the household's bank
  * connection (null before a setup token is claimed). The connection's secret is never part of it.
+ * Polled every minute, so the paused banner appears when a sync pauses the connection *(agent)*.
  */
 export function useBankConnection() {
   return useQuery({
     queryKey: ['bank-connection'],
     queryFn: () => call(client.GET('/api/v1/bank-connection')),
+    refetchInterval: 60_000,
   })
 }
 
@@ -71,6 +76,32 @@ export function useSyncNow() {
     mutationFn: () =>
       call(
         client.POST('/api/v1/bank-connection/sync', {
+          // Every mutating request is JSON, body or not (docs/spec/foundations.md#http-api).
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['bank-connection'] }),
+        queryClient.invalidateQueries({ queryKey: ['connection-accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+      ]),
+  })
+}
+
+/**
+ * `POST /api/v1/bank-connection/sync-after-reconnect`: **Done, sync now**, once a bank has been
+ * re-authorized at SimpleFIN. Like Sync now, but it skips the cooldown. Resolves to the run once
+ * it has finished; throws an ApiError `not_connected`, `sync_paused` or `sync_limit_reached`. The
+ * banks, accounts and rows reload either way.
+ */
+export function useSyncAfterReconnect() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      call(
+        client.POST('/api/v1/bank-connection/sync-after-reconnect', {
           // Every mutating request is JSON, body or not (docs/spec/foundations.md#http-api).
           headers: { 'Content-Type': 'application/json' },
         }),

@@ -19,6 +19,7 @@ mod session;
 mod setup;
 mod sync;
 mod sync_flags;
+mod sync_health;
 #[cfg(test)]
 mod tests;
 mod transactions;
@@ -67,6 +68,7 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         bank::claim,
         bank::disconnect,
         sync::sync_now,
+        sync::sync_after_reconnect,
         sync::change_settings,
         sync::history,
         connection_accounts::list,
@@ -287,9 +289,7 @@ pub fn router(state: AppState) -> Router {
             "/bank-connection",
             get(bank::get).put(bank::claim).delete(bank::disconnect),
         )
-        .route("/bank-connection/sync", post(sync::sync_now))
-        .route("/bank-connection/sync-settings", put(sync::change_settings))
-        .route("/bank-connection/sync-runs", get(sync::history))
+        .merge(sync::routes())
         .route("/connection-accounts", get(connection_accounts::list))
         .route(
             "/connection-accounts/{external_account_id}/track",

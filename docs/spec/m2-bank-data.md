@@ -239,6 +239,15 @@ Actual may itself have been syncing from SimpleFIN, so its accounts and rows can
 - **Re-import:** the milestone 1 refusal ("Undo the earlier import first") is lifted: a second Actual import matches its rows against the first by id like any other overlap *(agent)*.
 - **Transfer-mapped and uncategorized rows** are handled by milestone 3's pipeline, as milestone 1 already describes.
 
+- **Details of errors and health** *(agent)*:
+  - The rules are pure functions in `domain::sync_health`, tested at the 2- and 5-day edges (strictly more than 48 and 120 hours). `con.auth` is read by prefix and subcode (`con.auth.*` too); `gen.auth` in a 200 answer's `errlist` pauses the connection like a 403, with the run's error code `gen.auth`.
+  - An account's health comes from its newest result and the newest `balance-date` any result had, read when asked, not stored. Order: reconnecting (`con.auth`), failed read (any other error on the account or its bank link), missing over 5 days, data over 5 days old, stale. A failed read needs attention at once ("Last updated … · needs attention"), but offers no **Fix at SimpleFIN**: only reconnecting, missing and old data do, since the household can act on those at the Bridge. An account absent for under 5 days stays quiet.
+  - A bank link is the feed's `conn_id` (`connection_accounts.bank_link_id`, migration `0017`); its state is its worst account's (reconnecting, needs attention, stale, balances only when every tracked account is, else ok). Its row shows the bank's name, tracked accounts, a line in words and the newest refresh.
+  - **Done, sync now** is `POST /api/v1/bank-connection/sync-after-reconnect`: a Sync now without the cooldown; the cap and joining a running sync stand, and a paused connection answers 409 `sync_paused`.
+  - Accounts carry `sync` (state, message, days, last refresh, fix) and `balance_entry`. A balances-only account takes **Update balance** while its bank link is broken (reconnecting, missing, old data) or the connection is paused; `balance_entry` says `manual` then.
+  - **Fix at SimpleFIN ↗** opens the Bridge's sign-in page, `https://bridge.simplefin.org/auth/login`, in a new tab: the Bridge has no stable link to its connections page.
+  - Unscoped notices (`gen.api` and the like) put their codes in the run's log line and nowhere else. The paused banner reads "SimpleFIN subscription unpaid. Bank sync stopped. Pay it, then paste a new setup token in Settings." for `unpaid` and names the secret key for `key_mismatch`. The connection screen refetches every minute, so the banner shows when a sync pauses it. Accounts list: a ⚠ on accounts that need attention; the account screen shows the explanation and the fix. The status spot and sheet stay with the sync health issue.
+
 ## Sync health in the UI
 
 **One status spot**, never warnings scattered over every screen:

@@ -1,5 +1,5 @@
 // How sync reads on Settings › Bank connection & sync (docs/spec/m2-bank-data.md#sync-runs).
-import type { SyncRun, SyncState } from '@/api/bank'
+import type { Bank, SyncRun, SyncState } from '@/api/bank'
 import { type Formatting, formatAroundHour, formatInstantTime } from './format'
 
 function count(n: number, one: string, many: string): string {
@@ -79,4 +79,56 @@ export function accountProblem(account: {
 }): string {
   const said = account.error ?? account.error_code ?? 'failed'
   return said.startsWith(account.name) ? said : `${account.name}: ${said}`
+}
+
+/**
+ * Where **Fix at SimpleFIN ↗** goes: the Bridge's sign-in, from which its connections page is one
+ * click *(agent: the Bridge has no stable deep link to the connections page)*.
+ */
+export const SIMPLEFIN_FIX_URL = 'https://bridge.simplefin.org/auth/login'
+
+/** What a paused connection's banner says, with where its link goes: the screen's name. */
+export function pausedBanner(status: string): { lead: string; link: string; tail: string } {
+  const link = 'Settings'
+  switch (status) {
+    case 'unpaid':
+      return {
+        lead: 'SimpleFIN subscription unpaid. Bank sync stopped. Pay it, then paste a new setup token in ',
+        link,
+        tail: '.',
+      }
+    case 'key_mismatch':
+      return {
+        lead: 'Bank sync stopped. The secret key changed. Paste a new setup token in ',
+        link,
+        tail: '.',
+      }
+    default:
+      return {
+        lead: 'Bank sync stopped. Get a new setup token from SimpleFIN and paste it in ',
+        link,
+        tail: '.',
+      }
+  }
+}
+
+/** A bank link's state in a word or two, for the Banks list. */
+export function bankState(bank: Bank): string {
+  switch (bank.state) {
+    case 'ok':
+      return 'OK'
+    case 'balances_only':
+      return 'Balances only'
+    case 'stale':
+      return 'Stale'
+    case 'needs_reconnecting':
+      return 'Needs reconnecting'
+    case 'needs_attention':
+      return 'Needs attention'
+  }
+}
+
+/** "1 account" / "3 accounts". */
+export function accountCount(n: number): string {
+  return count(n, 'account', 'accounts')
 }

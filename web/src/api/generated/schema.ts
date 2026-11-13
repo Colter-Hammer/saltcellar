@@ -68,7 +68,8 @@ export interface paths {
         put?: never;
         /**
          * `POST /api/v1/accounts/{id}/balance`: records what's in an account with no connection today,
-         *     as a manual balance snapshot. A second one the same day replaces the first.
+         *     as a manual balance snapshot. A second one the same day replaces the first. A balances-only
+         *     account whose bank link is broken, or whose connection is paused, takes one too.
          */
         post: operations["updateAccountBalance"];
         delete?: never;
@@ -123,6 +124,27 @@ export interface paths {
          *     Bridge failed still answers 200, with the run's error.
          */
         post: operations["syncNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-connection/sync-after-reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/bank-connection/sync-after-reconnect`: **Done, sync now**, once the household
+         *     has re-authorized a bank at SimpleFIN. Like Sync now, but it skips the cooldown; it still
+         *     counts against the request cap and joins a running sync.
+         */
+        post: operations["syncAfterReconnect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -908,6 +930,8 @@ export interface components {
              *     null without an opening balance. Where it differs from `balance_minor`, that's drift.
              */
             app_balance_minor: number | null;
+            /** @description Who enters its balance. */
+            balance_entry: components["schemas"]["BalanceEntry"];
             /**
              * Format: int64
              * @description The balance shown, its latest balance snapshot, in minor units; null before it has one.
@@ -919,7 +943,7 @@ export interface components {
             /**
              * Format: int64
              * @description Its connection; null for an account with none. One with a connection gets its balance from
-             *     the bank and takes no manual balance.
+             *     the bank and takes no manual balance, unless `balance_entry` says so.
              */
             connection_id: number | null;
             /** Format: int64 */
@@ -944,6 +968,7 @@ export interface components {
              * @description How many transactions it has.
              */
             rows: number;
+            sync: components["schemas"]["AccountSync"] | null;
             type: components["schemas"]["AccountType"];
         };
         /**
@@ -982,6 +1007,26 @@ export interface components {
             /** Format: int64 */
             rows: number;
         };
+        /** @description An account's sync health. */
+        AccountSync: {
+            /**
+             * Format: int64
+             * @description How old its data is, in whole days, when that is the problem.
+             */
+            days: number | null;
+            /** @description **Fix at SimpleFIN** then **Done, sync now** can help: its bank link is broken. */
+            fix: boolean;
+            /** @description RFC 3339: when the provider last refreshed its bank link; null before any sync read it. */
+            last_refreshed_at: string | null;
+            /** @description One sentence for the household ("Data is 3 days old."); null when all is well. */
+            message: string | null;
+            state: components["schemas"]["AccountSyncState"];
+        };
+        /**
+         * @description Where an account's data stands.
+         * @enum {string}
+         */
+        AccountSyncState: "ok" | "stale" | "needs_reconnecting" | "needs_attention";
         /**
          * @description What kind of account it is.
          * @enum {string}
@@ -1168,6 +1213,11 @@ export interface components {
             id: number;
             name: string;
         };
+        /**
+         * @description Who enters an account's balance.
+         * @enum {string}
+         */
+        BalanceEntry: "manual" | "bank";
         /** @description What's in a manual account today. */
         BalanceUpdate: {
             /**
@@ -1175,6 +1225,28 @@ export interface components {
              * @description In minor units.
              */
             balance_minor: number;
+        };
+        /** @description One bank link of the connection, for Settings › Bank connection & sync. */
+        Bank: {
+            /**
+             * Format: int32
+             * @description How many tracked accounts it has.
+             */
+            accounts: number;
+            /**
+             * Format: int64
+             * @description How old its data is, in whole days, when stale.
+             */
+            days: number | null;
+            /** @description **Fix at SimpleFIN ↗** and **Done, sync now** apply. */
+            fix: boolean;
+            /** @description RFC 3339: the newest refresh of any of its accounts; null before any sync read one. */
+            last_refreshed_at: string | null;
+            /** @description "Bank hasn't updated in 4 days" and the like; null when all is well. */
+            message: string | null;
+            /** @description The bank's name as the feed gives it. */
+            name: string;
+            state: components["schemas"]["BankLinkState"];
         };
         /** @description The bank connection screen's state. */
         BankConnection: {
@@ -1184,6 +1256,11 @@ export interface components {
             /** @description The schedule, the request budget and Sync now's wait. */
             sync: components["schemas"]["SyncState"];
         };
+        /**
+         * @description A bank link's state.
+         * @enum {string}
+         */
+        BankLinkState: "ok" | "balances_only" | "stale" | "needs_attention" | "needs_reconnecting";
         Category: {
             hidden: boolean;
             /** Format: int64 */
@@ -1267,6 +1344,8 @@ export interface components {
         };
         /** @description The household's one bank connection. Its secret is never part of this. */
         Connection: {
+            /** @description One row per bank link, with its state. */
+            banks: components["schemas"]["Bank"][];
             /** @description What to call it, like `SimpleFIN Bridge`. */
             label: string;
             last_sync: components["schemas"]["SyncRun"] | null;
@@ -2118,7 +2197,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `account_connected`: the account has a connection, so its balance comes from the bank. */
+            /** @description `account_connected`: the account has a connection that works, so its balance comes from the bank. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2272,7 +2351,45 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted. */
+            /** @description `not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted; `sync_cooling_down`: a sync finished a moment ago; `sync_limit_reached`: the request budget is spent. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    syncAfterReconnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, finished. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRun"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted; `sync_limit_reached`: the request budget is spent. */
             409: {
                 headers: {
                     [name: string]: unknown;

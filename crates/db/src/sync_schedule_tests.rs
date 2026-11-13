@@ -57,6 +57,7 @@ async fn connected_account(pool: &SqlitePool) -> (i64, i64) {
         name: "Demo Everyday Checking".to_owned(),
         institution: None,
         currency: "USD".to_owned(),
+        bank_link: None,
     };
     record_connection_accounts(
         pool,

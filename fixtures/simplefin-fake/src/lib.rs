@@ -56,6 +56,14 @@ pub enum Scenario {
     MissingData,
     /// The savings account isn't in the response, and the error list is empty.
     AccountMissing,
+    /// `gen.auth` in the error list of a 200 answer: the access URL was disabled.
+    GenAuth,
+    /// `con.failed` for the second bank's link: a bank link error that isn't `con.auth`.
+    ConError,
+    /// A developer-facing `gen.api` notice with no bank link or account, and good data.
+    GenApi,
+    /// Everything fine, except the second bank's accounts have a `balance-date` three days old.
+    StaleData,
     /// The card's balance is reported positive while its rows say it owes money.
     WrongSign,
     /// A fourth account, `ACT-demo-travel` at the second bank, reports its money in another
@@ -65,7 +73,7 @@ pub enum Scenario {
 
 impl Scenario {
     /// Every scenario, in the order the README lists them.
-    pub const ALL: [Scenario; 16] = [
+    pub const ALL: [Scenario; 20] = [
         Scenario::Steady,
         Scenario::PendingPosts,
         Scenario::PendingAmountChanges,
@@ -80,6 +88,10 @@ impl Scenario {
         Scenario::Unpaid,
         Scenario::MissingData,
         Scenario::AccountMissing,
+        Scenario::GenAuth,
+        Scenario::ConError,
+        Scenario::GenApi,
+        Scenario::StaleData,
         Scenario::WrongSign,
         Scenario::ForeignCurrency,
     ];
@@ -102,6 +114,10 @@ impl Scenario {
             Scenario::Unpaid => "unpaid",
             Scenario::MissingData => "missing-data",
             Scenario::AccountMissing => "account-missing",
+            Scenario::GenAuth => "gen-auth",
+            Scenario::ConError => "con-error",
+            Scenario::GenApi => "gen-api",
+            Scenario::StaleData => "stale-data",
             Scenario::WrongSign => "wrong-sign",
             Scenario::ForeignCurrency => "foreign-currency",
         }

@@ -10,7 +10,7 @@
 // *(agent)*. A created account shows in the list at once and the form closes.
 // Above everything, the new accounts prompt: what the bank connection reports, waiting to be
 // tracked or ignored.
-import { Plus } from '@lucide/vue'
+import { Plus, TriangleAlert } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { type Account, type NewAccount, useAccountEdits, useAccounts } from '@/api/accounts'
 import { ApiError } from '@/api/client'
@@ -25,6 +25,7 @@ import {
   describeAccount,
   dropAccount,
   groupAccounts,
+  needsAttention,
   roleLabel,
   stepAccount,
   typeLabel,
@@ -176,7 +177,15 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
               class="flex flex-1 items-center gap-3 py-3 pr-4 pl-2"
             >
               <span class="flex min-w-0 flex-1 flex-col">
-                <span class="truncate">{{ account.name }}</span>
+                <span class="flex items-center gap-1">
+                  <span class="truncate">{{ account.name }}</span>
+                  <TriangleAlert
+                    v-if="needsAttention(account)"
+                    class="size-4 shrink-0 text-destructive"
+                    role="img"
+                    aria-label="Needs attention"
+                  />
+                </span>
                 <span class="text-xs text-muted-foreground">{{ typeLabel(account.type) }}</span>
               </span>
               <Money v-if="account.balance_minor !== null" :minor="account.balance_minor" />
@@ -216,6 +225,12 @@ const empty = computed(() => accounts.isSuccess.value && list.value.length === 0
               <RouterLink :to="`/accounts/${String(account.id)}`" class="hover:underline">
                 {{ account.name }}
               </RouterLink>
+              <TriangleAlert
+                v-if="needsAttention(account)"
+                class="ml-2 inline size-4 align-text-bottom text-destructive"
+                role="img"
+                aria-label="Needs attention"
+              />
               <span v-if="account.closed" class="ml-2 text-xs text-muted-foreground">Closed</span>
             </th>
             <td class="py-1 pr-3">{{ account.institution ?? '—' }}</td>

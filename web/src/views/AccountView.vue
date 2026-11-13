@@ -2,7 +2,8 @@
 // An account's detail (docs/spec/m1-ledger-import.md#accounts): the balance shown (its latest
 // snapshot) with the app's own beside it, the opening balance and its date, the row count, and its
 // transactions. A balances-only account has only its balance. Edit opens the account's form
-// (docs/spec/m2-bank-data.md#accounts). Update balance, on an account with no connection, records
+// (docs/spec/m2-bank-data.md#accounts). Update balance, on an account with no connection (or a
+// balances-only one whose bank link is broken, docs/spec/m2-bank-data.md#errors), records
 // what's in it today (docs/spec/m2-bank-data.md#manual-entry); where the app's own balance differs,
 // that's drift, shown beside it as for a synced account.
 import { computed, ref } from 'vue'
@@ -11,6 +12,7 @@ import { useAccount, useAccountEdits, type AccountChange } from '@/api/accounts'
 import { ApiError } from '@/api/client'
 import AccountEditForm from '@/components/AccountEditForm.vue'
 import BalanceForm from '@/components/BalanceForm.vue'
+import BankFix from '@/components/BankFix.vue'
 import { roleLabel, transactionsLink, typeLabel } from '@/lib/accounts'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
@@ -49,6 +51,9 @@ async function saveBalance(balanceMinor: number) {
 }
 
 const account = computed(() => query.data.value)
+const syncLabel = computed(() =>
+  account.value?.sync?.state === 'stale' ? 'Stale' : 'Needs attention',
+)
 const link = computed(() => (account.value ? transactionsLink(account.value) : null))
 const about = computed(() => {
   const a = account.value
@@ -86,6 +91,18 @@ const opening = computed(() => {
         <p class="text-sm text-muted-foreground">{{ about }}</p>
       </div>
       <p v-if="problem" role="alert" class="text-sm text-destructive">{{ problem }}</p>
+      <div
+        v-if="account.sync && account.sync.state !== 'ok'"
+        data-testid="account-sync"
+        :data-state="account.sync.state"
+        class="flex flex-col items-start gap-2 text-sm"
+      >
+        <p :class="account.sync.state === 'stale' ? 'text-muted-foreground' : 'text-destructive'">
+          <span class="font-medium">{{ syncLabel }}.</span>
+          {{ account.sync.message }}
+        </p>
+        <BankFix v-if="account.sync.fix" />
+      </div>
       <AccountEditForm
         v-if="editing"
         :account="account"
@@ -108,7 +125,7 @@ const opening = computed(() => {
           Edit
         </button>
         <button
-          v-if="account.connection_id === null"
+          v-if="account.balance_entry === 'manual'"
           type="button"
           class="inline-flex items-center rounded-md border px-3 py-2"
           @click="updating = true"

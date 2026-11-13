@@ -13,6 +13,8 @@ function account(id: number, closed = false): Account {
     in_net_worth: true,
     balances_only: false,
     connection_id: null,
+    balance_entry: 'manual',
+    sync: null,
     balance_minor: null,
     app_balance_minor: null,
     opening_balance_minor: null,

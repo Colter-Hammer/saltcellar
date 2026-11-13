@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT a.id AS \"account_id!: i64\", a.name, a.has_transactions AS \"has_transactions!: bool\",\n             ca.bank_link_id, ca.institution, ca.last_seen_at,\n             (SELECT r.ok FROM sync_account_results r WHERE r.account_id = a.id\n               ORDER BY r.sync_run_id DESC LIMIT 1) AS \"latest_ok: bool\",\n             (SELECT r.error_code FROM sync_account_results r WHERE r.account_id = a.id\n               ORDER BY r.sync_run_id DESC LIMIT 1) AS latest_code,\n             (SELECT r.error FROM sync_account_results r WHERE r.account_id = a.id\n               ORDER BY r.sync_run_id DESC LIMIT 1) AS latest_error,\n             (SELECT r.provider_balance_date FROM sync_account_results r\n               WHERE r.account_id = a.id AND r.provider_balance_date IS NOT NULL\n               ORDER BY r.sync_run_id DESC LIMIT 1) AS balance_date\n           FROM connection_accounts ca JOIN accounts a ON a.id = ca.account_id\n           WHERE ca.decision = 'tracked'\n           ORDER BY ca.first_seen_at, ca.rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "has_transactions!: bool",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "has_transactions"
+          }
+        }
+      },
+      {
+        "name": "bank_link_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "bank_link_id"
+          }
+        }
+      },
+      {
+        "name": "institution",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "institution"
+          }
+        }
+      },
+      {
+        "name": "last_seen_at",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "last_seen_at"
+          }
+        }
+      },
+      {
+        "name": "latest_ok: bool",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "ok"
+          }
+        }
+      },
+      {
+        "name": "latest_code",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "error_code"
+          }
+        }
+      },
+      {
+        "name": "latest_error",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "name": "balance_date",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sync_account_results",
+            "name": "provider_balance_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "7932d46c88fdabd53c2ed0f97727a128618ffde6de2cd2bdf74486999147d05b"
+}

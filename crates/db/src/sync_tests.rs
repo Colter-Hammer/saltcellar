@@ -18,6 +18,7 @@ async fn a_run_is_recorded_with_its_accounts_and_the_back_fill_is_marked() {
         name: "Demo Everyday Checking".to_owned(),
         institution: None,
         currency: "USD".to_owned(),
+        bank_link: None,
     };
     record_connection_accounts(
         &pool,

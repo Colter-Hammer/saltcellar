@@ -58,6 +58,10 @@ server.follow_system_clock(); // dates count back from the real time, not NOW
 | `unpaid` | `GET /accounts` answers 402. |
 | `missing-data` | `act.missingdata` for the card, which comes without rows. |
 | `account-missing` | The savings account isn't in the response, and the error list is empty. |
+| `gen-auth` | A 200 answer with `gen.auth` (no bank link) in the error list: the access URL was disabled. |
+| `con-error` | `con.failed` for `CON-demo-2`: a bank link error that isn't `con.auth`. |
+| `gen-api` | A `gen.api` notice with no bank link or account in the error list; the data is fine. |
+| `stale-data` | Everything fine, but `CON-demo-2`'s accounts have a `balance-date` three days old. |
 | `wrong-sign` | The card's balance is reported positive although it owes money. |
 | `foreign-currency` | A fourth account, `ACT-demo-travel` (Demo Travel Card) at the second bank, reports CAD (USD when the fake's currency is CAD). |
 

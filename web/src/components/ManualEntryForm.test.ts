@@ -17,6 +17,8 @@ const account = (id: number, name: string, extra: object = {}) => ({
   in_net_worth: true,
   balances_only: false,
   connection_id: null,
+  balance_entry: 'manual',
+  sync: null,
   balance_minor: 0,
   app_balance_minor: 0,
   opening_balance_minor: 0,

@@ -12,10 +12,12 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
-use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::routing::{get, post, put};
+use axum::{Json, Router};
 use domain::feed::{self, SyncedRow, Window};
+use domain::sync_health as rules_health;
 use domain::sync_schedule::{self as rules, Asker, Spent};
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
@@ -24,6 +26,17 @@ use utoipa::ToSchema;
 
 use crate::error::{Body, ErrorEnvelope};
 use crate::{ApiError, AppState};
+
+pub(crate) fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/bank-connection/sync", post(sync_now))
+        .route(
+            "/bank-connection/sync-after-reconnect",
+            post(sync_after_reconnect),
+        )
+        .route("/bank-connection/sync-settings", put(change_settings))
+        .route("/bank-connection/sync-runs", get(history))
+}
 
 /// One sync run, as the screen shows it.
 #[derive(Serialize, ToSchema)]
@@ -78,26 +91,53 @@ pub(crate) async fn latest(state: &AppState) -> Result<Option<SyncRun>, ApiError
     responses(
         (status = 200, description = "The run, finished.", body = SyncRun),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
-        (status = 409, description = "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted.", body = ErrorEnvelope),
+        (status = 409, description = "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted; `sync_cooling_down`: a sync finished a moment ago; `sync_limit_reached`: the request budget is spent.", body = ErrorEnvelope),
     ),
 )]
 pub async fn sync_now(State(state): State<AppState>) -> Result<Json<SyncRun>, ApiError> {
+    sync_on_request(&state, true).await
+}
+
+/// `POST /api/v1/bank-connection/sync-after-reconnect`: **Done, sync now**, once the household
+/// has re-authorized a bank at SimpleFIN. Like Sync now, but it skips the cooldown; it still
+/// counts against the request cap and joins a running sync.
+#[utoipa::path(
+    post,
+    path = "/api/v1/bank-connection/sync-after-reconnect",
+    operation_id = "syncAfterReconnect",
+    responses(
+        (status = 200, description = "The run, finished.", body = SyncRun),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 409, description = "`not_connected`: no bank connection; `sync_paused`: the connection is paused until a new setup token is pasted; `sync_limit_reached`: the request budget is spent.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn sync_after_reconnect(
+    State(state): State<AppState>,
+) -> Result<Json<SyncRun>, ApiError> {
+    sync_on_request(&state, false).await
+}
+
+/// Runs a sync the household asked for, or joins the one running; `cooldown` makes it wait out
+/// the cooldown after the last sync first.
+async fn sync_on_request(state: &AppState, cooldown: bool) -> Result<Json<SyncRun>, ApiError> {
     match state.sync_lock.try_lock() {
         Ok(_running) => {
             let now = state.now();
-            let last = db::last_finished_sync(&state.pool).await?;
-            if let Some(until) = rules::cooldown_until(last, state.bank.sync_cooldown, now) {
-                return Err(cooling_down(last.unwrap_or(now), until, now));
+            if cooldown {
+                let last = db::last_finished_sync(&state.pool).await?;
+                if let Some(until) = rules::cooldown_until(last, state.bank.sync_cooldown, now) {
+                    return Err(cooling_down(last.unwrap_or(now), until, now));
+                }
             }
-            let ran = run(&state, db::SyncTrigger::Manual).await?;
-            crate::schedule::after_run(&state, db::SyncTrigger::Manual, ran);
+            let ran = run(state, db::SyncTrigger::Manual).await?;
+            crate::schedule::after_run(state, db::SyncTrigger::Manual, ran);
         }
         Err(_) => {
             // Join the run that's going: wait for it to end.
             drop(state.sync_lock.lock().await);
         }
     }
-    let run = latest(&state)
+    let run = latest(state)
         .await?
         .ok_or_else(|| ApiError::internal(&"a sync ran, or was running, and left no run behind"))?;
     Ok(Json(run))
@@ -288,6 +328,7 @@ pub(crate) async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<Ra
     // Each account's rows over every request, applied once the responses are in, so matching
     // and the rows the bank stopped sending see the run's whole response.
     let mut read: BTreeMap<i64, Read> = BTreeMap::new();
+    let mut notices: Vec<String> = Vec::new();
     for (n, request) in requests.into_iter().enumerate() {
         end.requests += 1;
         let url = access.clone();
@@ -307,6 +348,21 @@ pub(crate) async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<Ra
                 break;
             }
         };
+        if let Some(revoked) = feed
+            .problems
+            .iter()
+            .find(|p| rules_health::access_revoked(&p.code))
+        {
+            // A 200 that says the access URL was disabled pauses the connection like a 403.
+            revoke(state, revoked, &mut end).await?;
+            break;
+        }
+        notices.extend(
+            feed.problems
+                .iter()
+                .filter(|p| p.bank_link.is_none() && p.account_id.is_none())
+                .map(|p| p.code.clone()),
+        );
         if n == 0 {
             // Every response refreshes the new accounts prompt.
             record_accounts(state, connection_id, &feed, household.currency.code()).await?;
@@ -341,10 +397,22 @@ pub(crate) async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<Ra
         connection_id,
         run_id,
         &links,
-        &end,
-        &results,
+        &Outcome {
+            end: &end,
+            results: &results,
+            notices: &notices,
+        },
     )
     .await
+}
+
+/// What a run came to.
+#[derive(Clone, Copy)]
+struct Outcome<'a> {
+    end: &'a db::RunEnd,
+    results: &'a [db::AccountResult],
+    /// The codes of the notices the feed carried with no bank link or account: logged, not shown.
+    notices: &'a [String],
 }
 
 /// Records the run's end, marks what it back-filled, prunes the history and logs the run's line.
@@ -354,9 +422,13 @@ async fn finish(
     connection_id: i64,
     run_id: i64,
     links: &[db::FeedLink],
-    end: &db::RunEnd,
-    results: &[db::AccountResult],
+    outcome: &Outcome<'_>,
 ) -> Result<Ran, ApiError> {
+    let Outcome {
+        end,
+        results,
+        notices,
+    } = *outcome;
     let finished = state.now();
     db::finish_sync_run(&state.pool, run_id, end, results, finished).await?;
     if end.error_code.is_none() {
@@ -388,6 +460,7 @@ async fn finish(
         updated = end.updated,
         error = end.error_code.as_deref().unwrap_or("none"),
         account_errors = ?failed,
+        notices = ?notices,
         "bank sync ran"
     );
     let transient = end.error_code.as_deref().is_some_and(rules::transient)
@@ -437,6 +510,22 @@ async fn refused(
     Ok(())
 }
 
+/// The feed says the access URL was revoked or disabled (`gen.auth`): the run fails and the
+/// connection pauses, as for a 403.
+async fn revoke(
+    state: &AppState,
+    problem: &simplefin::FeedProblem,
+    end: &mut db::RunEnd,
+) -> Result<(), ApiError> {
+    db::set_connection_status(&state.pool, db::ConnectionStatus::TokenRevoked, state.now()).await?;
+    end.error_code = Some(problem.code.clone());
+    end.error = Some(feed::sanitize_message(&format!(
+        "Sync failed: {}. The accounts keep their last data.",
+        problem.message.trim_end_matches('.')
+    )));
+    Ok(())
+}
+
 async fn record_accounts(
     state: &AppState,
     connection_id: i64,
@@ -451,6 +540,7 @@ async fn record_accounts(
             name: account.name.clone(),
             institution: account.institution.clone(),
             currency: account.currency.clone(),
+            bank_link: account.bank_link.clone(),
         })
         .collect();
     db::record_connection_accounts(&state.pool, connection_id, &reported, currency, state.now())
