@@ -3,7 +3,7 @@
 # Base images stay in step with .nvmrc and rust-toolchain.toml.
 
 # --- The frontend: web/dist ---
-FROM node:24.22.1-trixie-slim AS web
+FROM node:24.22.3-trixie-slim AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -11,7 +11,7 @@ COPY web/ ./
 RUN npm run build
 
 # --- The Rust build, with the dependencies in their own layer (cargo-chef) ---
-FROM rust:1.99.1-slim-trixie AS chef
+FROM rust:1.100.0-slim-trixie AS chef
 WORKDIR /src
 # rustup reads rust-toolchain.toml, so the image builds with the one pinned toolchain.
 COPY rust-toolchain.toml ./
