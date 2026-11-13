@@ -200,7 +200,12 @@ async fn same_as_moves_a_manual_account_onto_the_feed() {
     assert_eq!(tracked["account_id"], made["id"]);
     let listed = accounts(&app).await;
     assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0]["opening_balance_minor"], -5000);
+    // The back-fill's rows ($47.00 of them) are older than the opening balance, dated the day
+    // before the account was made: it moves back over them, and the app's balance stays what was
+    // entered (docs/spec/m2-bank-data.md#balances).
+    assert_eq!(listed[0]["opening_balance_minor"], -300);
+    assert_eq!(listed[0]["opening_date"], super::sync::days_ago(13));
+    assert_eq!(listed[0]["app_balance_minor"], -5000);
     assert!(listed[0]["connection_id"].is_i64());
 
     let missing = json!({ "role": "budgeted", "balances_only": false, "same_as_account_id": 999 });

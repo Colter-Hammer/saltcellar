@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE balance_adjustments SET undone_at = ?, undone_by = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d3d73fb5f30ef960e5977ab3cbfed10162597517977be03381aba443ea5607e8"
+}

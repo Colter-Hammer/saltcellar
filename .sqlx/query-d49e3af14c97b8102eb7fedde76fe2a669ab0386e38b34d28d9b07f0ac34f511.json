@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT a.id AS \"id!: i64\", a.name, a.institution, a.type AS kind, a.role,\n             a.closed AS \"closed: bool\", a.in_net_worth AS \"in_net_worth: bool\", a.has_transactions AS \"has_transactions: bool\",\n             a.connection_id,\n             a.opening_balance_minor, a.opening_date,\n             (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS \"rows!: i64\",\n             (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS \"last: String\",\n             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t\n               WHERE t.account_id = a.id AND t.status = 'posted') AS \"posted!: i64\",\n             (SELECT s.balance_minor FROM balance_snapshots s WHERE s.account_id = a.id\n               ORDER BY s.as_of DESC LIMIT 1) AS \"snapshot: i64\"\n           FROM accounts a WHERE ?1 IS NULL OR a.id = ?1 ORDER BY a.sort_order, a.id",
+  "query": "SELECT a.id AS \"id!: i64\", a.name, a.institution, a.type AS kind, a.role,\n             a.closed AS \"closed: bool\", a.in_net_worth AS \"in_net_worth: bool\", a.has_transactions AS \"has_transactions: bool\",\n             a.connection_id,\n             a.opening_balance_minor, a.opening_date,\n             (SELECT COUNT(*) FROM transactions t WHERE t.account_id = a.id) AS \"rows!: i64\",\n             (SELECT MAX(t.date) FROM transactions t WHERE t.account_id = a.id) AS \"last: String\",\n             (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t\n               WHERE t.account_id = a.id AND t.status = 'posted')\n             + (SELECT COALESCE(SUM(b.amount_minor), 0) FROM balance_adjustments b\n               WHERE b.account_id = a.id AND b.undone_at IS NULL) AS \"posted!: i64\",\n             (SELECT s.balance_minor FROM balance_snapshots s WHERE s.account_id = a.id\n               ORDER BY s.as_of DESC LIMIT 1) AS \"snapshot?: i64\"\n           FROM accounts a WHERE ?1 IS NULL OR a.id = ?1 ORDER BY a.sort_order, a.id",
   "describe": {
     "columns": [
       {
@@ -127,23 +127,23 @@
       {
         "name": "rows!: i64",
         "ordinal": 11,
-        "type_info": "Integer",
+        "type_info": "Null",
         "origin": "Expression"
       },
       {
         "name": "last: String",
         "ordinal": 12,
-        "type_info": "Text",
+        "type_info": "Null",
         "origin": "Expression"
       },
       {
         "name": "posted!: i64",
         "ordinal": 13,
-        "type_info": "Integer",
+        "type_info": "Null",
         "origin": "Expression"
       },
       {
-        "name": "snapshot: i64",
+        "name": "snapshot?: i64",
         "ordinal": 14,
         "type_info": "Integer",
         "origin": {
@@ -158,22 +158,22 @@
       "Right": 1
     },
     "nullable": [
-      false,
-      false,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
+      null,
       false,
       true,
       false,
-      true
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null,
+      null,
+      null,
+      false
     ]
   },
-  "hash": "7659c6e6369e03a9165ff269884858c695baf0cd3fb32a2bd2d0a1fd4a13610c"
+  "hash": "d49e3af14c97b8102eb7fedde76fe2a669ab0386e38b34d28d9b07f0ac34f511"
 }

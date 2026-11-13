@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO balance_adjustments (account_id, date, amount_minor, note, accepted_by, accepted_at)\n           VALUES (?, ?, ?, ?, ?, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "balance_adjustments",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "6bd34cfdf1cb87bf7d2acc967038e85fa783a190193f12ccd44e464b0a6b1568"
+}

@@ -1,0 +1,35 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"count!: i64\",\n             COALESCE(SUM(amount_minor), 0) AS \"total!: i64\",\n             MIN(date) AS \"earliest: String\"\n           FROM transactions WHERE account_id = ? AND status = 'posted' AND date <= ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "total!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "earliest: String",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "8fb5495356322a42969da4130a70add13fa10256c0648ee1c8d6fc381286d5ad"
+}

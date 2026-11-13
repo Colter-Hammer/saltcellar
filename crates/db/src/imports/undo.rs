@@ -160,6 +160,17 @@ pub async fn undo_import(
     .await?
     .rows_affected();
 
+    // An opening balance the import moved back over its rows goes back where it was.
+    sqlx::query!(
+        "UPDATE accounts SET opening_balance_minor = o.opening_balance_minor,
+           opening_date = o.opening_date
+         FROM import_batch_openings o
+         WHERE o.batch_id = ? AND o.account_id = accounts.id",
+        batch_id
+    )
+    .execute(&mut *tx)
+    .await?;
+
     // A feed account attached to one of them waits in the new accounts prompt again *(agent)*.
     sqlx::query!(
         "UPDATE connection_accounts SET decision = 'pending', account_id = NULL

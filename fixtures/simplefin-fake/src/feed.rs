@@ -172,6 +172,13 @@ fn scenario_rows(scenario: Scenario, day: u32) -> Vec<Row> {
                 "Demo Pay App",
             ),
         ],
+        Scenario::Drift if day > 0 => vec![posted(
+            "TRN-demo-hardware-1",
+            1,
+            "-45.00",
+            "DEMO HARDWARE",
+            "Demo Hardware",
+        )],
         Scenario::ManualMatchArrives if day > 0 => vec![posted(
             "TRN-demo-tutor-1",
             1,
@@ -243,7 +250,13 @@ fn accounts(scenario: Scenario, day: u32, currency: &str) -> Vec<Account> {
             currency: None,
             conn_id: "CON-demo-1",
             name: "Demo Everyday Checking",
-            balance: "1157.58",
+            // From day 1 the drift scenario's bank takes $9.50 more than the row it sends (a
+            // fee the feed never carries).
+            balance: if scenario == Scenario::Drift && day > 0 {
+                "1103.08"
+            } else {
+                "1157.58"
+            },
             rows: checking,
         },
         Account {
@@ -251,7 +264,7 @@ fn accounts(scenario: Scenario, day: u32, currency: &str) -> Vec<Account> {
             currency: None,
             conn_id: "CON-demo-1",
             name: "Demo Rewards Card",
-            balance: if scenario == Scenario::WrongSign {
+            balance: if scenario == Scenario::WrongSign && day > 0 {
                 "229.00"
             } else {
                 "-229.00"
@@ -343,6 +356,9 @@ pub fn response(scenario: Scenario, day: u32, query: &Query, currency: &str, now
             let age = match scenario {
                 Scenario::NeedsAuth if account.conn_id == "CON-demo-2" => 6 * DAY,
                 Scenario::StaleData if account.conn_id == "CON-demo-2" => 3 * DAY,
+                // The bank refreshes once a day: day 0 two days back, day 1 one, from day 2 now,
+                // so each of the first three days is its own snapshot even on a fixed clock.
+                Scenario::Drift | Scenario::WrongSign => (2 - i64::from(day.min(2))) * DAY,
                 _ => 3600,
             };
             let balance_date = now - age;

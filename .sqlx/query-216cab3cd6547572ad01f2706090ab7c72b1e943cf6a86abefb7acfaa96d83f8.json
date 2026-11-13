@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT opening_balance_minor FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "opening_balance_minor",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "opening_balance_minor"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "216cab3cd6547572ad01f2706090ab7c72b1e943cf6a86abefb7acfaa96d83f8"
+}

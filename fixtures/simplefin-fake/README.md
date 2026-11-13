@@ -62,7 +62,8 @@ server.follow_system_clock(); // dates count back from the real time, not NOW
 | `con-error` | `con.failed` for `CON-demo-2`: a bank link error that isn't `con.auth`. |
 | `gen-api` | A `gen.api` notice with no bank link or account in the error list; the data is fine. |
 | `stale-data` | Everything fine, but `CON-demo-2`'s accounts have a `balance-date` three days old. |
-| `wrong-sign` | The card's balance is reported positive although it owes money. |
+| `wrong-sign` | Day 0: everything fine. From day 1: the card's balance is reported positive although it owes money. `balance-date` is two days old on day 0, one on day 1, and now from day 2. |
+| `drift` | Day 0: everything fine. From day 1: a $45.00 checking row (Demo Hardware) a day old, and the bank's balance $54.50 lower ($1,103.08): $9.50 of drift. `balance-date` moves as in `wrong-sign`, so day 2 is the second snapshot at that drift. |
 | `foreign-currency` | A fourth account, `ACT-demo-travel` (Demo Travel Card) at the second bank, reports CAD (USD when the fake's currency is CAD). |
 
 A later issue that needs another scenario adds it to `Scenario` and to this table.

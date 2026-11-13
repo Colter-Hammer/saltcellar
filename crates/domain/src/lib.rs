@@ -5,6 +5,7 @@
 
 pub mod accounts;
 pub mod actual;
+pub mod balances;
 pub mod categories;
 mod currency;
 mod date;

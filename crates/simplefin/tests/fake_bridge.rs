@@ -7,7 +7,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use serde_json::Value;
+use serde_json::{Value, json};
 use simplefin::{AccessUrl, ClaimError, ClaimPolicy, ClaimUrl, FetchError, claim, fetch_accounts};
 use simplefin_fake::{FakeServer, NOW, Scenario};
 
@@ -406,7 +406,7 @@ async fn the_failure_scenarios_say_what_they_say() {
     assert_eq!(date_of("ACT-demo-checking"), NOW - 3600);
 
     let (_, steady) = scenario_feed(Scenario::Steady, 0).await;
-    let (_, wrong) = scenario_feed(Scenario::WrongSign, 0).await;
+    let (_, wrong) = scenario_feed(Scenario::WrongSign, 1).await;
     let card = |body: &Value| {
         body["accounts"]
             .as_array()
@@ -418,6 +418,43 @@ async fn the_failure_scenarios_say_what_they_say() {
     };
     assert_eq!(card(&steady), "-229.00");
     assert_eq!(card(&wrong), "229.00");
+    let (_, right_first) = scenario_feed(Scenario::WrongSign, 0).await;
+    assert_eq!(card(&right_first), "-229.00");
+}
+
+#[tokio::test]
+async fn the_drift_scenario_moves_the_balance_without_its_row_and_refreshes_daily() {
+    let checking = |body: &Value, key: &str| {
+        body["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == "ACT-demo-checking")
+            .unwrap()[key]
+            .clone()
+    };
+    let mut seen = Vec::new();
+    for day in 0..4 {
+        let (_, body) = scenario_feed(Scenario::Drift, day).await;
+        let hardware = rows(&body, "ACT-demo-checking")
+            .into_iter()
+            .find(|r| r["id"] == "TRN-demo-hardware-1")
+            .map(|r| r["amount"].clone());
+        seen.push((
+            checking(&body, "balance"),
+            checking(&body, "balance-date"),
+            hardware,
+        ));
+    }
+    assert_eq!(
+        seen,
+        [
+            (json!("1157.58"), json!(NOW - 2 * 86_400), None),
+            (json!("1103.08"), json!(NOW - 86_400), Some(json!("-45.00"))),
+            (json!("1103.08"), json!(NOW), Some(json!("-45.00"))),
+            (json!("1103.08"), json!(NOW), Some(json!("-45.00"))),
+        ]
+    );
 }
 
 /// The accounts `fetch_accounts` reads from `access`, by id and currency.

@@ -1,7 +1,8 @@
 //! The sync engine (docs/spec/m2-bank-data.md#the-request and #sync-runs): one run asks the
 //! Bridge for every account at once, reads each tracked account's rows, matches them to the
-//! stored ones (`db::apply_synced_rows`) for every account that succeeded, and records the run
-//! with a result per account. A failed or missing account keeps its last data and no miss counts
+//! stored ones (`db::apply_synced_rows_in_run`) for every account that succeeded, records its
+//! bank balance (`db::record_bank_balance`, #balances), and records the run with a result per
+//! account. A failed or missing account keeps its last data and no miss counts
 //! move. A newly tracked account is back-filled: 90 days as
 //! two 45-day requests. Otherwise a run asks for the last 30 days.
 //!
@@ -378,18 +379,14 @@ pub(crate) async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<Ra
             }
         }
     }
-    for (account_id, account) in &read {
-        let (true, Some(rows)) = (account.result.ok, &account.rows) else {
-            continue;
-        };
-        let window_start = feed::utc_date(account.window_start)
-            .ok_or_else(|| ApiError::internal(&"a sync window starts off the calendar"))?;
-        let applied =
-            db::apply_synced_rows(&state.pool, *account_id, rows, window_start, state.now())
-                .await?;
-        end.added += applied.added;
-        end.updated += applied.updated;
-    }
+    apply_read(
+        state,
+        run_id,
+        &read,
+        major_unit(household.currency),
+        &mut end,
+    )
+    .await?;
     let results: Vec<db::AccountResult> = read.into_values().map(|a| a.result).collect();
     finish(
         state,
@@ -404,6 +401,50 @@ pub(crate) async fn run(state: &AppState, trigger: db::SyncTrigger) -> Result<Ra
         },
     )
     .await
+}
+
+/// Writes what run `run_id` read for each account that succeeded: its rows, then its bank
+/// balance.
+async fn apply_read(
+    state: &AppState,
+    run_id: i64,
+    read: &BTreeMap<i64, Read>,
+    unit: domain::Money,
+    end: &mut db::RunEnd,
+) -> Result<(), ApiError> {
+    for (account_id, account) in read {
+        if !account.result.ok {
+            continue;
+        }
+        if let Some(rows) = &account.rows {
+            let window_start = feed::utc_date(account.window_start)
+                .ok_or_else(|| ApiError::internal(&"a sync window starts off the calendar"))?;
+            let applied = db::apply_synced_rows_in_run(
+                &state.pool,
+                run_id,
+                *account_id,
+                rows,
+                window_start,
+                state.now(),
+            )
+            .await?;
+            end.added += applied.added;
+            end.updated += applied.updated;
+        }
+        // After the rows, so a first sync's opening balance is the balance less all of them.
+        if let (Some(balance), Some(balance_date)) = (account.balance, account.result.balance_date)
+        {
+            let bank = db::BankBalance {
+                account_id: *account_id,
+                balance,
+                balance_date,
+                run_id,
+                unit,
+            };
+            db::record_bank_balance(&state.pool, &bank).await?;
+        }
+    }
+    Ok(())
 }
 
 /// What a run came to.
@@ -548,11 +589,18 @@ async fn record_accounts(
     Ok(())
 }
 
+/// One major unit of `currency` in minor units: 100 for two decimal places.
+fn major_unit(currency: domain::Currency) -> domain::Money {
+    domain::Money::from_minor(10_i64.pow(u32::from(currency.decimal_places())))
+}
+
 /// What a run read for one account.
 struct Read {
     result: db::AccountResult,
     /// Its rows; `None` for a balances-only account, whose rows are ignored.
     rows: Option<Vec<SyncedRow>>,
+    /// The bank's balance, as sent; `None` for a failed account.
+    balance: Option<domain::Money>,
     /// Epoch seconds: where the earliest request that brought its rows started.
     window_start: i64,
 }
@@ -570,6 +618,8 @@ impl Read {
         if let (Some(rows), Some(more)) = (&mut self.rows, other.rows) {
             rows.extend(more);
         }
+        // Every request reports the same balance; the newer request comes first.
+        self.balance = self.balance.or(other.balance);
         self.window_start = self.window_start.min(other.window_start);
     }
 }
@@ -591,6 +641,7 @@ fn read_account(
             balance_date,
         },
         rows: None,
+        balance: None,
         window_start,
     };
     let Some(account) = feed.accounts.iter().find(|a| a.id == link.external_id) else {
@@ -611,6 +662,14 @@ fn read_account(
     if let Some(problem) = problem {
         return failed(&problem.code, problem.message.clone(), balance_date);
     }
+    // A balance the currency can't hold fails the account, as a row's amount does *(agent)*.
+    let Some(balance) = feed::amount(&account.balance, currency.decimal_places()) else {
+        return failed(
+            "bad_amount",
+            format!("The balance isn't an amount in {}.", currency.code()),
+            balance_date,
+        );
+    };
     let rows = if link.balances_only {
         None
     } else {
@@ -628,6 +687,7 @@ fn read_account(
             balance_date,
         },
         rows,
+        balance: Some(balance),
         window_start,
     }
 }

@@ -4,8 +4,10 @@
 // transactions. A balances-only account has only its balance. Edit opens the account's form
 // (docs/spec/m2-bank-data.md#accounts). Update balance, on an account with no connection (or a
 // balances-only one whose bank link is broken, docs/spec/m2-bank-data.md#errors), records
-// what's in it today (docs/spec/m2-bank-data.md#manual-entry); where the app's own balance differs,
-// that's drift, shown beside it as for a synced account.
+// what's in it today (docs/spec/m2-bank-data.md#manual-entry). Drift (docs/spec/m2-bank-data.md#balances)
+// is measured at each balance snapshot: the figures show the last one's, and a drift that held for
+// two snapshots shows its flag, suspect rows and Accept above them (DriftPanel). A balance the
+// bank sent with the wrong sign says it was corrected.
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAccount, useAccountEdits, type AccountChange } from '@/api/accounts'
@@ -13,6 +15,7 @@ import { ApiError } from '@/api/client'
 import AccountEditForm from '@/components/AccountEditForm.vue'
 import BalanceForm from '@/components/BalanceForm.vue'
 import BankFix from '@/components/BankFix.vue'
+import DriftPanel from '@/components/DriftPanel.vue'
 import { roleLabel, transactionsLink, typeLabel } from '@/lib/accounts'
 import Money from '@/components/Money.vue'
 import { formatDate, useFormatting } from '@/lib/format'
@@ -103,6 +106,7 @@ const opening = computed(() => {
         </p>
         <BankFix v-if="account.sync.fix" />
       </div>
+      <DriftPanel :account="account" />
       <AccountEditForm
         v-if="editing"
         :account="account"
@@ -142,15 +146,33 @@ const opening = computed(() => {
         <dd class="text-right">
           <Money v-if="account.balance_minor !== null" :minor="account.balance_minor" />
           <template v-else>—</template>
+          <span
+            v-if="account.drift.sign_corrected"
+            data-testid="sign-corrected"
+            class="block text-xs text-muted-foreground"
+            title="The bank sent this balance with the wrong sign; the app flipped it."
+          >
+            Sign corrected
+          </span>
         </dd>
         <template v-if="!account.balances_only">
-          <!-- The app's own balance: opening plus posted transactions. Where it differs from the
-               balance, that's drift; its flag and Accept arrive with drift detection. -->
+          <!-- The app's own balance: opening plus posted transactions and balance adjustments. -->
           <dt class="text-muted-foreground">App's balance</dt>
           <dd class="text-right">
             <Money v-if="account.app_balance_minor !== null" :minor="account.app_balance_minor" />
             <template v-else>—</template>
           </dd>
+          <template
+            v-if="account.drift.bank_comparison && account.drift.bank_comparison.drift_minor !== 0"
+          >
+            <dt class="text-muted-foreground">Off at last balance</dt>
+            <dd class="text-right" data-testid="drift">
+              <Money :minor="account.drift.bank_comparison.drift_minor" />
+              <span class="block text-xs text-muted-foreground">
+                {{ formatDate(account.drift.bank_comparison.as_of, formatting) }}
+              </span>
+            </dd>
+          </template>
           <dt class="text-muted-foreground">Opening balance</dt>
           <dd class="text-right">
             <template v-if="opening">

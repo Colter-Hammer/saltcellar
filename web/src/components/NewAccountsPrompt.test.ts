@@ -33,6 +33,7 @@ const wallet: Account = {
   opening_date: '2026-10-27',
   rows: 0,
   last_transaction_date: null,
+  drift: { sign_corrected: false, bank_comparison: null, flag: null, adjustments: [] },
 }
 
 const empty = { pending: [], ignored: [], refused: [] }

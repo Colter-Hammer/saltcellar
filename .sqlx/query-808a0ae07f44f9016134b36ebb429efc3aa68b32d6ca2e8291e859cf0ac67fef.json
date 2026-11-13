@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO sync_row_changes\n           (sync_run_id, account_id, transaction_id, change, date, amount_minor, description)\n         SELECT ?, ?, id, ?, date, amount_minor, raw_description FROM transactions WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "808a0ae07f44f9016134b36ebb429efc3aa68b32d6ca2e8291e859cf0ac67fef"
+}

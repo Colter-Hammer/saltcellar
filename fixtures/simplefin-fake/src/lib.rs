@@ -64,8 +64,13 @@ pub enum Scenario {
     GenApi,
     /// Everything fine, except the second bank's accounts have a `balance-date` three days old.
     StaleData,
-    /// The card's balance is reported positive while its rows say it owes money.
+    /// From day 1, the card's balance is reported positive while its rows say it owes money.
+    /// `balance-date` moves a day each day (two days old on day 0, now from day 2).
     WrongSign,
+    /// From day 1, a $45.00 checking row arrives and the bank's balance drops $54.50: $9.50 of
+    /// drift. `balance-date` moves a day each day (two days old on day 0, now from day 2), so day 2
+    /// is the second snapshot at that drift and flags it.
+    Drift,
     /// A fourth account, `ACT-demo-travel` at the second bank, reports its money in another
     /// currency (CAD, or USD when the fake's own currency is CAD).
     ForeignCurrency,
@@ -73,7 +78,7 @@ pub enum Scenario {
 
 impl Scenario {
     /// Every scenario, in the order the README lists them.
-    pub const ALL: [Scenario; 20] = [
+    pub const ALL: [Scenario; 21] = [
         Scenario::Steady,
         Scenario::PendingPosts,
         Scenario::PendingAmountChanges,
@@ -93,6 +98,7 @@ impl Scenario {
         Scenario::GenApi,
         Scenario::StaleData,
         Scenario::WrongSign,
+        Scenario::Drift,
         Scenario::ForeignCurrency,
     ];
 
@@ -119,6 +125,7 @@ impl Scenario {
             Scenario::GenApi => "gen-api",
             Scenario::StaleData => "stale-data",
             Scenario::WrongSign => "wrong-sign",
+            Scenario::Drift => "drift",
             Scenario::ForeignCurrency => "foreign-currency",
         }
     }

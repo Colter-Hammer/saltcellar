@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT balance_includes_pending AS \"includes: bool\" FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "includes: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "balance_includes_pending"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "1c6f1611a4c20403f3de48ba2d8b31d56478701228bb7c4604df5c17df3aa63f"
+}

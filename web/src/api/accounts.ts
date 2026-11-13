@@ -56,6 +56,30 @@ export function useAccountEdits() {
           }),
         ),
       ),
+    /**
+     * `POST /api/v1/accounts/{id}/balance-adjustments`: accepts the flagged drift, `amountMinor`,
+     * as a balance adjustment; `no_drift` if the flag moved. Resolves to the account.
+     */
+    acceptAdjustment: (id: number, amountMinor: number, note: string) =>
+      edit(
+        call(
+          client.POST('/api/v1/accounts/{id}/balance-adjustments', {
+            params: { path: { id } },
+            body: { amount_minor: amountMinor, note },
+          }),
+        ),
+      ),
+    /** `POST /api/v1/balance-adjustments/{id}/undo`: undoes one, keeping its record. */
+    undoAdjustment: (id: number) =>
+      edit(
+        call(
+          client.POST('/api/v1/balance-adjustments/{id}/undo', {
+            params: { path: { id } },
+            // Every mutating request is JSON, body or not (docs/spec/foundations.md#http-api).
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ),
     /** Saves `accounts`' order, shown at once. */
     order: (accounts: Account[]) => {
       queryClient.setQueryData<AccountList>(['accounts'], { accounts })

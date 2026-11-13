@@ -1619,6 +1619,7 @@ describe('Accounts', () => {
     opening_date: '2025-12-31',
     rows: 0,
     last_transaction_date: null,
+    drift: { sign_corrected: false, bank_comparison: null, flag: null, adjustments: [] },
     ...fields,
   })
 
@@ -1806,6 +1807,7 @@ describe('Transactions', () => {
     opening_date: '2025-12-31',
     rows: 0,
     last_transaction_date: null,
+    drift: { sign_corrected: false, bank_comparison: null, flag: null, adjustments: [] },
   })
   const fake = (id: number, fields: Partial<Transaction>): Transaction => ({
     id,

@@ -46,7 +46,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /api/v1/accounts/{id}`: one account, with its balances. */
+        /** `GET /api/v1/accounts/{id}`: one account, with its balances and drift. */
         get: operations["getAccount"];
         put?: never;
         post?: never;
@@ -72,6 +72,47 @@ export interface paths {
          *     account whose bank link is broken, or whose connection is paused, takes one too.
          */
         post: operations["updateAccountBalance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/balance-adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/accounts/{id}/balance-adjustments`: **Accept $X as balance adjustment**.
+         *     Records the flagged drift as a balance adjustment dated the newest snapshot's day; the app's
+         *     balance includes it from then on, so the flag clears.
+         */
+        post: operations["acceptBalanceAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balance-adjustments/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/balance-adjustments/{id}/undo`: **Undo** an accepted adjustment. It is kept,
+         *     marked undone, and the drift it covered comes back.
+         */
+        post: operations["undoBalanceAdjustment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -926,8 +967,9 @@ export interface components {
         Account: {
             /**
              * Format: int64
-             * @description The app's own balance, its opening balance plus its posted transactions, in minor units;
-             *     null without an opening balance. Where it differs from `balance_minor`, that's drift.
+             * @description The app's own balance, its opening balance plus its posted transactions and balance
+             *     adjustments, in minor units; null without an opening balance. Drift is measured at
+             *     snapshots: see `drift`.
              */
             app_balance_minor: number | null;
             /** @description Who enters its balance. */
@@ -946,6 +988,8 @@ export interface components {
              *     the bank and takes no manual balance, unless `balance_entry` says so.
              */
             connection_id: number | null;
+            /** @description Its balance against the bank's: drift, its flag and the balance adjustments. */
+            drift: components["schemas"]["AccountDrift"];
             /** Format: int64 */
             id: number;
             /** @description Whether it counts in net worth. */
@@ -987,6 +1031,18 @@ export interface components {
             name?: string | null;
             role?: components["schemas"]["AccountRole"] | null;
             type?: components["schemas"]["AccountType"] | null;
+        };
+        /**
+         * @description An account's balance against the bank's: the newest comparison, the drift flag and the
+         *     adjustments.
+         */
+        AccountDrift: {
+            /** @description Its balance adjustments, newest first, undone ones included. */
+            adjustments: components["schemas"]["BalanceAdjustment"][];
+            bank_comparison: components["schemas"]["BankComparison"] | null;
+            flag: components["schemas"]["DriftFlag"] | null;
+            /** @description Its newest balance was sent with the wrong sign and flipped. */
+            sign_corrected: boolean;
         };
         AccountList: {
             /** @description In order, closed ones included. */
@@ -1207,11 +1263,37 @@ export interface components {
              */
             transactions: number;
         };
+        /** @description Accepting an account's flagged drift. */
+        AdjustmentAccept: {
+            /**
+             * Format: int64
+             * @description The flagged drift being accepted, in minor units: refused if the flag has moved since.
+             */
+            amount_minor: number;
+            /** @description Why, in the household's words; empty or left out for none. */
+            note?: string | null;
+        };
         /** @description One of the app's accounts. */
         AppAccount: {
             /** Format: int64 */
             id: number;
             name: string;
+        };
+        /** @description A balance adjustment: drift the household accepted. Not a transaction. */
+        BalanceAdjustment: {
+            /** @description RFC 3339. */
+            accepted_at: string;
+            /** @description The display name of who accepted it. */
+            accepted_by: string | null;
+            /** Format: int64 */
+            amount_minor: number;
+            /** @description `YYYY-MM-DD`: the snapshot it settled. */
+            date: string;
+            /** Format: int64 */
+            id: number;
+            note: string | null;
+            /** @description RFC 3339; null while it counts. An undone one is kept, for a later drift report. */
+            undone_at: string | null;
         };
         /**
          * @description Who enters an account's balance.
@@ -1247,6 +1329,27 @@ export interface components {
             /** @description The bank's name as the feed gives it. */
             name: string;
             state: components["schemas"]["BankLinkState"];
+        };
+        /** @description The newest snapshot, the bank's balance against the app's. */
+        BankComparison: {
+            /**
+             * Format: int64
+             * @description The app's balance drift is measured against, in minor units: opening balance, posted rows
+             *     and balance adjustments (pending rows too where the bank's balance is known to count them).
+             */
+            app_minor: number;
+            /** @description `YYYY-MM-DD`: the snapshot's date. */
+            as_of: string;
+            /**
+             * Format: int64
+             * @description The bank's balance, in minor units.
+             */
+            bank_minor: number;
+            /**
+             * Format: int64
+             * @description Bank less app, in minor units.
+             */
+            drift_minor: number;
         };
         /** @description The bank connection screen's state. */
         BankConnection: {
@@ -1379,6 +1482,18 @@ export interface components {
              * @description An app category's id.
              */
             category_id: number;
+        };
+        /** @description Drift that held at the same non-zero value for two snapshots in a row. */
+        DriftFlag: {
+            /**
+             * Format: int64
+             * @description Bank less app, in minor units: what **Accept** records.
+             */
+            drift_minor: number;
+            /** @description `YYYY-MM-DD`: when drift last stepped to this value. */
+            since: string;
+            /** @description What the run that stepped it added, changed or dropped, newest first. */
+            suspect_rows: components["schemas"]["SuspectRow"][];
         };
         /** @description Every row listed under Recently dropped by bank. */
         DroppedList: {
@@ -1663,6 +1778,11 @@ export interface components {
         Resolve: {
             action: components["schemas"]["FlagAction"];
         };
+        /**
+         * @description What a sync run did to a row.
+         * @enum {string}
+         */
+        RowChange: "added" | "changed" | "dropped";
         /** @description How one account fared in a run. */
         RunAccount: {
             /** Format: int64 */
@@ -1717,6 +1837,21 @@ export interface components {
             /** Format: int64 */
             category_id: number;
             memo?: string | null;
+        };
+        /** @description A row the run that stepped the drift added, changed or dropped. */
+        SuspectRow: {
+            /** Format: int64 */
+            amount_minor: number;
+            change: components["schemas"]["RowChange"];
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** @description The bank's text for it. */
+            description: string;
+            /**
+             * Format: int64
+             * @description Null once the row is gone (dropped, or deleted since).
+             */
+            transaction_id: number | null;
         };
         /** @description The run history, newest first: 90 days of it. */
         SyncHistory: {
@@ -2198,6 +2333,119 @@ export interface operations {
                 };
             };
             /** @description `account_connected`: the account has a connection that works, so its balance comes from the bank. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    acceptBalanceAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustmentAccept"];
+            };
+        };
+        responses: {
+            /** @description Accepted; the account now. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `no_drift`: the account's drift isn't flagged, or not at that amount. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `validation_failed` with `note` if it is over 500 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    undoBalanceAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The adjustment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Undone; its account now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such adjustment. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `already_undone`: it is undone already. */
             409: {
                 headers: {
                     [name: string]: unknown;

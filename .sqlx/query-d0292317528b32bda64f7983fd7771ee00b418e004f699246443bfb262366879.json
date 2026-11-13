@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT a.type AS kind, a.has_transactions AS \"has_transactions!: bool\",\n             a.opening_balance_minor, a.opening_date,\n             a.balance_includes_pending AS \"includes_pending: bool\",\n             (SELECT s.provider_balance_date FROM balance_snapshots s\n               WHERE s.account_id = a.id AND s.source = 'provider'\n                 AND s.provider_balance_date IS NOT NULL\n               ORDER BY s.provider_balance_date DESC LIMIT 1) AS \"latest: String\"\n           FROM accounts a WHERE a.id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "kind",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "type"
+          }
+        }
+      },
+      {
+        "name": "has_transactions!: bool",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "has_transactions"
+          }
+        }
+      },
+      {
+        "name": "opening_balance_minor",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "opening_balance_minor"
+          }
+        }
+      },
+      {
+        "name": "opening_date",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "opening_date"
+          }
+        }
+      },
+      {
+        "name": "includes_pending: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "balance_includes_pending"
+          }
+        }
+      },
+      {
+        "name": "latest: String",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "balance_snapshots",
+            "name": "provider_balance_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d0292317528b32bda64f7983fd7771ee00b418e004f699246443bfb262366879"
+}

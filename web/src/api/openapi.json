@@ -139,7 +139,7 @@
         "tags": [
           "accounts"
         ],
-        "summary": "`GET /api/v1/accounts/{id}`: one account, with its balances.",
+        "summary": "`GET /api/v1/accounts/{id}`: one account, with its balances and drift.",
         "operationId": "getAccount",
         "parameters": [
           {
@@ -306,6 +306,152 @@
           },
           "409": {
             "description": "`account_connected`: the account has a connection that works, so its balance comes from the bank.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{id}/balance-adjustments": {
+      "post": {
+        "tags": [
+          "balances"
+        ],
+        "summary": "`POST /api/v1/accounts/{id}/balance-adjustments`: **Accept $X as balance adjustment**.\nRecords the flagged drift as a balance adjustment dated the newest snapshot's day; the app's\nbalance includes it from then on, so the flag clears.",
+        "operationId": "acceptBalanceAdjustment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The account.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustmentAccept"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Accepted; the account now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`no_drift`: the account's drift isn't flagged, or not at that amount.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` with `note` if it is over 500 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/balance-adjustments/{id}/undo": {
+      "post": {
+        "tags": [
+          "balances"
+        ],
+        "summary": "`POST /api/v1/balance-adjustments/{id}/undo`: **Undo** an accepted adjustment. It is kept,\nmarked undone, and the drift it covered comes back.",
+        "operationId": "undoBalanceAdjustment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The adjustment.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Undone; its account now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such adjustment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`already_undone`: it is undone already.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3261,7 +3407,8 @@
           "rows",
           "last_transaction_date",
           "sync",
-          "balance_entry"
+          "balance_entry",
+          "drift"
         ],
         "properties": {
           "app_balance_minor": {
@@ -3270,7 +3417,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "The app's own balance, its opening balance plus its posted transactions, in minor units;\nnull without an opening balance. Where it differs from `balance_minor`, that's drift."
+            "description": "The app's own balance, its opening balance plus its posted transactions and balance\nadjustments, in minor units; null without an opening balance. Drift is measured at\nsnapshots: see `drift`."
           },
           "balance_entry": {
             "$ref": "#/components/schemas/BalanceEntry",
@@ -3298,6 +3445,10 @@
             ],
             "format": "int64",
             "description": "Its connection; null for an account with none. One with a connection gets its balance from\nthe bank and takes no manual balance, unless `balance_entry` says so."
+          },
+          "drift": {
+            "$ref": "#/components/schemas/AccountDrift",
+            "description": "Its balance against the bank's: drift, its flag and the balance adjustments."
           },
           "id": {
             "type": "integer",
@@ -3428,6 +3579,51 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "AccountDrift": {
+        "type": "object",
+        "description": "An account's balance against the bank's: the newest comparison, the drift flag and the\nadjustments.",
+        "required": [
+          "sign_corrected",
+          "bank_comparison",
+          "flag",
+          "adjustments"
+        ],
+        "properties": {
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BalanceAdjustment"
+            },
+            "description": "Its balance adjustments, newest first, undone ones included."
+          },
+          "bank_comparison": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BankComparison",
+                "description": "Its newest snapshot, the bank's balance against the app's; null before one, and for a\nbalances-only account."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flag": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DriftFlag",
+                "description": "Drift that held at the same value for two snapshots; null when there's none."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sign_corrected": {
+            "type": "boolean",
+            "description": "Its newest balance was sent with the wrong sign and flipped."
           }
         }
       },
@@ -3904,6 +4100,27 @@
           }
         }
       },
+      "AdjustmentAccept": {
+        "type": "object",
+        "description": "Accepting an account's flagged drift.",
+        "required": [
+          "amount_minor"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The flagged drift being accepted, in minor units: refused if the flag has moved since."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, in the household's words; empty or left out for none."
+          }
+        }
+      },
       "AppAccount": {
         "type": "object",
         "description": "One of the app's accounts.",
@@ -3918,6 +4135,57 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "BalanceAdjustment": {
+        "type": "object",
+        "description": "A balance adjustment: drift the household accepted. Not a transaction.",
+        "required": [
+          "id",
+          "date",
+          "amount_minor",
+          "note",
+          "accepted_by",
+          "accepted_at",
+          "undone_at"
+        ],
+        "properties": {
+          "accepted_at": {
+            "type": "string",
+            "description": "RFC 3339."
+          },
+          "accepted_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name of who accepted it."
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`: the snapshot it settled."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "undone_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339; null while it counts. An undone one is kept, for a later drift report."
           }
         }
       },
@@ -3994,6 +4262,37 @@
           },
           "state": {
             "$ref": "#/components/schemas/BankLinkState"
+          }
+        }
+      },
+      "BankComparison": {
+        "type": "object",
+        "description": "The newest snapshot, the bank's balance against the app's.",
+        "required": [
+          "as_of",
+          "bank_minor",
+          "app_minor",
+          "drift_minor"
+        ],
+        "properties": {
+          "app_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The app's balance drift is measured against, in minor units: opening balance, posted rows\nand balance adjustments (pending rows too where the bank's balance is known to count them)."
+          },
+          "as_of": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`: the snapshot's date."
+          },
+          "bank_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The bank's balance, in minor units."
+          },
+          "drift_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bank less app, in minor units."
           }
         }
       },
@@ -4390,6 +4689,33 @@
             "type": "integer",
             "format": "int64",
             "description": "An app category's id."
+          }
+        }
+      },
+      "DriftFlag": {
+        "type": "object",
+        "description": "Drift that held at the same non-zero value for two snapshots in a row.",
+        "required": [
+          "drift_minor",
+          "since",
+          "suspect_rows"
+        ],
+        "properties": {
+          "drift_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bank less app, in minor units: what **Accept** records."
+          },
+          "since": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`: when drift last stepped to this value."
+          },
+          "suspect_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SuspectRow"
+            },
+            "description": "What the run that stepped it added, changed or dropped, newest first."
           }
         }
       },
@@ -5089,6 +5415,15 @@
           }
         }
       },
+      "RowChange": {
+        "type": "string",
+        "description": "What a sync run did to a row.",
+        "enum": [
+          "added",
+          "changed",
+          "dropped"
+        ]
+      },
       "RunAccount": {
         "type": "object",
         "description": "How one account fared in a run.",
@@ -5243,6 +5578,42 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SuspectRow": {
+        "type": "object",
+        "description": "A row the run that stepped the drift added, changed or dropped.",
+        "required": [
+          "transaction_id",
+          "change",
+          "date",
+          "amount_minor",
+          "description"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "change": {
+            "$ref": "#/components/schemas/RowChange"
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "description": {
+            "type": "string",
+            "description": "The bank's text for it."
+          },
+          "transaction_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null once the row is gone (dropped, or deleted since)."
           }
         }
       },
