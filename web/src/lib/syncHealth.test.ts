@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import type { Account } from '@/api/accounts'
 import type { Connection } from '@/api/bank'
 import { account, sync } from './syncFixtures'
 import { quietStates, spot, syncProblems } from './syncHealth'

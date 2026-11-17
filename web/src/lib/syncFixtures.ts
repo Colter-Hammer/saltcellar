@@ -24,7 +24,7 @@ export function account(id: number, extra: Partial<Account> = {}): Account {
     last_transaction_date: null,
     drift: { sign_corrected: false, bank_comparison: null, flag: null, adjustments: [] },
     ...extra,
-  } as Account
+  }
 }
 
 export const sync = (state: Sync['state'], fix = false): Sync => ({

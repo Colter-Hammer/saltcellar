@@ -127,7 +127,7 @@ const opening = computed(() => {
         </p>
         <BankFix v-if="account.sync.fix" />
       </div>
-      <DriftPanel :account="account" />
+      <DriftPanel :account="account" :open-rows="route.query.suspect === '1'" />
       <AccountEditForm
         v-if="editing"
         :account="account"

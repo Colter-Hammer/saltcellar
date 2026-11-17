@@ -182,7 +182,19 @@ function syncNow(counted = true): Response {
 async function bank(request: Request): Promise<Response> {
   if (!server.loggedIn) return error(401, 'login_required', 'Log in to continue.')
   const shown = () =>
-    Response.json({ secret_key_set: server.bank.keySet, connection: server.bank.connection })
+    Response.json({
+      secret_key_set: server.bank.keySet,
+      connection: server.bank.connection,
+      sync: {
+        time: '06:13',
+        keep_raw_responses: false,
+        request_cap: 12,
+        requests_left: 9,
+        last_synced_at: null,
+        cooldown_until: null,
+        limit_until: null,
+      },
+    })
   if (request.method === 'DELETE') {
     server.bank.disconnected += 1
     server.bank.connection = null
@@ -913,15 +925,20 @@ describe('logging in', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((request: Request) =>
-        ['/api/v1/session', '/api/v1/profile', '/api/v1/bank-connection'].includes(
-          new URL(request.url).pathname,
-        )
+        [
+          '/api/v1/session',
+          '/api/v1/profile',
+          '/api/v1/bank-connection',
+          '/api/v1/accounts',
+          '/api/v1/household',
+        ].includes(new URL(request.url).pathname)
           ? Promise.reject(new TypeError('Failed to fetch'))
           : answer(request),
       ),
     )
-    // A screen that asks the server nothing itself, beyond the shell's profile (for the palette)
-    // and bank connection (for the paused banner), which are gone too: one that asked more would
+    // A screen that asks the server nothing itself, beyond the shell's profile (for the palette),
+    // bank connection (for the paused banner) and the sync status's accounts and household, which
+    // are gone too: one that asked more would
     // find the login gone.
     const { router } = await open('/more')
     expect(router.currentRoute.value.path).toBe('/more')
@@ -1014,8 +1031,13 @@ describe('Settings › Bank connection & sync', () => {
     expect(wrapper.get('[data-testid="connection-state"]').text()).toBe(
       'SimpleFIN Bridge · connected',
     )
-    expect(wrapper.find('form').exists()).toBe(false)
-    expect(buttons(wrapper)).toEqual(['Sync now', 'Replace setup token…', 'Disconnect'])
+    expect(wrapper.find('input[name="setup_token"]').exists()).toBe(false)
+    expect(buttons(wrapper)).toEqual([
+      'Sync now',
+      'Replace setup token…',
+      'Disconnect',
+      'Save time',
+    ])
   })
 
   it('syncs now and says what the sync did', async () => {
@@ -1052,14 +1074,14 @@ describe('Settings › Bank connection & sync', () => {
     }
     const { wrapper } = await open('/settings/bank')
     await press(wrapper, 'Replace setup token…')
-    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.find('input[name="setup_token"]').exists()).toBe(true)
     await press(wrapper, 'Cancel')
-    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.find('input[name="setup_token"]').exists()).toBe(false)
 
     await press(wrapper, 'Replace setup token…')
     await paste(wrapper, 'bmV3')
     expect(server.bank.claimed).toEqual(['bmV3'])
-    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.find('input[name="setup_token"]').exists()).toBe(false)
   })
 
   it.each([
@@ -1196,7 +1218,12 @@ describe('Settings › Bank connection & sync', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('accounts and transactions stay')
     expect(server.bank.disconnected).toBe(0)
     await press(wrapper, 'Cancel')
-    expect(buttons(wrapper)).toEqual(['Sync now', 'Replace setup token…', 'Disconnect'])
+    expect(buttons(wrapper)).toEqual([
+      'Sync now',
+      'Replace setup token…',
+      'Disconnect',
+      'Save time',
+    ])
 
     await press(wrapper, 'Disconnect')
     // The confirming Disconnect.

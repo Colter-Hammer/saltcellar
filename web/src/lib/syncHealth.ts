@@ -4,7 +4,7 @@ import type { Connection } from '@/api/bank'
 import { type Formatting, formatInstantTime } from './format'
 
 /** Where a problem's fix leads. */
-export type ProblemFix =
+type ProblemFix =
   { kind: 'simplefin' } | { kind: 'suspect-rows'; to: string } | { kind: 'account'; to: string }
 
 export interface SyncProblem {
@@ -39,7 +39,9 @@ export function syncProblems(accounts: readonly Account[]): SyncProblem[] {
         account: account.name,
         state: sync.state === 'needs_reconnecting' ? 'Needs reconnecting' : 'Needs attention',
         message: sync.message ?? 'Its bank data needs attention.',
-        fix: sync.fix ? { kind: 'simplefin' } : { kind: 'account', to: `/accounts/${account.id}` },
+        fix: sync.fix
+          ? { kind: 'simplefin' }
+          : { kind: 'account', to: `/accounts/${String(account.id)}` },
       })
     }
     if (account.drift.flag) {
@@ -48,7 +50,7 @@ export function syncProblems(accounts: readonly Account[]): SyncProblem[] {
         account: account.name,
         state: 'Balance off',
         message: 'Its balance and the bank’s have stayed apart.',
-        fix: { kind: 'suspect-rows', to: `/accounts/${account.id}?suspect=1` },
+        fix: { kind: 'suspect-rows', to: `/accounts/${String(account.id)}?suspect=1` },
       })
     }
   }

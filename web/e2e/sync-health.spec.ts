@@ -27,7 +27,7 @@ test.afterAll(async ({ request }) => {
 
 test('all good: a hollow dot and the sync time', async ({ page }) => {
   await page.goto('/accounts')
-  await expect(spot(page)).toHaveText(/^Synced \d{1,2}:\d{2}\s?[AP]M$/)
+  await expect(spot(page)).toHaveText(/^\s*Synced \d{1,2}:\d{2}\s?[AP]M$/)
   await expect(spot(page)).toHaveAttribute('data-problem', 'false')
 })
 
@@ -66,5 +66,5 @@ test('a broken bank link: the pill, the sheet and its fix, on a phone and on a d
   await problem.getByRole('button', { name: 'Done, sync now' }).click()
   await expect(sheet.getByTestId('sync-problem')).toHaveCount(0)
   await sheet.getByRole('button', { name: 'Close' }).click()
-  await expect(spot(page)).toHaveText(/^\d{1,2}:\d{2}\s?[AP]M$/)
+  await expect(spot(page)).toHaveText(/^\s*\d{1,2}:\d{2}\s?[AP]M$/)
 })
