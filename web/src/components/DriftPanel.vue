@@ -6,6 +6,7 @@
 // adjustments accepted so far, each with **Undo** until it is undone; an undone one stays listed
 // *(agent: the words and the layout)*.
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { type Account, useAccountEdits } from '@/api/accounts'
 import { ApiError } from '@/api/client'
 import Money from '@/components/Money.vue'
@@ -17,7 +18,8 @@ const formatting = useFormatting()
 const edits = useAccountEdits()
 const flag = computed(() => props.account.drift.flag)
 const comparison = computed(() => props.account.drift.bank_comparison)
-const showRows = ref(false)
+// The sync sheet's **See suspect rows** arrives with `?suspect=1`, rows already open *(agent)*.
+const showRows = ref(useRoute().query.suspect === '1')
 const accepting = ref(false)
 const note = ref('')
 const busy = ref(false)
