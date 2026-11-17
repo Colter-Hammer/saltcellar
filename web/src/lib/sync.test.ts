@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Bank, SyncRun, SyncState } from '@/api/bank'
 import {
+  pausedMessage,
   accountCount,
   accountProblem,
   bankState,
@@ -157,5 +158,14 @@ describe('bankState', () => {
 
   it('counts accounts', () => {
     expect([accountCount(1), accountCount(3)]).toEqual(['1 account', '3 accounts'])
+  })
+})
+
+describe('pausedMessage', () => {
+  it('says what to do for each reason', () => {
+    expect(pausedMessage('token_revoked')).toContain('turned the access down')
+    expect(pausedMessage('unpaid')).toContain('unpaid')
+    expect(pausedMessage('key_mismatch')).toContain('secret key')
+    expect(pausedMessage('other')).toBe('Paste a new setup token.')
   })
 })
