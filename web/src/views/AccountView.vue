@@ -18,12 +18,33 @@ import BankFix from '@/components/BankFix.vue'
 import DriftPanel from '@/components/DriftPanel.vue'
 import { roleLabel, transactionsLink, typeLabel } from '@/lib/accounts'
 import Money from '@/components/Money.vue'
-import { formatDate, useFormatting } from '@/lib/format'
+import { useBankConnection } from '@/api/bank'
+import { useHousehold } from '@/api/household'
+import { formatDate, formatInstant, formatInstantDay, useFormatting } from '@/lib/format'
 
 const route = useRoute()
 const query = useAccount(() => Number(route.params.id))
 const formatting = useFormatting()
 const edits = useAccountEdits()
+const bank = useBankConnection()
+const household = useHousehold()
+const timeZone = computed(() => household.data.value?.timezone ?? 'UTC')
+
+/** The footer of a synced account (docs/spec/m2-bank-data.md#sync-health-in-the-ui). */
+const footer = computed(() => {
+  const sync = account.value?.sync
+  if (!sync) return null
+  const parts: string[] = []
+  if (sync.last_refreshed_at !== null) {
+    parts.push(
+      `Bank data as of ${formatInstantDay(sync.last_refreshed_at, timeZone.value, formatting.value)}`,
+    )
+  }
+  const last = bank.data.value?.sync.last_synced_at ?? null
+  if (last !== null)
+    parts.push(`last sync ${formatInstant(last, timeZone.value, formatting.value)}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+})
 
 const editing = ref(false)
 const updating = ref(false)
@@ -106,7 +127,7 @@ const opening = computed(() => {
         </p>
         <BankFix v-if="account.sync.fix" />
       </div>
-      <DriftPanel :account="account" />
+      <DriftPanel :account="account" :open-rows="route.query.suspect === '1'" />
       <AccountEditForm
         v-if="editing"
         :account="account"
@@ -197,6 +218,9 @@ const opening = computed(() => {
       >
         See transactions
       </RouterLink>
+      <p v-if="footer" data-testid="account-sync-footer" class="text-xs text-muted-foreground">
+        {{ footer }}
+      </p>
     </section>
   </div>
 </template>

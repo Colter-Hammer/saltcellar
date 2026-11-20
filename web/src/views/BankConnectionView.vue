@@ -21,6 +21,7 @@ import {
   accountCount,
   accountProblem,
   bankState,
+  pausedMessage,
   runSummary,
   scheduleLine,
   syncNowWait,
@@ -86,13 +87,6 @@ function toggleRaw(event: Event) {
 const connection = computed(() => bank.data.value?.connection ?? null)
 const keySet = computed(() => bank.data.value?.secret_key_set ?? false)
 const lastSync = computed(() => connection.value?.last_sync ?? null)
-
-/** What a paused connection says, and what to do about it. */
-const PAUSED: Record<string, string> = {
-  token_revoked: 'SimpleFIN turned the access down. Paste a new setup token.',
-  unpaid: 'The SimpleFIN subscription is unpaid. Pay it, then paste a new setup token.',
-  key_mismatch: 'The secret key changed. Paste a new setup token.',
-}
 
 const token = ref('')
 /** The form is open for Replace; with no connection, or a paused one, it always is. */
@@ -190,7 +184,7 @@ async function confirmDisconnect() {
           <template v-else>
             <p data-testid="connection-state">{{ connection.label }} · Sync paused</p>
             <p role="status" class="text-sm text-muted-foreground">
-              {{ PAUSED[connection.status] ?? 'Paste a new setup token.' }}
+              {{ pausedMessage(connection.status) }}
             </p>
           </template>
         </template>

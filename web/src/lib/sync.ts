@@ -132,3 +132,17 @@ export function bankState(bank: Bank): string {
 export function accountCount(n: number): string {
   return count(n, 'account', 'accounts')
 }
+
+/** What a paused connection says, and what to do about it. */
+export function pausedMessage(status: string): string {
+  switch (status) {
+    case 'token_revoked':
+      return 'SimpleFIN turned the access down. Paste a new setup token.'
+    case 'unpaid':
+      return 'The SimpleFIN subscription is unpaid. Pay it, then paste a new setup token.'
+    case 'key_mismatch':
+      return 'The secret key changed. Paste a new setup token.'
+    default:
+      return 'Paste a new setup token.'
+  }
+}

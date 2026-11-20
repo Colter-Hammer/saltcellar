@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { call, client } from './client'
 import type { components } from './generated/schema'
 
+/** The household's bank connection, without its secret. */
+export type Connection = components['schemas']['Connection']
+
 /** One sync run, as Settings › Bank connection & sync shows it. */
 export type SyncRun = components['schemas']['SyncRun']
 /** The daily schedule, the request budget and Sync now's wait. */

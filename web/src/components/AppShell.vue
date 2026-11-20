@@ -7,6 +7,7 @@ import AppLogo from '@/components/AppLogo.vue'
 import LogOutButton from '@/components/LogOutButton.vue'
 import PausedBanner from '@/components/PausedBanner.vue'
 import ServerBanner from '@/components/ServerBanner.vue'
+import SyncStatus from '@/components/SyncStatus.vue'
 import { sidebarItems, tabs } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 import { useAppearance } from '@/theme/appearance'
@@ -48,8 +49,9 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
           {{ item.label }}
         </a>
       </RouterLink>
-      <!-- The sidebar has no More, so Log out sits at its foot *(agent)*. -->
-      <LogOutButton class="mt-auto rounded-md px-2 py-1.5 hover:bg-accent" />
+      <!-- The sync status sits above Log out, which sits at the foot: the sidebar has no More *(agent)*. -->
+      <SyncStatus variant="button" class="mt-auto hover:bg-accent" />
+      <LogOutButton class="rounded-md px-2 py-1.5 hover:bg-accent" />
     </nav>
 
     <div class="flex min-w-0 flex-1 flex-col">
@@ -60,6 +62,7 @@ const sidebar = computed(() => sidebarItems((undecided.data.value?.length ?? 0) 
         <AppLogo class="lg:hidden" />
         <span class="mx-3 h-5 border-l lg:hidden" aria-hidden="true" />
         <h1 class="truncate font-semibold lg:text-xl">{{ title }}</h1>
+        <SyncStatus variant="pill" class="ml-auto" />
       </header>
 
       <ServerBanner />
