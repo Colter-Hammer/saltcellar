@@ -1799,6 +1799,189 @@
         }
       }
     },
+    "/api/v1/imports/csv/commit": {
+      "post": {
+        "tags": [
+          "csv_import"
+        ],
+        "summary": "`POST /api/v1/imports/csv/commit`: imports the file as one import batch and saves the mapping\nfor this account and header.",
+        "operationId": "commitCsvImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Imported, as one import batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvImportDone"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_mapping`, `empty_file`, or `nothing_readable`: no record reads with this mapping.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/csv/preview": {
+      "post": {
+        "tags": [
+          "csv_import"
+        ],
+        "summary": "`POST /api/v1/imports/csv/preview`: what Import would do with the file; nothing is written.",
+        "operationId": "previewCsvImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "How many rows are new, already there or to check.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_mapping`: the mapping points at a column the file doesn't have; `empty_file`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/csv/read": {
+      "post": {
+        "tags": [
+          "csv_import"
+        ],
+        "summary": "`POST /api/v1/imports/csv/read`: reads a file's records and finds its mapping.",
+        "operationId": "readCsvFile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The file's first records, the mapping saved for its header (if any) and a guess.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`empty_file`: the file has no records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/{id}/undo": {
       "post": {
         "tags": [
@@ -4675,6 +4858,446 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "CsvAmount": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "One column, signed.",
+            "required": [
+              "column",
+              "kind"
+            ],
+            "properties": {
+              "column": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "signed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Money out in one column, money in in another, both without a sign.",
+            "required": [
+              "debit",
+              "credit",
+              "kind"
+            ],
+            "properties": {
+              "credit": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "debit": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "debit_credit"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where the amount is."
+      },
+      "CsvCheckRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CsvPreviewRow"
+          },
+          {
+            "type": "object",
+            "required": [
+              "could_be"
+            ],
+            "properties": {
+              "could_be": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CsvStoredRow",
+                    "description": "The stored row it most likely is."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A row to check: it could be a row the account has, or another as good."
+      },
+      "CsvCommitRequest": {
+        "type": "object",
+        "description": "A file to import, with the household's decisions.",
+        "required": [
+          "account_id",
+          "file_name",
+          "content",
+          "mapping",
+          "keep"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string",
+            "description": "The file's name, for Settings › Imports."
+          },
+          "keep": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The places (`row`) of the rows to check that should be added; the rest are skipped."
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/CsvMapping"
+          }
+        }
+      },
+      "CsvDateFormat": {
+        "type": "string",
+        "description": "How the file writes its dates.",
+        "enum": [
+          "ymd",
+          "mdy",
+          "dmy"
+        ]
+      },
+      "CsvImportDone": {
+        "type": "object",
+        "description": "What was imported.",
+        "required": [
+          "batch_id",
+          "added",
+          "matched",
+          "skipped"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "batch_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The import batch, which Settings › Imports can undo."
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows the account had already.",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unreadable records and rows to check that weren't kept.",
+            "minimum": 0
+          }
+        }
+      },
+      "CsvMapping": {
+        "type": "object",
+        "description": "Which column holds what. Columns count from 0.",
+        "required": [
+          "date",
+          "post_date",
+          "description",
+          "amount",
+          "flip_sign",
+          "date_format",
+          "category",
+          "memo",
+          "skip_rows"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/CsvAmount"
+          },
+          "category": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The bank's own category, if the file has one.",
+            "minimum": 0
+          },
+          "date": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "date_format": {
+            "$ref": "#/components/schemas/CsvDateFormat"
+          },
+          "description": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "flip_sign": {
+            "type": "boolean",
+            "description": "The file writes money out as positive."
+          },
+          "memo": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "post_date": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The bank's posting date, if the file has one.",
+            "minimum": 0
+          },
+          "skip_rows": {
+            "type": "integer",
+            "description": "Records before the first row, the header among them.",
+            "minimum": 0
+          }
+        }
+      },
+      "CsvPreview": {
+        "type": "object",
+        "description": "What an import would do.",
+        "required": [
+          "new",
+          "already",
+          "to_check",
+          "unreadable",
+          "sample",
+          "check",
+          "problems"
+        ],
+        "properties": {
+          "already": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows the account has already.",
+            "minimum": 0
+          },
+          "check": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CsvCheckRow"
+            },
+            "description": "Every row to check."
+          },
+          "new": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows that would be added.",
+            "minimum": 0
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CsvProblem"
+            },
+            "description": "The first unreadable records."
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CsvPreviewRow"
+            },
+            "description": "The first new rows, as they'd be written."
+          },
+          "to_check": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows to decide on.",
+            "minimum": 0
+          },
+          "unreadable": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Records skipped because their date or amount doesn't read.",
+            "minimum": 0
+          }
+        }
+      },
+      "CsvPreviewRow": {
+        "type": "object",
+        "description": "A row as the preview shows it.",
+        "required": [
+          "row",
+          "date",
+          "description",
+          "amount_minor",
+          "category"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In minor units, signed from the account's point of view."
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "description": {
+            "type": "string"
+          },
+          "row": {
+            "type": "integer",
+            "description": "Its record's place in the file, from 1.",
+            "minimum": 0
+          }
+        }
+      },
+      "CsvProblem": {
+        "type": "object",
+        "description": "A record the mapping can't read.",
+        "required": [
+          "row",
+          "why"
+        ],
+        "properties": {
+          "row": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "why": {
+            "type": "string",
+            "description": "Why, in words."
+          }
+        }
+      },
+      "CsvRead": {
+        "type": "object",
+        "description": "A file's first records and the mapping to start from.",
+        "required": [
+          "records",
+          "record_count",
+          "columns",
+          "saved",
+          "guess"
+        ],
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "description": "The columns of its widest record.",
+            "minimum": 0
+          },
+          "guess": {
+            "$ref": "#/components/schemas/CsvMapping",
+            "description": "What the header suggests, for the mapping screen to start from."
+          },
+          "record_count": {
+            "type": "integer",
+            "description": "How many records the file has.",
+            "minimum": 0
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "The first records, cell by cell."
+          },
+          "saved": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CsvMapping",
+                "description": "The mapping saved for this account and this header; null for a header not seen before."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CsvReadRequest": {
+        "type": "object",
+        "description": "A file, sent for reading.",
+        "required": [
+          "account_id",
+          "content"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "type": "string",
+            "description": "The file's text, as is."
+          }
+        }
+      },
+      "CsvRequest": {
+        "type": "object",
+        "description": "A file and the mapping to read it with.",
+        "required": [
+          "account_id",
+          "content",
+          "mapping"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "type": "string"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/CsvMapping"
+          }
+        }
+      },
+      "CsvStoredRow": {
+        "type": "object",
+        "description": "A stored row a file row might be.",
+        "required": [
+          "date",
+          "description",
+          "amount_minor"
+        ],
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "date": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
           }
         }
       },

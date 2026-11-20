@@ -157,6 +157,13 @@ const opening = computed(() => {
         >
           Update balance
         </button>
+        <RouterLink
+          v-if="!account.balances_only"
+          :to="{ path: '/import/file', query: { account: String(account.id) } }"
+          class="inline-flex items-center rounded-md border px-3 py-2"
+        >
+          Import a file
+        </RouterLink>
       </div>
 
       <dl

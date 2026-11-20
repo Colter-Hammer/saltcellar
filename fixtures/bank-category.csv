@@ -1,0 +1,7 @@
+Demo Bank statement export
+Account ending 0000
+
+Date,Description,Amount,Category,Memo
+2026-09-01,DEMO CAFE #12,-4.50,Dining,morning coffee
+2026-09-02,DEMO HARDWARE,-23.99,Home,
+2026-09-04,DEMO PAYROLL,1250.00,Income,

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO import_batch_rows (batch_id, transaction_id, outcome, import_ref, set_bank_category)\n         VALUES (?, ?, 'matched', ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "e6da8ac3b5eef694787371bc1c2c8d6301001fbde6b143a515c70611bd84a858"
+}

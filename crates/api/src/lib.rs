@@ -7,6 +7,7 @@ mod bank;
 mod batches;
 mod categories;
 mod connection_accounts;
+mod csv_import;
 mod error;
 mod health;
 mod household;
@@ -104,6 +105,9 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         import::upload,
         import::get,
         import::commit,
+        csv_import::read,
+        csv_import::preview,
+        csv_import::commit,
         batches::list,
         batches::undo
     ),
@@ -335,11 +339,11 @@ pub fn router(state: AppState) -> Router {
             patch(categories::change_category).delete(categories::delete_category),
         )
         .route("/category-groups", post(categories::add_group))
-        .route("/imports", get(batches::list))
-        .route("/imports/{id}/undo", post(batches::undo))
+        .merge(batches::routes())
         .route("/imports/actual", post(import::upload))
         .route("/imports/actual/{id}", get(import::get))
         .route("/imports/actual/{id}/commit", post(import::commit))
+        .merge(csv_import::routes())
         .route(
             "/category-groups/{id}",
             patch(categories::change_group).delete(categories::delete_group),

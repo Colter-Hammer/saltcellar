@@ -6,6 +6,7 @@ mod balances;
 mod categories;
 mod connection;
 mod connection_accounts;
+mod csv_import;
 mod dropped;
 mod household;
 mod imports;
@@ -51,6 +52,10 @@ pub use connection_accounts::{
     ConnectionAccount, FeedDecision, Recorded, ReportedAccount, Track, TrackError,
     connection_accounts, ignore_connection_account, record_connection_accounts,
     track_connection_account,
+};
+pub use csv_import::{
+    CsvCommit, CsvCommitted, SavedMapping, commit_csv_import, csv_matched_rows,
+    import_account_exists, import_mappings, plan_csv_import,
 };
 pub use dropped::{DroppedRow, RestoreError, dropped_rows, restore_dropped};
 pub use household::{Household, household};
@@ -242,6 +247,7 @@ mod tests {
                 "import_batch_openings",
                 "import_batch_rows",
                 "import_batches",
+                "import_mappings",
                 "login_failures",
                 "password_resets",
                 "payee_aliases",

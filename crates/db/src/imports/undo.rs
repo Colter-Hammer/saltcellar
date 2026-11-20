@@ -73,13 +73,16 @@ impl From<sqlx::Error> for UndoError {
 }
 
 /// The transactions a batch inserted, as a subquery on its id (`?1`).
-const INSERTED: &str =
-    "(SELECT transaction_id FROM import_batch_rows WHERE batch_id = ?1 AND outcome = 'inserted')";
+/// Not the rows sync has adopted since (`source = 'provider'`): those are the bank's now.
+const INSERTED: &str = "(SELECT ib.transaction_id FROM import_batch_rows ib
+   JOIN transactions t ON t.id = ib.transaction_id
+   WHERE ib.batch_id = ?1 AND ib.outcome = 'inserted' AND t.source = 'import')";
 
 /// Undoes a batch in one database transaction: deletes the rows it inserted with their split
-/// lines, tags and transfers, restores `prior_fields` on the rows it matched, deletes the accounts
-/// it created that have no rows left, the payees and tags its rows used that nothing else uses
-/// *(agent for tags)*, and marks it undone. Categories stay.
+/// lines, tags and transfers, restores `prior_fields` on the rows it matched, clears the bank
+/// categories it set, deletes the accounts it created that have no rows left, the payees and tags
+/// its rows used that nothing else uses *(agent for tags)*, and marks it undone. Categories stay.
+/// Rows sync has adopted since (`source = 'provider'`) stay, as the bank's own.
 ///
 /// A row counts as edited when `categorized_by = 'user'` or it was updated after it was written
 /// (`updated_by` set, or `updated_at` moved) *(agent)*. With edited rows, nothing happens unless
@@ -110,7 +113,7 @@ pub async fn undo_import(
     let edited = sqlx::query_scalar!(
         r#"SELECT count(*) AS "edited!: i64" FROM transactions t
            JOIN import_batch_rows ib ON ib.transaction_id = t.id
-           WHERE ib.batch_id = ? AND ib.outcome = 'inserted'
+           WHERE ib.batch_id = ? AND ib.outcome = 'inserted' AND t.source = 'import'
              AND (t.categorized_by = 'user' OR t.updated_by IS NOT NULL
                   OR t.updated_at <> t.created_at)"#,
         batch_id
@@ -136,6 +139,7 @@ pub async fn undo_import(
     .execute(&mut *tx)
     .await?;
 
+    clear_bank_categories(&mut tx, batch_id).await?;
     let used = Used::of(&mut tx, batch_id).await?;
 
     for statement in [
@@ -160,16 +164,7 @@ pub async fn undo_import(
     .await?
     .rows_affected();
 
-    // An opening balance the import moved back over its rows goes back where it was.
-    sqlx::query!(
-        "UPDATE accounts SET opening_balance_minor = o.opening_balance_minor,
-           opening_date = o.opening_date
-         FROM import_batch_openings o
-         WHERE o.batch_id = ? AND o.account_id = accounts.id",
-        batch_id
-    )
-    .execute(&mut *tx)
-    .await?;
+    restore_openings(&mut tx, batch_id).await?;
 
     // A feed account attached to one of them waits in the new accounts prompt again *(agent)*.
     sqlx::query!(
@@ -204,6 +199,40 @@ pub async fn undo_import(
         rows_deleted,
         accounts_deleted,
     })
+}
+
+/// An opening balance the import moved back over its rows goes back where it was.
+async fn restore_openings(
+    tx: &mut sqlx::SqliteConnection,
+    batch_id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "UPDATE accounts SET opening_balance_minor = o.opening_balance_minor,
+           opening_date = o.opening_date
+         FROM import_batch_openings o
+         WHERE o.batch_id = ? AND o.account_id = accounts.id",
+        batch_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Clears the bank categories the file gave, on rows that were there already or that sync has
+/// adopted since.
+async fn clear_bank_categories(
+    tx: &mut sqlx::SqliteConnection,
+    batch_id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "UPDATE transactions SET bank_category = NULL
+         WHERE id IN (SELECT transaction_id FROM import_batch_rows
+                      WHERE batch_id = ? AND set_bank_category = 1)",
+        batch_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
 }
 
 /// The payees and tags a batch's inserted rows used, to tidy once the rows are gone.

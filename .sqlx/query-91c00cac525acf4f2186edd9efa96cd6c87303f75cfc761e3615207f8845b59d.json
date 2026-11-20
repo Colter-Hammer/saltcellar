@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO import_mappings (account_id, header_signature, config)\n           VALUES (?, ?, ?)\n           ON CONFLICT (account_id, header_signature)\n             DO UPDATE SET config = excluded.config,\n                           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')\n           RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "import_mappings",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "91c00cac525acf4f2186edd9efa96cd6c87303f75cfc761e3615207f8845b59d"
+}

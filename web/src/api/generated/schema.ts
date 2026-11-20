@@ -540,6 +540,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/csv/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/imports/csv/commit`: imports the file as one import batch and saves the mapping
+         *     for this account and header.
+         */
+        post: operations["commitCsvImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/csv/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/csv/preview`: what Import would do with the file; nothing is written. */
+        post: operations["previewCsvImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/csv/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/csv/read`: reads a file's records and finds its mapping. */
+        post: operations["readCsvFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/{id}/undo": {
         parameters: {
             query?: never;
@@ -1474,6 +1528,155 @@ export interface components {
         Created: {
             /** Format: int64 */
             id: number;
+        };
+        /** @description Where the amount is. */
+        CsvAmount: {
+            column: number;
+            /** @enum {string} */
+            kind: "signed";
+        } | {
+            credit: number;
+            debit: number;
+            /** @enum {string} */
+            kind: "debit_credit";
+        };
+        /** @description A row to check: it could be a row the account has, or another as good. */
+        CsvCheckRow: components["schemas"]["CsvPreviewRow"] & {
+            could_be: components["schemas"]["CsvStoredRow"] | null;
+        };
+        /** @description A file to import, with the household's decisions. */
+        CsvCommitRequest: {
+            /** Format: int64 */
+            account_id: number;
+            content: string;
+            /** @description The file's name, for Settings › Imports. */
+            file_name: string;
+            /** @description The places (`row`) of the rows to check that should be added; the rest are skipped. */
+            keep: number[];
+            mapping: components["schemas"]["CsvMapping"];
+        };
+        /**
+         * @description How the file writes its dates.
+         * @enum {string}
+         */
+        CsvDateFormat: "ymd" | "mdy" | "dmy";
+        /** @description What was imported. */
+        CsvImportDone: {
+            /** Format: int64 */
+            added: number;
+            /**
+             * Format: int64
+             * @description The import batch, which Settings › Imports can undo.
+             */
+            batch_id: number;
+            /**
+             * Format: int64
+             * @description Rows the account had already.
+             */
+            matched: number;
+            /**
+             * Format: int64
+             * @description Unreadable records and rows to check that weren't kept.
+             */
+            skipped: number;
+        };
+        /** @description Which column holds what. Columns count from 0. */
+        CsvMapping: {
+            amount: components["schemas"]["CsvAmount"];
+            /** @description The bank's own category, if the file has one. */
+            category: number | null;
+            date: number;
+            date_format: components["schemas"]["CsvDateFormat"];
+            description: number;
+            /** @description The file writes money out as positive. */
+            flip_sign: boolean;
+            memo: number | null;
+            /** @description The bank's posting date, if the file has one. */
+            post_date: number | null;
+            /** @description Records before the first row, the header among them. */
+            skip_rows: number;
+        };
+        /** @description What an import would do. */
+        CsvPreview: {
+            /**
+             * Format: int64
+             * @description Rows the account has already.
+             */
+            already: number;
+            /** @description Every row to check. */
+            check: components["schemas"]["CsvCheckRow"][];
+            /**
+             * Format: int64
+             * @description Rows that would be added.
+             */
+            new: number;
+            /** @description The first unreadable records. */
+            problems: components["schemas"]["CsvProblem"][];
+            /** @description The first new rows, as they'd be written. */
+            sample: components["schemas"]["CsvPreviewRow"][];
+            /**
+             * Format: int64
+             * @description Rows to decide on.
+             */
+            to_check: number;
+            /**
+             * Format: int64
+             * @description Records skipped because their date or amount doesn't read.
+             */
+            unreadable: number;
+        };
+        /** @description A row as the preview shows it. */
+        CsvPreviewRow: {
+            /**
+             * Format: int64
+             * @description In minor units, signed from the account's point of view.
+             */
+            amount_minor: number;
+            category: string | null;
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            description: string;
+            /** @description Its record's place in the file, from 1. */
+            row: number;
+        };
+        /** @description A record the mapping can't read. */
+        CsvProblem: {
+            row: number;
+            /** @description Why, in words. */
+            why: string;
+        };
+        /** @description A file's first records and the mapping to start from. */
+        CsvRead: {
+            /** @description The columns of its widest record. */
+            columns: number;
+            /** @description What the header suggests, for the mapping screen to start from. */
+            guess: components["schemas"]["CsvMapping"];
+            /** @description How many records the file has. */
+            record_count: number;
+            /** @description The first records, cell by cell. */
+            records: string[][];
+            saved: components["schemas"]["CsvMapping"] | null;
+        };
+        /** @description A file, sent for reading. */
+        CsvReadRequest: {
+            /** Format: int64 */
+            account_id: number;
+            /** @description The file's text, as is. */
+            content: string;
+        };
+        /** @description A file and the mapping to read it with. */
+        CsvRequest: {
+            /** Format: int64 */
+            account_id: number;
+            content: string;
+            mapping: components["schemas"]["CsvMapping"];
+        };
+        /** @description A stored row a file row might be. */
+        CsvStoredRow: {
+            /** Format: int64 */
+            amount_minor: number;
+            date: string;
+            description: string;
         };
         /** @description Where to put a group's rows, or one row. */
         Decide: {
@@ -3605,6 +3808,159 @@ export interface operations {
                 };
             };
             /** @description `invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    commitCsvImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Imported, as one import batch. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvImportDone"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `invalid_mapping`, `empty_file`, or `nothing_readable`: no record reads with this mapping. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    previewCsvImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvRequest"];
+            };
+        };
+        responses: {
+            /** @description How many rows are new, already there or to check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvPreview"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `invalid_mapping`: the mapping points at a column the file doesn't have; `empty_file`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    readCsvFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvReadRequest"];
+            };
+        };
+        responses: {
+            /** @description The file's first records, the mapping saved for its header (if any) and a guess. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvRead"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `empty_file`: the file has no records. */
             422: {
                 headers: {
                     [name: string]: unknown;

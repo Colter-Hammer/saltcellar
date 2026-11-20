@@ -7,6 +7,7 @@ import AccountsView from '@/views/AccountsView.vue'
 import AccountView from '@/views/AccountView.vue'
 import BankConnectionView from '@/views/BankConnectionView.vue'
 import CategoriesView from '@/views/CategoriesView.vue'
+import CsvImportView from '@/views/CsvImportView.vue'
 import ImportsView from '@/views/ImportsView.vue'
 import ImportView from '@/views/ImportView.vue'
 import LoginView from '@/views/LoginView.vue'
@@ -57,6 +58,11 @@ export function createAppRouter(history: RouterHistory): Router {
         path: '/import',
         component: ImportView,
         meta: { title: 'Import from Actual', tab: 'more' },
+      },
+      {
+        path: '/import/file',
+        component: CsvImportView,
+        meta: { title: 'Import a file', tab: 'more' },
       },
       {
         // The open row's detail, if any, is in the address.

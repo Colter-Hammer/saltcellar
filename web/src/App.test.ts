@@ -551,6 +551,7 @@ describe('the app shell', () => {
       'Accounts',
       'Categories',
       'Import from Actual',
+      'Import a file',
       'Settings',
     ])
   })
@@ -563,7 +564,7 @@ describe('the app shell', () => {
         .get('main')
         .findAll('a')
         .map((a) => a.text()),
-    ).toEqual(['Categories', 'Import from Actual', 'Settings'])
+    ).toEqual(['Categories', 'Import from Actual', 'Import a file', 'Settings'])
   })
 
   it('marks More as the current tab on the screens it lists', async () => {
@@ -2254,13 +2255,19 @@ describe('From Actual, undecided', () => {
     expect(labels(wrapper)).toEqual([
       'Categories',
       'Import from Actual',
+      'Import a file',
       'From Actual, undecided',
       'Settings',
     ])
     expect(links(wrapper, 'Sidebar').map((a) => a.text())).toContain('From Actual, undecided')
     server.undecided = []
     const empty = await open('/more')
-    expect(labels(empty.wrapper)).toEqual(['Categories', 'Import from Actual', 'Settings'])
+    expect(labels(empty.wrapper)).toEqual([
+      'Categories',
+      'Import from Actual',
+      'Import a file',
+      'Settings',
+    ])
     expect(links(empty.wrapper, 'Sidebar').map((a) => a.text())).not.toContain(
       'From Actual, undecided',
     )

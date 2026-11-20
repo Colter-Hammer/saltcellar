@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO import_batches\n             (account_id, format, file_name, mapping_id, added, matched, skipped, imported_by)\n           VALUES (?, 'csv', ?, ?, 0, 0, 0, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "import_batches",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2fdcb76d634c588f32105e36e74ec3e952db4d222a878d6b5299889e1ff1bd4b"
+}

@@ -1,6 +1,7 @@
 // Navigation grows with the milestones: only screens that exist are listed (docs/spec/foundations.md#frontend).
 import {
   ArrowDownToLine,
+  FileUp,
   FolderTree,
   Landmark,
   List,
@@ -30,6 +31,7 @@ export function moreItems(undecided: boolean): readonly NavItem[] {
   return [
     { to: '/categories', label: 'Categories', icon: FolderTree },
     { to: '/import', label: 'Import from Actual', icon: ArrowDownToLine },
+    { to: '/import/file', label: 'Import a file', icon: FileUp },
     // Only while some imported rows still wait for a category.
     ...(undecided ? [{ to: '/undecided', label: 'From Actual, undecided', icon: ListChecks }] : []),
     { to: '/settings', label: 'Settings', icon: Settings },
