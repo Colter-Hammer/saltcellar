@@ -27,8 +27,8 @@ test('map, preview, import, import again, and undo', async ({ page }) => {
 
   // The header says what's where; nothing is written until Import.
   const mapping = page.getByRole('region', { name: 'Mapping' })
-  await expect(mapping.getByLabel('Date column')).toHaveValue('0')
-  await expect(mapping.getByLabel('Amount column')).toHaveValue('2')
+  await expect(mapping.getByLabel('Date column', { exact: true })).toHaveValue('0')
+  await expect(mapping.getByLabel('Amount column', { exact: true })).toHaveValue('2')
   await expect(mapping.getByLabel('Date format')).toHaveValue('ymd')
   await mapping.getByRole('button', { name: 'Preview' }).click()
   const preview = page.getByRole('region', { name: 'Preview' })
