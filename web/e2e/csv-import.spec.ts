@@ -42,8 +42,8 @@ test('map, preview, import, import again, and undo', async ({ page }) => {
 
   // Imported with the right signs.
   await done.getByRole('link', { name: 'See transactions' }).click()
-  await expect(page.getByText('DEMO PAYROLL').first()).toBeVisible()
-  await expect(page.getByText('−€4.50').first()).toBeVisible()
+  await expect(page.getByText('DEMO PAYROLL').locator('visible=true').first()).toBeVisible()
+  await expect(page.getByText('−€4.50').locator('visible=true').first()).toBeVisible()
 
   // The same file again: same header, so no mapping step, and nothing is added.
   await page.goto('/import/file')
