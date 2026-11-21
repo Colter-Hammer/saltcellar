@@ -372,7 +372,9 @@ async fn the_access_url_is_in_no_response_and_no_log_line() {
     let writer = log.clone();
     tracing::subscriber::set_global_default(
         tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
+            // Not sqlx's own query lines: their timings (`elapsed=164.304µs`) can contain a row
+            // amount's digits. The app's lines are what the rule is about.
+            .with_env_filter(tracing_subscriber::EnvFilter::new("trace,sqlx=warn"))
             .with_ansi(false)
             .with_writer(move || writer.clone())
             .finish(),
