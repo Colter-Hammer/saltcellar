@@ -10,6 +10,7 @@ import type {
   ActualCommitRequest,
   ActualImport,
   ActualImportDone,
+  ActualPreview,
   ActualUpload,
 } from '@/api/imports'
 import { formatDate, type Formatting } from './format'
@@ -43,7 +44,10 @@ function sameName(a: string, b: string): boolean {
 
 // ── Step 2: Accounts ──
 
-/** Create a new app account, use one that exists (Same as), or leave the account out. */
+/**
+ * Create a new app account, use one that exists or track a bank account waiting in the new
+ * accounts prompt (both Same as), or leave the account out.
+ */
 type AccountAction = 'create' | 'same' | 'skip'
 
 /**
@@ -59,23 +63,43 @@ export interface AccountChoice {
   balancesOnly: boolean
   /** Same as: the app account, or null until one is chosen. */
   sameAs: number | null
+  /**
+   * Same as a waiting bank account instead: its provider id. Tracking it takes `role` and
+   * `balancesOnly` too.
+   */
+  track: string | null
+}
+
+/** The Same as picker's value for an app account and for a waiting bank account *(agent)*. */
+export function sameAsValue(choice: Pick<AccountChoice, 'sameAs' | 'track'>): string {
+  if (choice.track !== null) return `bank:${choice.track}`
+  return choice.sameAs === null ? '' : `app:${String(choice.sameAs)}`
+}
+
+/** The choice's Same as fields for a picker value. */
+export function fromSameAsValue(value: string): Pick<AccountChoice, 'sameAs' | 'track'> {
+  if (value.startsWith('bank:')) return { sameAs: null, track: value.slice('bank:'.length) }
+  if (value.startsWith('app:')) return { sameAs: Number(value.slice('app:'.length)), track: null }
+  return { sameAs: null, track: null }
 }
 
 /**
- * Each Actual account's starting choice, by its id: Same as the app account with its bank-sync id,
- * otherwise Create new with Actual's name, the guessed type and the role from on or off budget.
+ * Each Actual account's starting choice, by its id: Same as the app account or waiting bank
+ * account the server matched it to (by bank-sync id, or an app account by name), otherwise Create
+ * new with Actual's name, the guessed type and the role from on or off budget.
  */
 export function startAccountChoices(plan: ActualImport): Record<string, AccountChoice> {
   return Object.fromEntries(
     plan.accounts.map((account) => [
       account.id,
       {
-        action: account.same_as === null ? 'create' : 'same',
+        action: account.same_as === null && account.same_as_waiting === null ? 'create' : 'same',
         name: account.name,
         type: account.type,
         role: account.role,
         balancesOnly: false,
         sameAs: account.same_as,
+        track: account.same_as_waiting,
       },
     ]),
   )
@@ -104,7 +128,7 @@ export function accountProblems(
       else if (names.filter((name) => sameName(name, choice.name)).length > 1) {
         problems[account.id] = 'Another account has this name.'
       }
-    } else if (choice?.action === 'same' && choice.sameAs === null) {
+    } else if (choice?.action === 'same' && choice.sameAs === null && choice.track === null) {
       problems[account.id] = 'Choose the account it’s the same as.'
     }
   }
@@ -112,17 +136,18 @@ export function accountProblems(
 }
 
 /**
- * The Actual accounts whose rows are imported: those created with transactions, and those the
- * same as an app account. A skipped account brings nothing, and a balances-only one only its
- * balance *(agent)*.
+ * The Actual accounts whose rows are imported: those created or tracked with transactions, and
+ * those the same as an app account. A skipped account brings nothing, and a balances-only one only
+ * its balance *(agent)*.
  */
 function importedAccounts(choices: Readonly<Record<string, AccountChoice>>): Set<string> {
+  const imports = (choice: AccountChoice) =>
+    choice.action === 'same'
+      ? choice.track === null || !choice.balancesOnly
+      : choice.action === 'create' && !choice.balancesOnly
   return new Set(
     Object.entries(choices)
-      .filter(
-        ([, choice]) =>
-          choice.action === 'same' || (choice.action === 'create' && !choice.balancesOnly),
-      )
+      .filter(([, choice]) => imports(choice))
       .map(([id]) => id),
   )
 }
@@ -229,29 +254,33 @@ export function startingGroup(
 // ── Step 4: Done ──
 
 /**
- * The commit's request: every account's choice, and the Goes to of each category the imported
- * rows use (any other goes to Decide later on the server too).
+ * The preview's and commit's request: every account's choice, the Goes to of each category the
+ * imported rows use (any other goes to Decide later on the server too), and the possible
+ * duplicates the household says are new.
  */
 export function commitRequest(
   plan: ActualImport,
   accountChoices: Readonly<Record<string, AccountChoice>>,
   categoryChoices: Readonly<Record<string, string>>,
   fileName: string,
+  newRows: readonly string[] = [],
 ): ActualCommitRequest {
   const accounts = plan.accounts.flatMap((account) => {
     const choice = accountChoices[account.id]
     if (choice === undefined) return []
+    const tracks = choice.action === 'same' && choice.track !== null
     return [
       {
         actual_id: account.id,
-        action: choice.action,
+        action: tracks ? 'track' : choice.action,
         name: choice.name.trim(),
         type: choice.type,
         role: choice.role,
         balances_only: choice.balancesOnly,
-        same_as: choice.action === 'same' ? choice.sameAs : null,
+        same_as: choice.action === 'same' && !tracks ? choice.sameAs : null,
+        track: tracks ? choice.track : null,
       },
-    ]
+    ] as const
   })
   const categories = usedCategories(plan, accountChoices).map(({ category }) => {
     const goesTo = categoryChoices[category.id] ?? LATER
@@ -262,7 +291,13 @@ export function commitRequest(
       category_id: id,
     } as const
   })
-  return { file_name: fileName, accounts, categories }
+  return { file_name: fileName, accounts, categories, new_rows: [...newRows] }
+}
+
+/** The preview's line: how many rows come in, and how many are there already. */
+export function describePreview(preview: ActualPreview, locale: string): string {
+  const rows = (count: number) => counted(count, ['row', 'rows'], locale)
+  return `${rows(preview.new)} new, ${rows(preview.already)} already here`
 }
 
 /** The Done step's lines: what was created, and what happened to the rows. */
@@ -270,6 +305,8 @@ export function describeDone(done: ActualImportDone, locale: string): string[] {
   const rows = (count: number) => counted(count, ['row', 'rows'], locale)
   return [
     `${counted(done.accounts_created, ['account', 'accounts'], locale)} created`,
+    // Rows that were here already, synced or from an earlier import *(agent: shown only if any)*.
+    ...(done.matched > 0 ? [`${rows(done.matched)} already here`] : []),
     `${rows(done.mapped)} mapped to a category`,
     `${rows(done.undecided)} undecided`,
     `${rows(done.transfer)} marked transfer`,

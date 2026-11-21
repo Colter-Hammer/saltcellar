@@ -371,3 +371,38 @@ async fn the_committed_fixtures_match_the_builder() {
         );
     }
 }
+
+#[tokio::test]
+async fn the_overlap_export_shares_the_fake_bridges_ids() {
+    let export = read(&fixtures().join(fake::OVERLAP)).await;
+    let banks: Vec<Option<&str>> = export
+        .accounts
+        .iter()
+        .map(|a| a.bank_id.as_deref())
+        .collect();
+    assert_eq!(banks, [Some("ACT-demo-checking"), Some("ACT-demo-savings")]);
+    let shared: Vec<&str> = export
+        .transactions
+        .iter()
+        .filter_map(|t| t.financial_id.as_deref())
+        .filter(|id| id.starts_with("TRN-demo-"))
+        .collect();
+    assert_eq!(
+        shared,
+        [
+            "TRN-demo-pay-1",
+            "TRN-demo-rent-1",
+            "TRN-demo-groc-1",
+            "TRN-demo-power-1",
+            "TRN-demo-int-1"
+        ]
+    );
+    // Starting balances aside, checking has six months of pay and rent before the Bridge's rows.
+    let older = export
+        .transactions
+        .iter()
+        .filter(|t| !t.starting_balance && t.account == export.accounts[0].id)
+        .filter(|t| t.date < "2026-10-01".parse().unwrap())
+        .count();
+    assert_eq!(older, 12);
+}

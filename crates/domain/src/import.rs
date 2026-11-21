@@ -29,6 +29,13 @@ pub enum AccountChoice {
     },
     /// Same as this app account: its rows go there.
     SameAs(i64),
+    /// Same as this bank account waiting in the new accounts prompt (its provider account id):
+    /// the import tracks it with this role, as an account of its own, and its rows go there.
+    Track {
+        external_id: String,
+        role: Role,
+        balances_only: bool,
+    },
     /// None of its rows are imported.
     Skip,
 }
@@ -58,6 +65,8 @@ pub struct Existing<'a> {
     pub accounts: &'a [(i64, String)],
     /// Every app category's id.
     pub categories: &'a HashSet<i64>,
+    /// The provider account ids of the bank accounts waiting in the new accounts prompt.
+    pub waiting: &'a [String],
 }
 
 /// Why the choices can't be committed.
@@ -75,6 +84,10 @@ pub enum ChoiceError {
     NoSuchAccount(String),
     #[error("{0} goes to a category that isn't there any more.")]
     NoSuchCategory(String),
+    #[error("{0} is the same as a bank account that isn't waiting any more.")]
+    NotWaiting(String),
+    #[error("Two Actual accounts can't both be the same as one bank account.")]
+    TrackedTwice,
 }
 
 /// The import's plan: one entry per Actual account that isn't skipped, in the export's order.
@@ -101,6 +114,17 @@ pub struct LinkedTransfer {
 pub enum Target {
     New(NewAccount),
     Existing(i64),
+    /// The bank account waiting in the prompt with this provider account id, tracked as a new
+    /// account.
+    Track(TrackedAccount),
+}
+
+/// A waiting bank account the import tracks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrackedAccount {
+    pub external_id: String,
+    pub role: Role,
+    pub balances_only: bool,
 }
 
 /// An account the import creates.
@@ -244,6 +268,18 @@ impl Plan {
                     continue;
                 }
                 AccountChoice::SameAs(id) => (Target::Existing(*id), true),
+                AccountChoice::Track {
+                    external_id,
+                    role,
+                    balances_only,
+                } => (
+                    Target::Track(TrackedAccount {
+                        external_id: external_id.clone(),
+                        role: *role,
+                        balances_only: *balances_only,
+                    }),
+                    !balances_only,
+                ),
                 AccountChoice::Create {
                     name,
                     kind,
@@ -377,6 +413,7 @@ fn check(export: &Export, choices: &Choices, existing: Existing<'_>) -> Result<(
         .iter()
         .map(|(_, name)| name.trim().to_lowercase())
         .collect();
+    let mut tracked: HashSet<&str> = HashSet::new();
     for account in &export.accounts {
         match choices.accounts.get(&account.id) {
             None => return Err(ChoiceError::NoChoice(account.name.clone())),
@@ -394,6 +431,15 @@ fn check(export: &Export, choices: &Choices, existing: Existing<'_>) -> Result<(
             Some(AccountChoice::SameAs(id)) => {
                 if !existing.accounts.iter().any(|(app, _)| app == id) {
                     return Err(ChoiceError::NoSuchAccount(account.name.clone()));
+                }
+            }
+            Some(AccountChoice::Track { external_id, .. }) => {
+                // Its account takes the bank's name, numbered at the commit if it's taken.
+                if !existing.waiting.contains(external_id) {
+                    return Err(ChoiceError::NotWaiting(account.name.clone()));
+                }
+                if !tracked.insert(external_id) {
+                    return Err(ChoiceError::TrackedTwice);
                 }
             }
             Some(AccountChoice::Skip) => {}

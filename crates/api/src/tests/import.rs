@@ -12,7 +12,7 @@ use super::{App, app, finish, get, post, send, send_full, session_cookie, set_up
 
 const UPLOAD: &str = "/api/v1/imports/actual";
 
-fn fixture(name: &str) -> Vec<u8> {
+pub(super) fn fixture(name: &str) -> Vec<u8> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures")
         .join(name);
@@ -26,7 +26,7 @@ fn zip_request(body: Body) -> Request<Body> {
         .unwrap()
 }
 
-async fn upload(app: &App, bytes: Vec<u8>) -> (StatusCode, Value) {
+pub(super) async fn upload(app: &App, bytes: Vec<u8>) -> (StatusCode, Value) {
     send(
         app.router.clone(),
         with(&app.cookie, zip_request(Body::from(bytes))),
@@ -199,25 +199,6 @@ async fn a_currency_without_cents_is_refused() {
 }
 
 #[tokio::test]
-async fn an_earlier_import_not_undone_is_refused() {
-    let app = set_up().await;
-    sqlx::query(
-        "INSERT INTO import_batches (format, file_name, added, matched, skipped)
-         VALUES ('actual', 'export.zip', 0, 0, 0)",
-    )
-    .execute(&app.pool)
-    .await
-    .unwrap();
-    let (status, body) = upload(&app, fixture("actual-export.zip")).await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error"]["code"], "earlier_import");
-    assert_eq!(
-        body["error"]["message"],
-        "Undo the earlier import from Actual first."
-    );
-}
-
-#[tokio::test]
 async fn uploads_older_than_a_day_are_deleted() {
     let app = set_up().await;
     let (status, first) = upload(&app, fixture("actual-export.zip")).await;
@@ -244,7 +225,7 @@ async fn uploads_older_than_a_day_are_deleted() {
 }
 
 /// `GET` the accounts and categories of the upload `id`.
-async fn plan(app: &App, id: &str) -> (StatusCode, Value) {
+pub(super) async fn plan(app: &App, id: &str) -> (StatusCode, Value) {
     send(
         app.router.clone(),
         with(&app.cookie, get(&format!("{UPLOAD}/{id}"))),
@@ -275,6 +256,7 @@ async fn the_fake_exports_accounts_come_with_their_figures_and_defaults() {
     let body = fake_plan(&app).await;
     assert_eq!(body["budget_name"], "Example Household");
     assert_eq!(body["app_accounts"], json!([]));
+    assert_eq!(body["waiting_accounts"], json!([]));
     let account = |n, name, closed, off_budget, rows, balance: i64, kind, role| {
         json!({
             "id": fake_id(1, n),
@@ -286,6 +268,7 @@ async fn the_fake_exports_accounts_come_with_their_figures_and_defaults() {
             "type": kind,
             "role": role,
             "same_as": null,
+            "same_as_waiting": null,
         })
     };
     assert_eq!(
@@ -599,11 +582,10 @@ async fn the_fake_export_comes_in_with_every_balance_matching_actual() {
         .unwrap();
     assert_eq!(u64::try_from(transactions).unwrap(), total);
 
-    // The upload is gone, and a new one waits for this import to be undone.
+    // The upload is gone; another can come while this import is in place.
     assert_eq!(uploads(&app), Vec::<PathBuf>::new());
-    let (status, body) = upload(&app, fixture("actual-export.zip")).await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error"]["code"], "earlier_import");
+    let (status, _) = upload(&app, fixture("actual-export.zip")).await;
+    assert_eq!(status, StatusCode::CREATED);
 
     // A category the rows use can only be hidden now.
     let delete = Request::delete(format!("/api/v1/categories/{category}"))
@@ -616,25 +598,65 @@ async fn the_fake_export_comes_in_with_every_balance_matching_actual() {
     assert_eq!(body["error"]["code"], "category_in_use");
 }
 
+/// Every account as step 2 starts it: Same as the account it was matched to, else Create new.
+pub(super) fn as_started(plan: &Value) -> Vec<Value> {
+    create_all(plan)
+        .into_iter()
+        .zip(plan["accounts"].as_array().unwrap())
+        .map(|(mut choice, account)| {
+            if !account["same_as"].is_null() {
+                choice["action"] = json!("same");
+                choice["same_as"] = account["same_as"].clone();
+            } else if !account["same_as_waiting"].is_null() {
+                choice["action"] = json!("track");
+                choice["track"] = account["same_as_waiting"].clone();
+            }
+            choice
+        })
+        .collect()
+}
+
 #[tokio::test]
-async fn a_second_commit_waits_for_the_first_to_be_undone() {
+async fn a_second_import_of_the_same_export_matches_every_row_and_adds_nothing() {
     let app = set_up().await;
     let first = fake_plan(&app).await;
+    let body = |accounts: Vec<Value>| json!({ "file_name": "a.zip", "accounts": accounts, "categories": [] });
+    let (status, done) = commit(
+        &app,
+        first["id"].as_str().unwrap(),
+        &body(create_all(&first)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{done}");
+    let count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM transactions")
+            .fetch_one(&app.pool)
+            .await
+            .unwrap()
+    };
+    let rows = count().await;
+
+    // Each account is pre-matched to the one the first import made: by bank id, or by name.
     let second = fake_plan(&app).await;
-    let body = |plan: &Value| json!({ "file_name": "a.zip", "accounts": create_all(plan), "categories": [] });
-    let (status, _) = commit(&app, first["id"].as_str().unwrap(), &body(&first)).await;
-    assert_eq!(status, StatusCode::CREATED);
-    let (status, refused) = commit(&app, second["id"].as_str().unwrap(), &body(&second)).await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(
-        refused["error"]["message"],
-        "Undo the earlier import from Actual first."
+    let accounts = as_started(&second);
+    assert!(
+        accounts.iter().all(|choice| choice["action"] == "same"),
+        "{accounts:?}"
     );
-    let batches: i64 = sqlx::query_scalar("SELECT count(*) FROM import_batches")
-        .fetch_one(&app.pool)
-        .await
-        .unwrap();
-    assert_eq!(batches, 1);
+    let (status, again) = commit(&app, second["id"].as_str().unwrap(), &body(accounts)).await;
+    assert_eq!(status, StatusCode::CREATED, "{again}");
+    assert_eq!(again["accounts_created"], 0);
+    assert_eq!(again["linked_transfers"], 0);
+    assert!(
+        again["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|a| a["rows"] == 0),
+        "{again}"
+    );
+    assert_eq!(again["matched"], json!(rows));
+    assert_eq!(count().await, rows);
 }
 
 #[tokio::test]

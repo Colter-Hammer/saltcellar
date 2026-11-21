@@ -32,9 +32,14 @@ pub const IN_A_FOLDER: &str = "actual-export-in-a-folder.zip";
 pub const OLDER: &str = "actual-export-older.zip";
 /// A zip that isn't an Actual export.
 pub const NOT_ACTUAL: &str = "not-an-actual-export.zip";
+/// Another household, whose Actual synced the same fake bank as the fake SimpleFIN Bridge
+/// (`fixtures/simplefin-fake`): its checking and savings accounts carry the Bridge's account ids,
+/// and its rows since 2026-10-08 the Bridge's transaction ids, with Actual's categories, notes
+/// and payees. Older rows have no counterpart at the Bridge.
+pub const OVERLAP: &str = "actual-export-overlap.zip";
 
 /// Every file [`write_all`] writes.
-pub const FILES: &[&str] = &[EXPORT, IN_A_FOLDER, OLDER, NOT_ACTUAL];
+pub const FILES: &[&str] = &[EXPORT, IN_A_FOLDER, OLDER, NOT_ACTUAL, OVERLAP];
 
 const BUDGET_NAME: &str = "Example Household";
 const BUDGET_ID: &str = "Example-Household-0a1b2c3";
@@ -169,6 +174,22 @@ pub async fn write_all(dir: &Path) -> Result<()> {
         &[
             ("db.sqlite", &std::fs::read(older)?),
             ("metadata.json", &metadata),
+        ],
+        None,
+    )?;
+
+    let overlap = scratch.path().join("overlap.sqlite");
+    overlap_household().write(&overlap, Schema::Current).await?;
+    let overlap_metadata = serde_json::to_vec_pretty(&serde_json::json!({
+        "id": "Example-Synced-Household-4d5e6f7",
+        "budgetName": "Example Synced Household",
+        "resetClock": true,
+    }))?;
+    write_zip(
+        &dir.join(OVERLAP),
+        &[
+            ("db.sqlite", &std::fs::read(overlap)?),
+            ("metadata.json", &overlap_metadata),
         ],
         None,
     )?;
@@ -738,6 +759,187 @@ fn odd_rows(rows: &mut Rows) {
         date: ymd(2026, 1, 5),
         ..Transaction::default()
     });
+}
+
+/// The overlap export's household: checking and savings at the fake Bridge's bank.
+fn overlap_household() -> Household {
+    let account = |n, name, bank_id| Account {
+        id: a(n),
+        name,
+        off_budget: false,
+        closed: false,
+        bank_id: Some(bank_id),
+        tombstone: false,
+    };
+    let accounts = vec![
+        account(1, "Joint checking", "ACT-demo-checking"),
+        account(2, "Joint savings", "ACT-demo-savings"),
+    ];
+    let group = |n, name, income| Group {
+        id: id(2, n),
+        name,
+        income,
+        tombstone: false,
+    };
+    let groups = vec![
+        group(1, "Everyday", false),
+        group(2, "Home", false),
+        group(3, "Income", true),
+    ];
+    let category = |n, name, group| Category {
+        id: c(n),
+        name,
+        group: id(2, group),
+        income: group == 3,
+        tombstone: false,
+    };
+    let categories = vec![
+        category(1, "Groceries", 1),
+        category(2, "Rent", 2),
+        category(3, "Utilities", 2),
+        category(4, "Paycheck", 3),
+        category(5, "Interest", 3),
+        category(6, "Starting Balances", 3),
+    ];
+    let category_mapping = categories
+        .iter()
+        .map(|c| (c.id.clone(), c.id.clone()))
+        .collect();
+    let (payees, payee_mapping) = overlap_payees(&accounts);
+    Household {
+        accounts,
+        groups,
+        categories,
+        category_mapping,
+        payees,
+        payee_mapping,
+        transactions: overlap_rows(),
+    }
+}
+
+/// The overlap export's payees, a transfer payee for each account among them.
+fn overlap_payees(accounts: &[Account]) -> (Vec<Payee>, Mapping) {
+    let payee = |n, name| Payee {
+        id: p(n),
+        name,
+        transfer_account: None,
+        tombstone: false,
+    };
+    let mut payees = vec![
+        payee(1, "Demo Employer Ltd"),
+        payee(2, "Demo Properties"),
+        payee(3, "Neighbourhood Grocer"),
+        payee(4, "Demo Power"),
+        payee(5, "Demo Credit Union"),
+    ];
+    for (n, account) in (1..).zip(accounts) {
+        payees.push(Payee {
+            id: to(n),
+            name: "",
+            transfer_account: Some(account.id.clone()),
+            tombstone: false,
+        });
+    }
+    let payee_mapping = payees
+        .iter()
+        .map(|p| (p.id.clone(), p.id.clone()))
+        .collect();
+
+    (payees, payee_mapping)
+}
+
+/// The overlap export's rows: starting balances, older history, and the rows the Bridge sends.
+fn overlap_rows() -> Vec<Transaction> {
+    let mut rows = Rows::default();
+    for (account, amount) in [(1, 150_000), (2, 450_000)] {
+        rows.add(Transaction {
+            account: a(account),
+            category: Some(c(6)),
+            amount: Some(amount),
+            date: ymd(2026, 1, 1),
+            starting_balance: true,
+            ..Transaction::default()
+        });
+    }
+    // Older history: pay and rent each month, before anything the Bridge sends.
+    for month in 3..=8u32 {
+        rows.add(Transaction {
+            account: a(1),
+            category: Some(c(4)),
+            amount: Some(240_000),
+            payee: Some(p(1)),
+            imported: Some("DEMO EMPLOYER PAYROLL".to_owned()),
+            financial_id: Some(format!("fake-old-pay-{month}")),
+            date: ymd(2026, month, 22),
+            ..Transaction::default()
+        });
+        rows.add(Transaction {
+            account: a(1),
+            category: Some(c(2)),
+            amount: Some(-120_000),
+            payee: Some(p(2)),
+            date: ymd(2026, month, 24),
+            ..Transaction::default()
+        });
+    }
+    // The rows the Bridge sends too, as Actual's own sync brought them: the same ids, Actual's
+    // categories, notes and payees.
+    for (account, bank_id, day, amount, text, payee, category, notes) in [
+        (
+            1,
+            "TRN-demo-pay-1",
+            8,
+            240_000,
+            "DEMO EMPLOYER PAYROLL",
+            1,
+            4,
+            Some("October pay"),
+        ),
+        (
+            1,
+            "TRN-demo-rent-1",
+            10,
+            -120_000,
+            "DEMO PROPERTIES RENT",
+            2,
+            2,
+            None,
+        ),
+        (
+            1,
+            "TRN-demo-groc-1",
+            19,
+            -8_612,
+            "DEMO GROCER #12",
+            3,
+            1,
+            Some("Weekly shop #food"),
+        ),
+        (
+            1,
+            "TRN-demo-power-1",
+            23,
+            -6_430,
+            "DEMO POWER CO",
+            4,
+            3,
+            Some("#bills"),
+        ),
+        (2, "TRN-demo-int-1", 21, 318, "INTEREST PAID", 5, 5, None),
+    ] {
+        rows.add(Transaction {
+            account: a(account),
+            category: Some(c(category)),
+            amount: Some(amount),
+            payee: Some(p(payee)),
+            imported: Some(text.to_owned()),
+            financial_id: Some(bank_id.to_owned()),
+            notes,
+            date: ymd(2026, 10, day),
+            ..Transaction::default()
+        });
+    }
+    rows.list
 }
 
 /// Points `from`'s mapping at `into`, as merging does in Actual.

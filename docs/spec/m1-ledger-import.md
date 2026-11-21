@@ -90,7 +90,7 @@ A one-time wizard, reached from More › Import from Actual, the Accounts empty 
 
 ### Step 1: File
 
-Upload the Actual export `.zip` (limit 100 MB *(agent)*). The server accepts `db.sqlite` + `metadata.json` at the zip root or both inside exactly one shared folder, opens `db.sqlite` read-only from a temporary file, and shows the budget name and counts (accounts, transactions, categories, date range). Refused with a clear message: not an Actual export; the household currency doesn't use 2 decimal places (Actual stores cents) *(agent)*; an earlier Actual import that hasn't been undone ("Undo the earlier import first", until milestone 2 makes re-import overlap-aware) *(agent)*.
+Upload the Actual export `.zip` (limit 100 MB *(agent)*). The server accepts `db.sqlite` + `metadata.json` at the zip root or both inside exactly one shared folder, opens `db.sqlite` read-only from a temporary file, and shows the budget name and counts (accounts, transactions, categories, date range). Refused with a clear message: not an Actual export; the household currency doesn't use 2 decimal places (Actual stores cents) *(agent)*. (Milestone 1 also refused while an earlier Actual import wasn't undone; [milestone 2](m2-bank-data.md#import-from-actual-becomes-overlap-aware) lifts that, as a re-import matches by id.)
 
 ### Step 2: Accounts
 

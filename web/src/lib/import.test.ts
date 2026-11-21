@@ -6,6 +6,9 @@ import {
   accountProblems,
   commitRequest,
   describeDone,
+  describePreview,
+  fromSameAsValue,
+  sameAsValue,
   describeUpload,
   chosenCategory,
   goesToCategory,
@@ -66,6 +69,7 @@ function account(id: string, changes: Partial<ActualAccount> = {}): ActualAccoun
     type: 'checking',
     role: 'budgeted',
     same_as: null,
+    same_as_waiting: null,
     ...changes,
   }
 }
@@ -103,6 +107,9 @@ const plan: ActualImport = {
     category('invest', 'Investing', [['brokerage', 1]]),
   ],
   app_accounts: [{ id: 7, name: 'Shared card' }],
+  waiting_accounts: [
+    { external_account_id: 'ACT-demo-savings', name: 'Demo Savings', institution: null },
+  ],
 }
 
 describe('the account choices', () => {
@@ -115,6 +122,7 @@ describe('the account choices', () => {
       role: 'budgeted',
       balancesOnly: false,
       sameAs: null,
+      track: null,
     })
     expect(choices.card).toMatchObject({ action: 'same', sameAs: 7, type: 'credit_card' })
     expect(choices.brokerage).toMatchObject({ action: 'create', role: 'tracking' })
@@ -133,6 +141,7 @@ describe('the account choices', () => {
       role: 'budgeted',
       balancesOnly: false,
       sameAs: null,
+      track: null,
     })
     expect(
       accountProblems(plan, { ...choices, checking: create('  '), card: create('shared CARD ') }),
@@ -152,6 +161,30 @@ describe('the account choices', () => {
     expect(accountProblems(plan, { ...choices, card: same })).toEqual({
       card: 'Choose the account it’s the same as.',
     })
+    // A waiting bank account will do.
+    const bank = { ...same, track: 'ACT-demo-savings' }
+    expect(accountProblems(plan, { ...choices, card: bank })).toEqual({})
+  })
+
+  it('start on Same as the waiting bank account the server matched', () => {
+    const matched = {
+      ...plan,
+      accounts: [account('savings', { same_as_waiting: 'ACT-demo-savings' })],
+    }
+    expect(startAccountChoices(matched).savings).toMatchObject({
+      action: 'same',
+      sameAs: null,
+      track: 'ACT-demo-savings',
+    })
+  })
+
+  it('read and write the Same as picker', () => {
+    expect(sameAsValue({ sameAs: 7, track: null })).toBe('app:7')
+    expect(sameAsValue({ sameAs: null, track: 'ACT-1' })).toBe('bank:ACT-1')
+    expect(sameAsValue({ sameAs: null, track: null })).toBe('')
+    expect(fromSameAsValue('app:7')).toEqual({ sameAs: 7, track: null })
+    expect(fromSameAsValue('bank:ACT-1')).toEqual({ sameAs: null, track: 'ACT-1' })
+    expect(fromSameAsValue('')).toEqual({ sameAs: null, track: null })
   })
 })
 
@@ -264,6 +297,7 @@ describe('the commit', () => {
           role: 'budgeted',
           balances_only: false,
           same_as: null,
+          track: null,
         },
         {
           actual_id: 'card',
@@ -273,6 +307,7 @@ describe('the commit', () => {
           role: 'budgeted',
           balances_only: false,
           same_as: 7,
+          track: null,
         },
         {
           actual_id: 'brokerage',
@@ -282,6 +317,7 @@ describe('the commit', () => {
           role: 'tracking',
           balances_only: false,
           same_as: null,
+          track: null,
         },
       ],
       // Investing is only the skipped brokerage's, so it isn't sent.
@@ -289,6 +325,7 @@ describe('the commit', () => {
         { actual_id: 'groceries', goes_to: 'category', category_id: 4 },
         { actual_id: 'fuel', goes_to: 'transfer', category_id: null },
       ],
+      new_rows: [],
     })
     // A category with no choice yet goes to Decide later.
     expect(commitRequest(plan, accounts, {}, 'export.zip').categories[0]).toEqual({
@@ -298,11 +335,46 @@ describe('the commit', () => {
     })
   })
 
+  it('tracks a waiting bank account with the role chosen, and sends the rows said to be new', () => {
+    const accounts = {
+      ...startAccountChoices(plan),
+      checking: {
+        ...startAccountChoices(plan).checking,
+        action: 'same',
+        track: 'ACT-demo-savings',
+        role: 'tracking',
+        balancesOnly: true,
+      } as AccountChoice,
+    }
+    const request = commitRequest(plan, accounts, {}, 'export.zip', ['a1'])
+    expect(request.accounts[0]).toMatchObject({
+      action: 'track',
+      track: 'ACT-demo-savings',
+      role: 'tracking',
+      balances_only: true,
+      same_as: null,
+    })
+    expect(request.new_rows).toEqual(['a1'])
+    // Tracked balances only, checking brings no rows: groceries counts only the card's.
+    expect(usedCategories(plan, accounts).map((used) => [used.category.id, used.rows])).toEqual([
+      ['groceries', 14],
+      ['fuel', 12],
+      ['invest', 1],
+    ])
+  })
+
+  it('previews how many rows are new and how many already here', () => {
+    expect(describePreview({ new: 1234, already: 1, check: [] }, 'en-US')).toBe(
+      '1,234 rows new, 1 row already here',
+    )
+  })
+
   it('sums up what came in', () => {
     const done = {
       batch_id: 1,
       accounts_created: 1,
       accounts: [],
+      matched: 0,
       mapped: 1234,
       undecided: 1,
       transfer: 0,
@@ -317,6 +389,7 @@ describe('the commit', () => {
       '2 rows uncategorized',
       '0 linked transfers',
     ])
+    expect(describeDone({ ...done, matched: 4 }, 'en-US')[1]).toBe('4 rows already here')
   })
 })
 

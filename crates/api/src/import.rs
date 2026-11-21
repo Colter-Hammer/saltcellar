@@ -3,6 +3,7 @@
 //! the data dir. Steps 2 and 3 read its accounts and categories, choosing in the browser. Step 4
 //! commits the choices as one import batch.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -15,11 +16,24 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use utoipa::ToSchema;
 
+use domain::actual_overlap::Overlap;
+use domain::import::{Plan, Target};
+
 use crate::accounts::{AccountRole, AccountType};
 use crate::auth;
 use crate::error::{Body as JsonBody, ErrorEnvelope};
 use crate::session::Current;
 use crate::{ApiError, AppState};
+
+/// The importer's routes, under `/api/v1`.
+pub fn routes() -> axum::Router<AppState> {
+    use axum::routing::{get, post};
+    axum::Router::new()
+        .route("/imports/actual", post(upload))
+        .route("/imports/actual/{id}", get(self::get))
+        .route("/imports/actual/{id}/preview", post(preview))
+        .route("/imports/actual/{id}/commit", post(commit))
+}
 
 /// The most an upload may be: 100 MB *(agent)*, in MiB so a "100 MB" file always fits.
 pub const MAX_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
@@ -108,7 +122,7 @@ pub struct ActualUpload {
         (status = 201, description = "The export is read; nothing is imported yet.", body = ActualUpload),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
         (status = 403, description = "`setup_required`: setup isn't finished.", body = ErrorEnvelope),
-        (status = 409, description = "`currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do; `earlier_import`: an earlier import from Actual hasn't been undone.", body = ErrorEnvelope),
+        (status = 409, description = "`currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do.", body = ErrorEnvelope),
         (status = 413, description = "`file_too_large`: over 100 MB, or unpacks to more than the app reads.", body = ErrorEnvelope),
         (status = 415, description = "`zip_required`: the body isn't sent as `application/zip`.", body = ErrorEnvelope),
         (status = 422, description = "`not_an_actual_export`, or `export_unreadable`: an Actual export with data the app can't read.", body = ErrorEnvelope),
@@ -204,6 +218,20 @@ pub struct ActualImport {
     categories: Vec<ActualCategory>,
     /// The app's own accounts, for **Same as**; closed ones included.
     app_accounts: Vec<AppAccount>,
+    /// The bank accounts waiting in the new accounts prompt, which **Same as** can track too.
+    waiting_accounts: Vec<WaitingAccount>,
+}
+
+/// A bank account the connection reported that waits in the new accounts prompt.
+#[derive(Serialize, ToSchema)]
+pub struct WaitingAccount {
+    /// The provider's id for it.
+    #[schema(example = "ACT-demo-checking")]
+    external_account_id: String,
+    /// The bank's name for it, which the account tracking it takes.
+    name: String,
+    #[schema(required = true)]
+    institution: Option<String>,
 }
 
 /// A live Actual account, its figures, and what **Create new** starts from.
@@ -223,9 +251,15 @@ pub struct ActualAccount {
     kind: AccountType,
     /// Tracking if it's off budget in Actual, else budgeted.
     role: AccountRole,
-    /// The app account with the same bank-sync id, which **Same as** starts on; null when none.
+    /// The app account **Same as** starts on: the one with the same bank-sync id, else, with no
+    /// account or waiting bank account of that id, one of the same name ignoring case; null when
+    /// none.
     #[schema(required = true)]
     same_as: Option<i64>,
+    /// The waiting bank account with the same bank-sync id, which **Same as** starts on when no
+    /// app account has it; null when none.
+    #[schema(required = true)]
+    same_as_waiting: Option<String>,
 }
 
 /// A live Actual category and the rows using it.
@@ -277,11 +311,31 @@ pub async fn get(
     let (budget_name, read) = read_upload(&state, &id).await?;
 
     let app_accounts = db::accounts(&state.pool).await?;
+    let waiting = waiting(&state).await?;
     let accounts = read
         .accounts
         .iter()
         .map(|account| {
             let role = domain::accounts::Role::from_actual(account.off_budget);
+            let bank_id = account.bank_id.as_ref();
+            let by_id = app_accounts
+                .iter()
+                .find(|app| bank_id.is_some() && app.external_account_id.as_ref() == bank_id)
+                .map(|app| app.id);
+            let same_as_waiting = waiting
+                .iter()
+                .find(|feed| by_id.is_none() && bank_id == Some(&feed.external_id))
+                .map(|feed| feed.external_id.clone());
+            // Name matching covers accounts whose bank id matches nothing *(agent)*.
+            let by_name = || {
+                app_accounts
+                    .iter()
+                    .find(|app| {
+                        app.name.trim().to_lowercase() == account.name.trim().to_lowercase()
+                    })
+                    .map(|app| app.id)
+            };
+            let same_as = by_id.or_else(|| same_as_waiting.is_none().then(by_name).flatten());
             ActualAccount {
                 id: account.id.clone(),
                 name: account.name.clone(),
@@ -291,12 +345,8 @@ pub async fn get(
                 balance_minor: account.balance.minor(),
                 kind: domain::accounts::AccountType::guess(&account.name, role).into(),
                 role: role.into(),
-                same_as: account.bank_id.as_ref().and_then(|bank_id| {
-                    app_accounts
-                        .iter()
-                        .find(|app| app.external_account_id.as_ref() == Some(bank_id))
-                        .map(|app| app.id)
-                }),
+                same_as,
+                same_as_waiting,
             }
         })
         .collect();
@@ -328,7 +378,29 @@ pub async fn get(
                 name: account.name,
             })
             .collect(),
+        waiting_accounts: waiting
+            .into_iter()
+            .map(|feed| WaitingAccount {
+                external_account_id: feed.external_id,
+                name: feed.name,
+                institution: feed.institution,
+            })
+            .collect(),
     }))
+}
+
+/// The bank accounts waiting in the new accounts prompt that could be tracked: those in the
+/// household's currency.
+async fn waiting(state: &AppState) -> Result<Vec<db::ConnectionAccount>, ApiError> {
+    let household = db::household(&state.pool)
+        .await?
+        .ok_or_else(|| ApiError::internal(&"setup is done but there's no household"))?;
+    let currency = household.currency.code();
+    Ok(db::connection_accounts(&state.pool)
+        .await?
+        .into_iter()
+        .filter(|feed| feed.decision == db::FeedDecision::Pending && feed.currency == currency)
+        .collect())
 }
 
 /// The upload `id`'s folder, if it's still there.
@@ -374,19 +446,25 @@ pub struct ActualCommitRequest {
     accounts: Vec<ActualAccountChoice>,
     /// Where each Actual category's rows go; one left out goes to Decide later.
     categories: Vec<ActualCategoryChoice>,
+    /// The possible duplicates the preview listed that the household says are new, by Actual's
+    /// transaction id: they're added. Any other is taken as the row it may be.
+    #[serde(default)]
+    new_rows: Vec<String>,
 }
 
-/// Create a new account, use one the app has (Same as), or leave the account out.
+/// Create a new account, use one the app has (Same as), track a bank account waiting in the new
+/// accounts prompt (Same as one of those), or leave the account out.
 #[derive(Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AccountAction {
     Create,
     Same,
+    Track,
     Skip,
 }
 
 /// What happens to one Actual account. Create new reads `name`, `type`, `role` and
-/// `balances_only`; Same as reads `same_as`.
+/// `balances_only`; Same as reads `same_as`; Track reads `track`, `role` and `balances_only`.
 #[derive(Deserialize, ToSchema)]
 pub struct ActualAccountChoice {
     /// Actual's id for the account.
@@ -401,6 +479,9 @@ pub struct ActualAccountChoice {
     /// The app account it's the same as.
     #[schema(required = true)]
     same_as: Option<i64>,
+    /// The waiting bank account it's the same as, by its provider id, to track.
+    #[serde(default)]
+    track: Option<String>,
 }
 
 /// Where an Actual category's rows go.
@@ -434,6 +515,9 @@ pub struct ActualImportDone {
     accounts_created: u64,
     /// Each account the import created or added rows to, with its rows, in the export's order.
     accounts: Vec<ImportedAccount>,
+    /// Rows that were there already, synced or from an earlier import: they took Actual's
+    /// category, notes and payee instead of coming in again.
+    matched: u64,
     /// Rows that took the category theirs goes to, split rows among them.
     mapped: u64,
     /// Rows on Decide later, and splits with a line that has no category to go to: they wait in
@@ -452,9 +536,143 @@ pub struct ActualImportDone {
 pub struct ImportedAccount {
     id: i64,
     name: String,
-    /// Whether the import created it, rather than adding to one there already.
+    /// Whether the import created it (or tracked it), rather than adding to one there already.
     created: bool,
+    /// Rows added.
     rows: u64,
+    /// Rows that were there already.
+    matched: u64,
+}
+
+/// What committing would do, before it does: how many rows come in and how many are there
+/// already, and the possible duplicates for the household to decide on.
+#[derive(Serialize, ToSchema)]
+pub struct ActualPreview {
+    /// Rows that would be added.
+    new: u64,
+    /// Rows there already, synced or from an earlier import, which take Actual's category, notes
+    /// and payee instead.
+    already: u64,
+    /// Rows that could be a row an account has, or another as good: added only when the
+    /// household says they're new (`new_rows`), otherwise taken as that row.
+    check: Vec<ActualCheckRow>,
+}
+
+/// A possible duplicate: an Actual row and the stored row it most likely is.
+#[derive(Serialize, ToSchema)]
+pub struct ActualCheckRow {
+    /// Actual's transaction id, as `new_rows` names it.
+    actual_id: String,
+    /// The app account it goes into.
+    account: String,
+    /// `YYYY-MM-DD`.
+    date: String,
+    description: String,
+    amount_minor: i64,
+    /// The stored row it most likely is.
+    #[schema(required = true)]
+    could_be: Option<crate::csv_import::CsvStoredRow>,
+}
+
+/// `POST /api/v1/imports/actual/{id}/preview`: what importing the upload with these choices
+/// would do; nothing is written.
+#[utoipa::path(
+    post,
+    path = "/api/v1/imports/actual/{id}/preview",
+    operation_id = "previewActualImport",
+    params(("id" = String, Path, description = "The upload, as its upload answered.")),
+    request_body = ActualCommitRequest,
+    responses(
+        (status = 200, description = "What the import would do.", body = ActualPreview),
+        (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
+        (status = 404, description = "`upload_not_found`: no such upload, or it's over a day old and deleted.", body = ErrorEnvelope),
+        (status = 422, description = "`invalid_choices`, or `export_unreadable`, as the commit answers.", body = ErrorEnvelope),
+    ),
+)]
+pub async fn preview(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    JsonBody(body): JsonBody<ActualCommitRequest>,
+) -> Result<Json<ActualPreview>, ApiError> {
+    let (_, export) = read_upload(&state, &id).await?;
+    let plan = plan_of(&state, &export, &body).await?;
+    let overlaps = db::actual_overlaps(&state.pool, &plan).await?;
+    let names: HashMap<i64, String> = db::accounts(&state.pool)
+        .await?
+        .into_iter()
+        .map(|account| (account.id, account.name))
+        .collect();
+    let mut preview = ActualPreview {
+        new: 0,
+        already: 0,
+        check: Vec::new(),
+    };
+    let mut checks = Vec::new();
+    for (planned, overlaps) in plan.accounts.iter().zip(&overlaps) {
+        for (row, overlap) in planned.rows.iter().zip(overlaps) {
+            match overlap {
+                Overlap::New => preview.new += 1,
+                Overlap::Check(stored) => checks.push((planned, row, *stored)),
+                _ => preview.already += 1,
+            }
+        }
+    }
+    let ids: Vec<i64> = checks.iter().map(|(_, _, stored)| *stored).collect();
+    let stored: HashMap<i64, domain::csv_import::Stored> = db::csv_matched_rows(&state.pool, &ids)
+        .await?
+        .into_iter()
+        .map(|row| (row.id, row))
+        .collect();
+    preview.check = checks
+        .into_iter()
+        .map(|(planned, row, id)| ActualCheckRow {
+            actual_id: row.import_ref.clone(),
+            account: match &planned.target {
+                Target::Existing(account) => names.get(account).cloned().unwrap_or_default(),
+                _ => planned.actual_name.clone(),
+            },
+            date: row.date.to_string(),
+            description: row.raw_description.clone(),
+            amount_minor: row.amount.minor(),
+            could_be: stored.get(&id).map(crate::csv_import::CsvStoredRow::of),
+        })
+        .collect();
+    Ok(Json(preview))
+}
+
+/// The choices applied to the export, checked against what the app has.
+async fn plan_of(
+    state: &AppState,
+    export: &domain::actual::Export,
+    body: &ActualCommitRequest,
+) -> Result<Plan, ApiError> {
+    let choices = choices(body).map_err(invalid)?;
+    let app_accounts: Vec<(i64, String)> = db::accounts(&state.pool)
+        .await?
+        .into_iter()
+        .map(|account| (account.id, account.name))
+        .collect();
+    let app_categories = db::category_groups(&state.pool)
+        .await?
+        .into_iter()
+        .flat_map(|group| group.categories)
+        .map(|category| category.id)
+        .collect();
+    let waiting: Vec<String> = waiting(state)
+        .await?
+        .into_iter()
+        .map(|feed| feed.external_id)
+        .collect();
+    Plan::new(
+        export,
+        &choices,
+        domain::import::Existing {
+            accounts: &app_accounts,
+            categories: &app_categories,
+            waiting: &waiting,
+        },
+    )
+    .map_err(|error| invalid(error.to_string()))
 }
 
 /// `POST /api/v1/imports/actual/{id}/commit`: imports the upload with the importer's choices.
@@ -468,8 +686,7 @@ pub struct ImportedAccount {
         (status = 201, description = "Imported, as one import batch.", body = ActualImportDone),
         (status = 401, description = "`login_required`: no live session.", body = ErrorEnvelope),
         (status = 404, description = "`upload_not_found`: no such upload, or it's over a day old and deleted.", body = ErrorEnvelope),
-        (status = 409, description = "`earlier_import`: an earlier import from Actual hasn't been undone.", body = ErrorEnvelope),
-        (status = 422, description = "`invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.", body = ErrorEnvelope),
+        (status = 422, description = "`invalid_choices`: an account without a choice or with one that can't go ahead (a bank account to track that isn't waiting any more among them), or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.", body = ErrorEnvelope),
     ),
 )]
 pub async fn commit(
@@ -479,32 +696,8 @@ pub async fn commit(
     JsonBody(body): JsonBody<ActualCommitRequest>,
 ) -> Result<(StatusCode, Json<ActualImportDone>), ApiError> {
     let (_, export) = read_upload(&state, &id).await?;
-    // Checked again as the import commits; this says so before the choices are.
-    if db::actual_import_in_place(&state.pool).await? {
-        return Err(earlier_import());
-    }
-    let choices = choices(&body).map_err(invalid)?;
-    let app_accounts: Vec<(i64, String)> = db::accounts(&state.pool)
-        .await?
-        .into_iter()
-        .map(|account| (account.id, account.name))
-        .collect();
-    let app_categories = db::category_groups(&state.pool)
-        .await?
-        .into_iter()
-        .flat_map(|group| group.categories)
-        .map(|category| category.id)
-        .collect();
-    let plan = domain::import::Plan::new(
-        &export,
-        &choices,
-        domain::import::Existing {
-            accounts: &app_accounts,
-            categories: &app_categories,
-        },
-    )
-    .map_err(|error| invalid(error.to_string()))?;
-
+    let plan = plan_of(&state, &export, &body).await?;
+    let new_rows: HashSet<String> = body.new_rows.iter().cloned().collect();
     let committed = db::commit_actual_import(
         &state.pool,
         db::ActualCommit {
@@ -512,11 +705,14 @@ pub async fn commit(
             file_name: body.file_name.trim(),
             imported_by: current.login.user_id,
             today: state.today().await?,
+            new_rows: &new_rows,
         },
     )
     .await
     .map_err(|error| match error {
-        db::ImportError::EarlierImport => earlier_import(),
+        db::ImportError::NotWaiting(external_id) => invalid(format!(
+            "The bank account {external_id} isn't waiting in the new accounts prompt any more."
+        )),
         db::ImportError::Balance(account) => ApiError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             "export_unreadable",
@@ -535,6 +731,7 @@ pub async fn commit(
         Json(ActualImportDone {
             batch_id: committed.batch_id,
             accounts_created: committed.accounts.iter().filter(|a| a.created).count() as u64,
+            matched: committed.accounts.iter().map(|a| a.matched).sum(),
             accounts: committed
                 .accounts
                 .into_iter()
@@ -543,13 +740,14 @@ pub async fn commit(
                     name: account.name,
                     created: account.created,
                     rows: account.rows,
+                    matched: account.matched,
                 })
                 .collect(),
             mapped: counts.mapped,
             undecided: counts.undecided,
             transfer: counts.transfer,
             uncategorized: counts.uncategorized,
-            linked_transfers: plan.transfers.len() as u64,
+            linked_transfers: committed.linked_transfers,
         }),
     ))
 }
@@ -570,6 +768,13 @@ fn choices(body: &ActualCommitRequest) -> Result<domain::import::Choices, String
                 AccountAction::Same => AccountChoice::SameAs(choice.same_as.ok_or_else(|| {
                     format!("Choose the account {} is the same as.", choice.name)
                 })?),
+                AccountAction::Track => AccountChoice::Track {
+                    external_id: choice.track.clone().ok_or_else(|| {
+                        format!("Choose the bank account {} is the same as.", choice.name)
+                    })?,
+                    role: choice.role.into(),
+                    balances_only: choice.balances_only,
+                },
                 AccountAction::Skip => AccountChoice::Skip,
             };
         choices.accounts.insert(choice.actual_id.clone(), account);
@@ -592,14 +797,6 @@ fn invalid(message: String) -> ApiError {
     ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_choices", message)
 }
 
-fn earlier_import() -> ApiError {
-    ApiError::new(
-        StatusCode::CONFLICT,
-        "earlier_import",
-        "Undo the earlier import from Actual first.",
-    )
-}
-
 fn is_zip(headers: &HeaderMap) -> bool {
     headers
         .get(header::CONTENT_TYPE)
@@ -608,8 +805,8 @@ fn is_zip(headers: &HeaderMap) -> bool {
         .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/zip"))
 }
 
-/// The refusals that don't depend on the file: a currency Actual's cents don't fit, and an earlier
-/// import still in place.
+/// The refusal that doesn't depend on the file: a currency Actual's cents don't fit. An earlier
+/// import still in place is no reason any more: a re-import matches its rows by id.
 async fn check_household(state: &AppState) -> Result<(), ApiError> {
     // Behind the setup gate, so the household exists unless the database lost it.
     let household = db::household(&state.pool)
@@ -625,9 +822,6 @@ async fn check_household(state: &AppState) -> Result<(), ApiError> {
                 household.currency
             ),
         ));
-    }
-    if db::actual_import_in_place(&state.pool).await? {
-        return Err(earlier_import());
     }
     Ok(())
 }

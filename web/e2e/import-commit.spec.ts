@@ -1,6 +1,6 @@
 // Import from Actual, step 4: the fake export is imported with the choices steps 2 and 3 start
-// from, and Done sums it up. It runs once, after both layouts: an import stays in place until it's
-// undone, and while it is, another upload is refused.
+// from, and Done sums it up. It runs once, after both layouts, so the specs after it find the
+// install with these accounts.
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 
@@ -45,9 +45,4 @@ test('the fake export is imported and summed up', async ({ page }) => {
 
   await done.getByRole('link', { name: 'See transactions' }).click()
   await expect(page).toHaveURL(/\/transactions$/)
-
-  // Another import waits for this one to be undone.
-  await page.goto('/import')
-  await page.getByLabel('Actual export (.zip)').setInputFiles(fixture('actual-export.zip'))
-  await expect(page.getByRole('alert')).toHaveText('Undo the earlier import from Actual first.')
 })

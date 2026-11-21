@@ -5,6 +5,7 @@
 
 pub mod accounts;
 pub mod actual;
+pub mod actual_overlap;
 pub mod balances;
 pub mod categories;
 pub mod csv_import;

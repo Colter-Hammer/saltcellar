@@ -105,6 +105,7 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         categories::delete_category,
         import::upload,
         import::get,
+        import::preview,
         import::commit,
         csv_import::read,
         csv_import::preview,
@@ -344,9 +345,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/category-groups", post(categories::add_group))
         .merge(batches::routes())
-        .route("/imports/actual", post(import::upload))
-        .route("/imports/actual/{id}", get(import::get))
-        .route("/imports/actual/{id}/commit", post(import::commit))
+        .merge(import::routes())
         .merge(csv_import::routes().merge(ofx_import::routes()))
         .route(
             "/category-groups/{id}",

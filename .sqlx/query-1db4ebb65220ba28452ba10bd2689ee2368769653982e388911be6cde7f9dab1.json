@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM transaction_tags WHERE EXISTS (\n           SELECT 1 FROM import_batch_rows ib, json_each(ib.prior_fields, '$.tags_added') added\n           WHERE ib.batch_id = ? AND ib.outcome = 'matched' AND ib.prior_fields IS NOT NULL\n             AND ib.transaction_id = transaction_tags.transaction_id\n             AND added.value = transaction_tags.tag_id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "1db4ebb65220ba28452ba10bd2689ee2368769653982e388911be6cde7f9dab1"
+}

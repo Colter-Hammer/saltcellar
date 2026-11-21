@@ -232,6 +232,16 @@ pub struct CsvStoredRow {
     amount_minor: i64,
 }
 
+impl CsvStoredRow {
+    pub(crate) fn of(stored: &csv::Stored) -> CsvStoredRow {
+        CsvStoredRow {
+            date: stored.date.to_string(),
+            description: stored.raw_description.clone(),
+            amount_minor: stored.amount.minor(),
+        }
+    }
+}
+
 /// A row to check: it could be a row the account has, or another as good.
 #[derive(Serialize, ToSchema)]
 pub struct CsvCheckRow {
@@ -324,11 +334,7 @@ pub(crate) async fn preview_of(
         .filter_map(|Entry { row, outcome }| match outcome {
             Outcome::Check(id) => Some(CsvCheckRow {
                 row: preview_row(row),
-                could_be: stored.get(id).map(|stored| CsvStoredRow {
-                    date: stored.date.to_string(),
-                    description: stored.raw_description.clone(),
-                    amount_minor: stored.amount.minor(),
-                }),
+                could_be: stored.get(id).map(CsvStoredRow::of),
             }),
             _ => None,
         })

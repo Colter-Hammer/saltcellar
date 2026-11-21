@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from './client'
-import { commitActualImport, getActualImport, uploadActualExport } from './imports'
+import {
+  commitActualImport,
+  getActualImport,
+  previewActualImport,
+  uploadActualExport,
+} from './imports'
 
 function answer(status: number, body: string) {
   vi.stubGlobal(
@@ -62,6 +67,7 @@ describe('getActualImport', () => {
     accounts: [],
     categories: [],
     app_accounts: [],
+    waiting_accounts: [],
   }
 
   it('asks for the upload by its id', async () => {
@@ -85,6 +91,7 @@ describe('commitActualImport', () => {
       batch_id: 1,
       accounts_created: 0,
       accounts: [],
+      matched: 0,
       mapped: 0,
       undecided: 0,
       transfer: 0,
@@ -98,10 +105,22 @@ describe('commitActualImport', () => {
     expect(await sent().json()).toEqual(request)
   })
 
-  it('throws while an earlier import is in place', async () => {
-    answer(409, '{"error":{"code":"earlier_import","message":"Undo the earlier import first."}}')
+  it('throws why the choices can’t go ahead', async () => {
+    answer(422, '{"error":{"code":"invalid_choices","message":"Choose what happens to Savings."}}')
     await expect(commitActualImport('abc', request)).rejects.toThrow(
-      'Undo the earlier import first.',
+      'Choose what happens to Savings.',
     )
+  })
+})
+
+describe('previewActualImport', () => {
+  it('sends the choices and resolves to what the import would do', async () => {
+    const request = { file_name: 'export.zip', accounts: [], categories: [] }
+    const preview = { new: 12, already: 4, check: [] }
+    answer(200, JSON.stringify(preview))
+    expect(await previewActualImport('abc', request)).toEqual(preview)
+    expect(sent().method).toBe('POST')
+    expect(new URL(sent().url).pathname).toBe('/api/v1/imports/actual/abc/preview')
+    expect(await sent().json()).toEqual(request)
   })
 })

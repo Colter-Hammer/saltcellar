@@ -86,6 +86,7 @@ async fn commit(pool: &SqlitePool, plan: &Plan, user: i64) -> Result<Committed, 
             file_name: "export.zip",
             imported_by: user,
             today: date("2026-10-30"),
+            new_rows: &HashSet::new(),
         },
     )
     .await
@@ -147,8 +148,6 @@ async fn a_commit_writes_its_accounts_payees_and_batch() {
         .execute(&pool)
         .await
         .unwrap();
-    assert!(!actual_import_in_place(&pool).await.unwrap());
-
     let committed = commit(&pool, &full_plan(category), user).await.unwrap();
     let names: Vec<(&str, bool, u64)> = committed
         .accounts
@@ -163,7 +162,6 @@ async fn a_commit_writes_its_accounts_payees_and_batch() {
             ("Brokerage", true, 0)
         ]
     );
-    assert!(actual_import_in_place(&pool).await.unwrap());
 
     let batch: (String, String, i64, i64, i64, Option<i64>) = sqlx::query_as(
         "SELECT format, file_name, added, matched, skipped, imported_by FROM import_batches WHERE id = ?",
@@ -340,27 +338,6 @@ async fn a_commit_sets_each_accounts_opening_balance_and_snapshot() {
             ),
         ]
     );
-
-    // A second import waits until this one is undone.
-    let again = commit(
-        &pool,
-        &Plan {
-            accounts: Vec::new(),
-            skipped: 0,
-            transfers: Vec::new(),
-        },
-        user,
-    )
-    .await;
-    assert!(
-        matches!(again, Err(ImportError::EarlierImport)),
-        "{again:?}"
-    );
-    sqlx::query("UPDATE import_batches SET undone_at = '2026-10-30T10:00:00.000Z'")
-        .execute(&pool)
-        .await
-        .unwrap();
-    assert!(!actual_import_in_place(&pool).await.unwrap());
 }
 
 #[tokio::test]
@@ -380,7 +357,6 @@ async fn a_failure_midway_leaves_nothing_behind() {
     let failed = commit(&pool, &plan, user).await;
     assert!(matches!(failed, Err(ImportError::Db(_))), "{failed:?}");
     assert_eq!(written_counts(&pool).await, before);
-    assert!(!actual_import_in_place(&pool).await.unwrap());
 }
 
 /// The row counts of every table a commit writes.
@@ -449,7 +425,8 @@ async fn rows_go_into_an_account_that_is_the_same_as_theirs() {
             id,
             name: "Wallet".into(),
             created: false,
-            rows: 1
+            rows: 1,
+            matched: 0,
         }]
     );
     let balances = account_balances(&pool).await.unwrap();
