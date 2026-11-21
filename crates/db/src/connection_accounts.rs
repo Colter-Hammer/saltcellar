@@ -108,8 +108,8 @@ pub async fn record_connection_accounts(
 }
 
 /// Points account `account_id` at the feed account and marks that tracked.
-async fn link(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+pub(crate) async fn link(
+    tx: &mut sqlx::SqliteConnection,
     connection_id: i64,
     external_id: &str,
     account_id: i64,
@@ -120,7 +120,7 @@ async fn link(
         external_id,
         account_id
     )
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await?;
     sqlx::query!(
         "UPDATE connection_accounts SET decision = 'tracked', account_id = ?
@@ -129,7 +129,7 @@ async fn link(
         connection_id,
         external_id
     )
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await?;
     Ok(())
 }
@@ -311,7 +311,7 @@ pub async fn track_connection_account(
         .await?;
         id
     } else {
-        let name = free_name(&mut tx, &name).await?;
+        let name = free_name(&mut tx, &name, &[]).await?;
         let kind = AccountType::guess(&name, track.role).as_str();
         sqlx::query_scalar!(
             r#"INSERT INTO accounts (name, institution, type, role, has_transactions, sort_order)
@@ -331,11 +331,12 @@ pub async fn track_connection_account(
     Ok(account_id)
 }
 
-/// `name`, or `name 2`, `name 3`… if an account has it already, whatever its case. An empty one
-/// is "Bank account" *(agent)*.
-async fn free_name(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+/// `name`, or `name 2`, `name 3`… if an account or one of `reserved` has it already, whatever its
+/// case. An empty one is "Bank account" *(agent)*.
+pub(crate) async fn free_name(
+    tx: &mut sqlx::SqliteConnection,
     name: &str,
+    reserved: &[String],
 ) -> Result<String, sqlx::Error> {
     let base = if name.trim().is_empty() {
         "Bank account"
@@ -348,9 +349,12 @@ async fn free_name(
             r#"SELECT EXISTS (SELECT 1 FROM accounts WHERE lower(name) = lower(?)) AS "taken!: bool""#,
             candidate
         )
-        .fetch_one(&mut **tx)
+        .fetch_one(&mut *tx)
         .await?;
-        if !taken {
+        let reserved = reserved
+            .iter()
+            .any(|r| r.to_lowercase() == candidate.to_lowercase());
+        if !taken && !reserved {
             break;
         }
         candidate = format!("{base} {n}");

@@ -10,11 +10,12 @@ export type AccountType = components['schemas']['AccountType']
 export type AccountRole = components['schemas']['AccountRole']
 export type ActualCommitRequest = components['schemas']['ActualCommitRequest']
 export type ActualImportDone = components['schemas']['ActualImportDone']
+export type ActualPreview = components['schemas']['ActualPreview']
 
 /**
  * `POST /api/v1/imports/actual`: sends an Actual export, the `.zip` itself, and resolves to what's
  * in it. Nothing is imported yet. Throws an ApiError saying why a file is refused: not an Actual
- * export, over 100 MB, the household currency, or an earlier import still in place.
+ * export, over 100 MB, or the household currency.
  */
 export async function uploadActualExport(file: Blob): Promise<ActualUpload> {
   return call(
@@ -37,10 +38,24 @@ export async function getActualImport(id: string): Promise<ActualImport> {
 }
 
 /**
+ * `POST /api/v1/imports/actual/{id}/preview`: what importing with these choices would do, writing
+ * nothing: rows new and already there, and the possible duplicates to decide on. Throws as the
+ * commit does.
+ */
+export async function previewActualImport(
+  id: string,
+  body: ActualCommitRequest,
+): Promise<ActualPreview> {
+  return call(
+    client.POST('/api/v1/imports/actual/{id}/preview', { params: { path: { id } }, body }),
+  )
+}
+
+/**
  * `POST /api/v1/imports/actual/{id}/commit`: imports the upload with the choices of steps 2 and 3,
  * as one import batch, and resolves to the Done step's summary. Throws an ApiError
- * `earlier_import` while an earlier import from Actual is in place, `invalid_choices` for choices
- * that can't go ahead, and `upload_not_found` once the upload is gone.
+ * `invalid_choices` for choices that can't go ahead, and `upload_not_found` once the upload is
+ * gone.
  */
 export async function commitActualImport(
   id: string,

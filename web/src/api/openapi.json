@@ -1613,7 +1613,7 @@
             }
           },
           "409": {
-            "description": "`currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do; `earlier_import`: an earlier import from Actual hasn't been undone.",
+            "description": "`currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1776,8 +1776,70 @@
               }
             }
           },
-          "409": {
-            "description": "`earlier_import`: an earlier import from Actual hasn't been undone.",
+          "422": {
+            "description": "`invalid_choices`: an account without a choice or with one that can't go ahead (a bank account to track that isn't waiting any more among them), or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/actual/{id}/preview": {
+      "post": {
+        "tags": [
+          "import"
+        ],
+        "summary": "`POST /api/v1/imports/actual/{id}/preview`: what importing the upload with these choices\nwould do; nothing is written.",
+        "operationId": "previewActualImport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The upload, as its upload answered.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActualCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "What the import would do.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActualPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`upload_not_found`: no such upload, or it's over a day old and deleted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1787,7 +1849,7 @@
             }
           },
           "422": {
-            "description": "`invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out.",
+            "description": "`invalid_choices`, or `export_unreadable`, as the commit answers.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3873,10 +3935,11 @@
       },
       "AccountAction": {
         "type": "string",
-        "description": "Create a new account, use one the app has (Same as), or leave the account out.",
+        "description": "Create a new account, use one the app has (Same as), track a bank account waiting in the new\naccounts prompt (Same as one of those), or leave the account out.",
         "enum": [
           "create",
           "same",
+          "track",
           "skip"
         ]
       },
@@ -4117,7 +4180,8 @@
           "balance_minor",
           "type",
           "role",
-          "same_as"
+          "same_as",
+          "same_as_waiting"
         ],
         "properties": {
           "balance_minor": {
@@ -4154,7 +4218,14 @@
               "null"
             ],
             "format": "int64",
-            "description": "The app account with the same bank-sync id, which **Same as** starts on; null when none."
+            "description": "The app account **Same as** starts on: the one with the same bank-sync id, else, with no\naccount or waiting bank account of that id, one of the same name ignoring case; null when\nnone."
+          },
+          "same_as_waiting": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The waiting bank account with the same bank-sync id, which **Same as** starts on when no\napp account has it; null when none."
           },
           "type": {
             "$ref": "#/components/schemas/AccountType",
@@ -4164,7 +4235,7 @@
       },
       "ActualAccountChoice": {
         "type": "object",
-        "description": "What happens to one Actual account. Create new reads `name`, `type`, `role` and\n`balances_only`; Same as reads `same_as`.",
+        "description": "What happens to one Actual account. Create new reads `name`, `type`, `role` and\n`balances_only`; Same as reads `same_as`; Track reads `track`, `role` and `balances_only`.",
         "required": [
           "actual_id",
           "action",
@@ -4199,6 +4270,13 @@
             ],
             "format": "int64",
             "description": "The app account it's the same as."
+          },
+          "track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The waiting bank account it's the same as, by its provider id, to track."
           },
           "type": {
             "$ref": "#/components/schemas/AccountType"
@@ -4265,6 +4343,50 @@
           }
         }
       },
+      "ActualCheckRow": {
+        "type": "object",
+        "description": "A possible duplicate: an Actual row and the stored row it most likely is.",
+        "required": [
+          "actual_id",
+          "account",
+          "date",
+          "description",
+          "amount_minor",
+          "could_be"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The app account it goes into."
+          },
+          "actual_id": {
+            "type": "string",
+            "description": "Actual's transaction id, as `new_rows` names it."
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "could_be": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CsvStoredRow",
+                "description": "The stored row it most likely is."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
       "ActualCommitRequest": {
         "type": "object",
         "description": "The importer's choices, to commit.",
@@ -4292,6 +4414,13 @@
             "type": "string",
             "description": "The uploaded file's name, as Settings › Imports will list it.",
             "example": "Example-Household-2026-10-30.zip"
+          },
+          "new_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The possible duplicates the preview listed that the household says are new, by Actual's\ntransaction id: they're added. Any other is taken as the row it may be."
           }
         }
       },
@@ -4303,7 +4432,8 @@
           "budget_name",
           "accounts",
           "categories",
-          "app_accounts"
+          "app_accounts",
+          "waiting_accounts"
         ],
         "properties": {
           "accounts": {
@@ -4333,6 +4463,13 @@
           },
           "id": {
             "type": "string"
+          },
+          "waiting_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WaitingAccount"
+            },
+            "description": "The bank accounts waiting in the new accounts prompt, which **Same as** can track too."
           }
         }
       },
@@ -4343,6 +4480,7 @@
           "batch_id",
           "accounts_created",
           "accounts",
+          "matched",
           "mapped",
           "undecided",
           "transfer",
@@ -4380,6 +4518,12 @@
             "description": "Rows that took the category theirs goes to, split rows among them.",
             "minimum": 0
           },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows that were there already, synced or from an earlier import: they took Actual's\ncategory, notes and payee instead of coming in again.",
+            "minimum": 0
+          },
           "transfer": {
             "type": "integer",
             "format": "int64",
@@ -4396,6 +4540,36 @@
             "type": "integer",
             "format": "int64",
             "description": "Rows on Decide later, and splits with a line that has no category to go to: they wait in\nFrom Actual, undecided.",
+            "minimum": 0
+          }
+        }
+      },
+      "ActualPreview": {
+        "type": "object",
+        "description": "What committing would do, before it does: how many rows come in and how many are there\nalready, and the possible duplicates for the household to decide on.",
+        "required": [
+          "new",
+          "already",
+          "check"
+        ],
+        "properties": {
+          "already": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows there already, synced or from an earlier import, which take Actual's category, notes\nand payee instead.",
+            "minimum": 0
+          },
+          "check": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActualCheckRow"
+            },
+            "description": "Rows that could be a row an account has, or another as good: added only when the\nhousehold says they're new (`new_rows`), otherwise taken as that row."
+          },
+          "new": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows that would be added.",
             "minimum": 0
           }
         }
@@ -5898,16 +6072,23 @@
           "id",
           "name",
           "created",
-          "rows"
+          "rows",
+          "matched"
         ],
         "properties": {
           "created": {
             "type": "boolean",
-            "description": "Whether the import created it, rather than adding to one there already."
+            "description": "Whether the import created it (or tracked it), rather than adding to one there already."
           },
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows that were there already.",
+            "minimum": 0
           },
           "name": {
             "type": "string"
@@ -5915,6 +6096,7 @@
           "rows": {
             "type": "integer",
             "format": "int64",
+            "description": "Rows added.",
             "minimum": 0
           }
         }
@@ -7075,6 +7257,32 @@
           "token": {
             "type": "string",
             "description": "The token from the link's fragment."
+          }
+        }
+      },
+      "WaitingAccount": {
+        "type": "object",
+        "description": "A bank account the connection reported that waits in the new accounts prompt.",
+        "required": [
+          "external_account_id",
+          "name",
+          "institution"
+        ],
+        "properties": {
+          "external_account_id": {
+            "type": "string",
+            "description": "The provider's id for it.",
+            "example": "ACT-demo-checking"
+          },
+          "institution": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The bank's name for it, which the account tracking it takes."
           }
         }
       }

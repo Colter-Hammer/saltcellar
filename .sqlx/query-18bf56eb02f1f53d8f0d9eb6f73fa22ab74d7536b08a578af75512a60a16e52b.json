@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT connection_id AS \"connection_id!: i64\", provider_name, institution\n               FROM connection_accounts\n               WHERE connection_id = (SELECT id FROM connections ORDER BY id LIMIT 1)\n                 AND external_account_id = ? AND decision = 'pending'",
+  "describe": {
+    "columns": [
+      {
+        "name": "connection_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "connection_id"
+          }
+        }
+      },
+      {
+        "name": "provider_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "provider_name"
+          }
+        }
+      },
+      {
+        "name": "institution",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connection_accounts",
+            "name": "institution"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "18bf56eb02f1f53d8f0d9eb6f73fa22ab74d7536b08a578af75512a60a16e52b"
+}

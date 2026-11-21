@@ -60,8 +60,8 @@ pub use csv_import::{
 pub use dropped::{DroppedRow, RestoreError, dropped_rows, restore_dropped};
 pub use household::{Household, household};
 pub use imports::{
-    ActualCommit, Batch, Committed, CommittedAccount, ImportError, UndoError, Undone,
-    actual_import_in_place, commit_actual_import, import_batches, undo_import,
+    ActualCommit, Batch, Committed, CommittedAccount, ImportError, Overlaps, UndoError, Undone,
+    actual_overlaps, commit_actual_import, import_batches, undo_import,
 };
 pub use manual::{
     Author, ManualError, Payee, add_manual_transaction, delete_manual_transaction, payees,

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MIN(date) AS \"date: String\" FROM transactions\n           WHERE account_id = ? AND source = 'provider'",
+  "describe": {
+    "columns": [
+      {
+        "name": "date: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "aa652aec85002b3552d88df03635b27e11c7acf06fe91913fbe5cda63f2b19fc"
+}

@@ -100,6 +100,7 @@ fn plan(export: &Export, choices: &Choices) -> Result<Plan, ChoiceError> {
         Existing {
             accounts: &accounts,
             categories: &categories,
+            waiting: &["ACT-demo-savings".to_owned()],
         },
     )
 }
@@ -524,6 +525,25 @@ fn choices_that_cant_go_ahead_are_refused() {
         ),
         ChoiceError::NoSuchAccount("Checking".to_owned())
     );
+    let track = |id: &str| AccountChoice::Track {
+        external_id: id.to_owned(),
+        role: Role::Budgeted,
+        balances_only: false,
+    };
+    assert_eq!(
+        refused(&[("a", track("ACT-gone")), ("b", AccountChoice::Skip)], &[]),
+        ChoiceError::NotWaiting("Checking".to_owned())
+    );
+    assert_eq!(
+        refused(
+            &[
+                ("a", track("ACT-demo-savings")),
+                ("b", track("ACT-demo-savings"))
+            ],
+            &[]
+        ),
+        ChoiceError::TrackedTwice
+    );
     assert_eq!(
         refused(&both_created(), &[("c2", GoesTo::Category(99))]),
         ChoiceError::NoSuchCategory("Fuel".to_owned())
@@ -626,4 +646,36 @@ fn cents_read_as_actual_shows_them() {
     assert_eq!(cents(Money::from_minor(-5)), "-0.05");
     assert_eq!(cents(Money::from_minor(123_456)), "1234.56");
     assert_eq!(cents(Money::from_minor(i64::MIN)), "-92233720368547758.08");
+}
+
+#[test]
+fn a_waiting_bank_account_is_tracked_with_the_role_chosen() {
+    let export = export(vec![row("t1", "a", "2025-03-01", -1_250)]);
+    let plan = plan(
+        &export,
+        &choices(
+            &[
+                (
+                    "a",
+                    AccountChoice::Track {
+                        external_id: "ACT-demo-savings".to_owned(),
+                        role: Role::Tracking,
+                        balances_only: false,
+                    },
+                ),
+                ("b", AccountChoice::Skip),
+            ],
+            &[],
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.accounts[0].target,
+        Target::Track(TrackedAccount {
+            external_id: "ACT-demo-savings".to_owned(),
+            role: Role::Tracking,
+            balances_only: false,
+        })
+    );
+    assert_eq!(plan.accounts[0].rows.len(), 1);
 }

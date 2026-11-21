@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT t.id AS \"id!: i64\", t.external_id, t.date, t.amount_minor, t.raw_description,\n             (SELECT r.import_ref FROM import_batch_rows r\n                JOIN import_batches b ON b.id = r.batch_id\n               WHERE r.transaction_id = t.id AND b.format = 'actual' AND b.undone_at IS NULL\n               ORDER BY r.batch_id LIMIT 1) AS \"actual_id?: String\"\n           FROM transactions t WHERE t.account_id = ? ORDER BY t.date, t.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "external_id"
+          }
+        }
+      },
+      {
+        "name": "date",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "name": "amount_minor",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "name": "raw_description",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "raw_description"
+          }
+        }
+      },
+      {
+        "name": "actual_id?: String",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batch_rows",
+            "name": "import_ref"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "1e00909e363f9d7d37f32dd74858c99aca00ffc7f921c84e3ca3f063758b4f1d"
+}

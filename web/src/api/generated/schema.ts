@@ -540,6 +540,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/actual/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/imports/actual/{id}/preview`: what importing the upload with these choices
+         *     would do; nothing is written.
+         */
+        post: operations["previewActualImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/csv/commit": {
         parameters: {
             query?: never;
@@ -1121,10 +1141,11 @@ export interface components {
             type: components["schemas"]["AccountType"];
         };
         /**
-         * @description Create a new account, use one the app has (Same as), or leave the account out.
+         * @description Create a new account, use one the app has (Same as), track a bank account waiting in the new
+         *     accounts prompt (Same as one of those), or leave the account out.
          * @enum {string}
          */
-        AccountAction: "create" | "same" | "skip";
+        AccountAction: "create" | "same" | "track" | "skip";
         /** @description What to change about an account; whatever is left out stays as it is. */
         AccountChange: {
             balances_only?: boolean | null;
@@ -1214,15 +1235,22 @@ export interface components {
             rows: number;
             /**
              * Format: int64
-             * @description The app account with the same bank-sync id, which **Same as** starts on; null when none.
+             * @description The app account **Same as** starts on: the one with the same bank-sync id, else, with no
+             *     account or waiting bank account of that id, one of the same name ignoring case; null when
+             *     none.
              */
             same_as: number | null;
+            /**
+             * @description The waiting bank account with the same bank-sync id, which **Same as** starts on when no
+             *     app account has it; null when none.
+             */
+            same_as_waiting: string | null;
             /** @description The best guess from its name. */
             type: components["schemas"]["AccountType"];
         };
         /**
          * @description What happens to one Actual account. Create new reads `name`, `type`, `role` and
-         *     `balances_only`; Same as reads `same_as`.
+         *     `balances_only`; Same as reads `same_as`; Track reads `track`, `role` and `balances_only`.
          */
         ActualAccountChoice: {
             action: components["schemas"]["AccountAction"];
@@ -1237,6 +1265,8 @@ export interface components {
              * @description The app account it's the same as.
              */
             same_as: number | null;
+            /** @description The waiting bank account it's the same as, by its provider id, to track. */
+            track?: string | null;
             type: components["schemas"]["AccountType"];
         };
         /** @description A live Actual category and the rows using it. */
@@ -1264,6 +1294,19 @@ export interface components {
             category_id: number | null;
             goes_to: components["schemas"]["GoesTo"];
         };
+        /** @description A possible duplicate: an Actual row and the stored row it most likely is. */
+        ActualCheckRow: {
+            /** @description The app account it goes into. */
+            account: string;
+            /** @description Actual's transaction id, as `new_rows` names it. */
+            actual_id: string;
+            /** Format: int64 */
+            amount_minor: number;
+            could_be: components["schemas"]["CsvStoredRow"] | null;
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            description: string;
+        };
         /** @description The importer's choices, to commit. */
         ActualCommitRequest: {
             /** @description What happens to each live Actual account: every one needs a choice. */
@@ -1275,6 +1318,11 @@ export interface components {
              * @example Example-Household-2026-10-30.zip
              */
             file_name: string;
+            /**
+             * @description The possible duplicates the preview listed that the household says are new, by Actual's
+             *     transaction id: they're added. Any other is taken as the row it may be.
+             */
+            new_rows?: string[];
         };
         /**
          * @description What's in an uploaded export for the importer's Accounts and Categories steps, with the
@@ -1296,6 +1344,8 @@ export interface components {
              */
             categories: components["schemas"]["ActualCategory"][];
             id: string;
+            /** @description The bank accounts waiting in the new accounts prompt, which **Same as** can track too. */
+            waiting_accounts: components["schemas"]["WaitingAccount"][];
         };
         /** @description The committed import, as the Done step sums it up. */
         ActualImportDone: {
@@ -1324,6 +1374,12 @@ export interface components {
             mapped: number;
             /**
              * Format: int64
+             * @description Rows that were there already, synced or from an earlier import: they took Actual's
+             *     category, notes and payee instead of coming in again.
+             */
+            matched: number;
+            /**
+             * Format: int64
              * @description Rows marked transfer: those whose category goes to Transfer, and transfer legs.
              */
             transfer: number;
@@ -1338,6 +1394,28 @@ export interface components {
              *     From Actual, undecided.
              */
             undecided: number;
+        };
+        /**
+         * @description What committing would do, before it does: how many rows come in and how many are there
+         *     already, and the possible duplicates for the household to decide on.
+         */
+        ActualPreview: {
+            /**
+             * Format: int64
+             * @description Rows there already, synced or from an earlier import, which take Actual's category, notes
+             *     and payee instead.
+             */
+            already: number;
+            /**
+             * @description Rows that could be a row an account has, or another as good: added only when the
+             *     household says they're new (`new_rows`), otherwise taken as that row.
+             */
+            check: components["schemas"]["ActualCheckRow"][];
+            /**
+             * Format: int64
+             * @description Rows that would be added.
+             */
+            new: number;
         };
         /** @description An uploaded Actual export and what's in it. */
         ActualUpload: {
@@ -1905,12 +1983,20 @@ export interface components {
             batches: components["schemas"]["ImportBatch"][];
         };
         ImportedAccount: {
-            /** @description Whether the import created it, rather than adding to one there already. */
+            /** @description Whether the import created it (or tracked it), rather than adding to one there already. */
             created: boolean;
             /** Format: int64 */
             id: number;
+            /**
+             * Format: int64
+             * @description Rows that were there already.
+             */
+            matched: number;
             name: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Rows added.
+             */
             rows: number;
         };
         LogIn: {
@@ -2367,6 +2453,17 @@ export interface components {
             password_again: string;
             /** @description The token from the link's fragment. */
             token: string;
+        };
+        /** @description A bank account the connection reported that waits in the new accounts prompt. */
+        WaitingAccount: {
+            /**
+             * @description The provider's id for it.
+             * @example ACT-demo-checking
+             */
+            external_account_id: string;
+            institution: string | null;
+            /** @description The bank's name for it, which the account tracking it takes. */
+            name: string;
         };
     };
     responses: never;
@@ -3754,7 +3851,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do; `earlier_import`: an earlier import from Actual hasn't been undone. */
+            /** @description `currency_not_supported`: the household currency doesn't have 2 decimal places, as Actual's amounts do. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3885,8 +3982,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `earlier_import`: an earlier import from Actual hasn't been undone. */
-            409: {
+            /** @description `invalid_choices`: an account without a choice or with one that can't go ahead (a bank account to track that isn't waiting any more among them), or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3894,7 +3991,52 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `invalid_choices`: an account without a choice or with one that can't go ahead, or a category going to one that isn't there; `export_unreadable`: the export has data the app can't read, or a balance that can't be worked out. */
+        };
+    };
+    previewActualImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The upload, as its upload answered. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActualCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description What the import would do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActualPreview"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `upload_not_found`: no such upload, or it's over a day old and deleted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `invalid_choices`, or `export_unreadable`, as the commit answers. */
             422: {
                 headers: {
                     [name: string]: unknown;

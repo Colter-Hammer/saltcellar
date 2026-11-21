@@ -6,11 +6,13 @@ import type { ActualAccount, ActualImport } from '@/api/imports'
 import Money from '@/components/Money.vue'
 import type { Formatting } from '@/lib/format'
 import { ACCOUNT_ROLES, ACCOUNT_TYPES } from '@/lib/accounts'
-import type { AccountChoice } from '@/lib/import'
+import { type AccountChoice, fromSameAsValue, sameAsValue } from '@/lib/import'
 
 const props = defineProps<{
   account: ActualAccount
   appAccounts: ActualImport['app_accounts']
+  /** The bank accounts waiting in the new accounts prompt, which Same as can track. */
+  waitingAccounts: ActualImport['waiting_accounts']
   /** Makes the row's ids unique on the page. */
   index: number
   problem: string | undefined
@@ -71,7 +73,9 @@ function chosen(event: Event): string {
         @change="change({ action: chosen($event) as AccountChoice['action'] })"
       >
         <option value="create">Create new</option>
-        <option value="same" :disabled="appAccounts.length === 0">Same as…</option>
+        <option value="same" :disabled="appAccounts.length + waitingAccounts.length === 0">
+          Same as…
+        </option>
         <option value="skip">Skip</option>
       </select>
 
@@ -142,15 +146,60 @@ function chosen(event: Event): string {
         </label>
         <select
           :id="`${id}-same-as`"
-          :value="choice.sameAs ?? ''"
+          :value="sameAsValue(choice)"
           :aria-invalid="problem ? true : undefined"
           :aria-describedby="problem ? `${id}-problem` : undefined"
           class="rounded-md border bg-background px-2 py-1"
-          @change="change({ sameAs: Number(chosen($event)) })"
+          @change="change(fromSameAsValue(chosen($event)))"
         >
           <option value="" disabled>Choose an account</option>
-          <option v-for="app in appAccounts" :key="app.id" :value="app.id">{{ app.name }}</option>
+          <optgroup v-if="appAccounts.length > 0" label="Accounts">
+            <option v-for="app in appAccounts" :key="app.id" :value="`app:${app.id}`">
+              {{ app.name }}
+            </option>
+          </optgroup>
+          <optgroup v-if="waitingAccounts.length > 0" label="New at the bank">
+            <option
+              v-for="bank in waitingAccounts"
+              :key="bank.external_account_id"
+              :value="`bank:${bank.external_account_id}`"
+            >
+              {{ bank.name }}{{ bank.institution ? ` · ${bank.institution}` : '' }}
+            </option>
+          </optgroup>
         </select>
+        <!-- Tracking a waiting bank account, as the new accounts prompt would, with the role chosen. -->
+        <div v-if="choice.track !== null" class="mt-1 grid gap-2 sm:grid-cols-2">
+          <p class="text-sm text-muted-foreground sm:col-span-2">
+            Tracks this bank account, so its rows sync from now on.
+          </p>
+          <div class="flex flex-col gap-1">
+            <label :for="`${id}-track-role`" class="text-sm font-medium">
+              Role<span class="sr-only"> for {{ account.name }}</span>
+            </label>
+            <select
+              :id="`${id}-track-role`"
+              :value="choice.role"
+              class="rounded-md border bg-background px-2 py-1"
+              @change="change({ role: chosen($event) as AccountChoice['role'] })"
+            >
+              <option v-for="role in ACCOUNT_ROLES" :key="role.value" :value="role.value">
+                {{ role.label }}
+              </option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2 max-lg:min-h-row-touch sm:pt-6">
+            <input
+              :id="`${id}-track-balances-only`"
+              type="checkbox"
+              :checked="choice.balancesOnly"
+              @change="change({ balancesOnly: ($event.target as HTMLInputElement).checked })"
+            />
+            <label :for="`${id}-track-balances-only`" class="text-sm">
+              Balances only<span class="sr-only"> for {{ account.name }}</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <p v-else class="mt-2 text-sm text-muted-foreground">None of its rows are imported.</p>

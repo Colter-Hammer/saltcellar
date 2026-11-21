@@ -3,7 +3,9 @@
 // categories → done. Step 1 reads the export and says what's in it; steps 2 and 3 choose what
 // happens to each Actual account and category. The choices live here, in the browser, until the
 // import commits *(agent)*, so Back keeps them; nothing is imported until Import on step 3
-// commits them all in one go, and step 4 sums up what came in.
+// commits them all in one go, and step 4 sums up what came in. Import previews first: when rows
+// could be ones an account has already (docs/spec/m2-bank-data.md#import-from-actual-becomes-overlap-aware),
+// step 3 lists them to tick the new ones before a second Import commits *(agent)*.
 import { computed, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { RouterLink } from 'vue-router'
@@ -11,19 +13,23 @@ import { useCategories } from '@/api/categories'
 import {
   type ActualImport,
   type ActualImportDone,
+  type ActualPreview,
   type ActualUpload,
   commitActualImport,
   getActualImport,
+  previewActualImport,
   uploadActualExport,
 } from '@/api/imports'
+import Money from '@/components/Money.vue'
 import ImportAccountRow from '@/components/ImportAccountRow.vue'
 import ImportCategoryRow from '@/components/ImportCategoryRow.vue'
-import { useFormatting } from '@/lib/format'
+import { formatDate, useFormatting } from '@/lib/format'
 import {
   type AccountChoice,
   accountProblems,
   commitRequest,
   describeDone,
+  describePreview,
   describeUpload,
   LATER,
   startAccountChoices,
@@ -129,16 +135,59 @@ const done = ref<ActualImportDone | null>(null)
 const committing = ref(false)
 const doneLines = computed(() => done.value && describeDone(done.value, formatting.value.locale))
 
-/** Commits every choice as one import, then shows what came in. */
-async function commit() {
-  if (plan.value === null) return
+/** The preview, once Import has found possible duplicates to decide on; null otherwise. */
+const preview = ref<ActualPreview | null>(null)
+/** The possible duplicates ticked as new, by Actual id. */
+const newRows = ref<Set<string>>(new Set())
+const previewLine = computed(
+  () => preview.value && describePreview(preview.value, formatting.value.locale),
+)
+
+function request(): ReturnType<typeof commitRequest> | null {
+  if (plan.value === null) return null
+  return commitRequest(plan.value, accountChoices.value, categoryChoices.value, fileName.value, [
+    ...newRows.value,
+  ])
+}
+
+/** Import on step 3: previews, and commits at once unless there are rows to check. */
+async function importAll() {
+  const body = request()
+  if (plan.value === null || body === null) return
   error.value = ''
   committing.value = true
   try {
-    done.value = await commitActualImport(
-      plan.value.id,
-      commitRequest(plan.value, accountChoices.value, categoryChoices.value, fileName.value),
-    )
+    const previewed = await previewActualImport(plan.value.id, body)
+    if (previewed.check.length > 0) {
+      preview.value = previewed
+      newRows.value = new Set()
+      return
+    }
+  } catch (failure) {
+    error.value = failure instanceof Error ? failure.message : String(failure)
+    return
+  } finally {
+    committing.value = false
+  }
+  await commit()
+}
+
+function tick(actualId: string, event: Event) {
+  const next = new Set(newRows.value)
+  if (event.target instanceof HTMLInputElement && event.target.checked) next.add(actualId)
+  else next.delete(actualId)
+  newRows.value = next
+}
+
+/** Commits every choice as one import, then shows what came in. */
+async function commit() {
+  const body = request()
+  if (plan.value === null || body === null) return
+  error.value = ''
+  committing.value = true
+  try {
+    done.value = await commitActualImport(plan.value.id, body)
+    preview.value = null
     step.value = 4
     // More lists From Actual, undecided from now on, if any rows wait there.
     void queryClient.invalidateQueries({ queryKey: ['undecided'] })
@@ -240,6 +289,7 @@ async function commit() {
             :model-value="choice"
             :account="account"
             :app-accounts="plan.app_accounts"
+            :waiting-accounts="plan.waiting_accounts"
             :index="i"
             :problem="problems[account.id]"
             :formatting="formatting"
@@ -256,6 +306,65 @@ async function commit() {
           @click="toCategories"
         >
           Next
+        </button>
+      </div>
+    </section>
+
+    <section
+      v-else-if="step === 3 && plan && preview"
+      aria-labelledby="check-heading"
+      class="flex flex-col gap-4"
+    >
+      <div class="flex flex-col gap-1">
+        <h2 id="check-heading" class="font-medium">Possible duplicates</h2>
+        <p class="text-sm text-muted-foreground">
+          {{ previewLine }}. These rows could be ones the account has already. Tick the ones that
+          are really new; the rest are taken as the row shown and get Actual's category, notes and
+          payee.
+        </p>
+      </div>
+      <ul aria-label="Possible duplicates" class="divide-y rounded-xl border">
+        <li v-for="row in preview.check" :key="row.actual_id" class="flex flex-col gap-1 p-3">
+          <label class="flex items-start gap-3 max-lg:min-h-row-touch">
+            <input
+              type="checkbox"
+              class="mt-1"
+              :checked="newRows.has(row.actual_id)"
+              @change="tick(row.actual_id, $event)"
+            />
+            <span class="flex flex-col">
+              <span>
+                {{ row.account }} · {{ formatDate(row.date, formatting) }} ·
+                {{ row.description || 'No description' }} ·
+                <Money :minor="row.amount_minor" signed />
+              </span>
+              <span v-if="row.could_be" class="text-sm text-muted-foreground">
+                Could be {{ formatDate(row.could_be.date, formatting) }} ·
+                {{ row.could_be.description }}
+              </span>
+            </span>
+            <span class="sr-only">Add as a new row</span>
+          </label>
+        </li>
+      </ul>
+      <p v-if="committing" role="status" class="text-sm text-muted-foreground">Importing…</p>
+      <p v-if="error" role="alert" class="text-sm text-destructive">{{ error }}</p>
+      <div class="flex justify-between">
+        <button
+          type="button"
+          class="rounded-md border px-3 py-2 disabled:opacity-50"
+          :disabled="committing"
+          @click="preview = null"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          class="rounded-md bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50"
+          :disabled="committing"
+          @click="commit"
+        >
+          Import
         </button>
       </div>
     </section>
@@ -313,7 +422,7 @@ async function commit() {
           type="button"
           class="rounded-md bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50"
           :disabled="committing"
-          @click="commit"
+          @click="importAll"
         >
           Import
         </button>
@@ -333,14 +442,20 @@ async function commit() {
         <thead class="text-left text-muted-foreground">
           <tr class="border-b">
             <th scope="col" class="py-2 pr-3 font-medium">Account</th>
-            <th scope="col" class="py-2 text-right font-medium">Rows imported</th>
+            <th scope="col" class="py-2 pr-3 text-right font-medium">Rows imported</th>
+            <th v-if="done.matched > 0" scope="col" class="py-2 text-right font-medium">
+              Already here
+            </th>
           </tr>
         </thead>
         <tbody class="divide-y">
           <tr v-for="account in done.accounts" :key="account.id">
             <th scope="row" class="py-2 pr-3 text-left font-normal">{{ account.name }}</th>
-            <td class="py-2 text-right tabular-nums">
+            <td class="py-2 pr-3 text-right tabular-nums">
               {{ new Intl.NumberFormat(formatting.locale).format(account.rows) }}
+            </td>
+            <td v-if="done.matched > 0" class="py-2 text-right tabular-nums">
+              {{ new Intl.NumberFormat(formatting.locale).format(account.matched) }}
             </td>
           </tr>
         </tbody>

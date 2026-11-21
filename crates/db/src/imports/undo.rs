@@ -78,6 +78,10 @@ const INSERTED: &str = "(SELECT ib.transaction_id FROM import_batch_rows ib
    JOIN transactions t ON t.id = ib.transaction_id
    WHERE ib.batch_id = ?1 AND ib.outcome = 'inserted' AND t.source = 'import')";
 
+/// The transactions an Actual batch matched and filled, as a subquery on its id (`?1`).
+const MATCHED: &str = "(SELECT transaction_id FROM import_batch_rows
+   WHERE batch_id = ?1 AND outcome = 'matched' AND prior_fields IS NOT NULL)";
+
 /// Undoes a batch in one database transaction: deletes the rows it inserted with their split
 /// lines, tags and transfers, restores `prior_fields` on the rows it matched, clears the bank
 /// categories it set, deletes the accounts it created that have no rows left, the payees and tags
@@ -124,23 +128,10 @@ pub async fn undo_import(
         return Err(UndoError::Edited(edited.unsigned_abs()));
     }
 
-    // Rows the batch matched get back what it filled.
-    sqlx::query(
-        "UPDATE transactions SET
-           category_id = json_extract(ib.prior_fields, '$.category_id'),
-           categorized_by = json_extract(ib.prior_fields, '$.categorized_by'),
-           memo = json_extract(ib.prior_fields, '$.memo'),
-           payee_id = json_extract(ib.prior_fields, '$.payee_id')
-         FROM import_batch_rows ib
-         WHERE ib.batch_id = ?1 AND ib.transaction_id = transactions.id
-           AND ib.outcome = 'matched' AND ib.prior_fields IS NOT NULL",
-    )
-    .bind(batch_id)
-    .execute(&mut *tx)
-    .await?;
-
-    clear_bank_categories(&mut tx, batch_id).await?;
+    // The payees and tags its rows used, new and matched, before the matched ones get theirs back.
     let used = Used::of(&mut tx, batch_id).await?;
+    restore_matched(&mut tx, batch_id).await?;
+    clear_bank_categories(&mut tx, batch_id).await?;
 
     for statement in [
         "DELETE FROM transfers WHERE from_txn_id IN {INSERTED} OR to_txn_id IN {INSERTED}",
@@ -201,6 +192,48 @@ pub async fn undo_import(
     })
 }
 
+/// The rows the batch matched get back what it filled: their category and how and why it was
+/// set, notes and payee, without the split lines and tags it added.
+async fn restore_matched(
+    tx: &mut sqlx::SqliteConnection,
+    batch_id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "DELETE FROM transaction_splits WHERE transaction_id IN (
+           SELECT transaction_id FROM import_batch_rows
+           WHERE batch_id = ? AND outcome = 'matched'
+             AND json_extract(prior_fields, '$.split_added') = 1)",
+        batch_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM transaction_tags WHERE EXISTS (
+           SELECT 1 FROM import_batch_rows ib, json_each(ib.prior_fields, '$.tags_added') added
+           WHERE ib.batch_id = ? AND ib.outcome = 'matched' AND ib.prior_fields IS NOT NULL
+             AND ib.transaction_id = transaction_tags.transaction_id
+             AND added.value = transaction_tags.tag_id)",
+        batch_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE transactions SET
+           category_id = json_extract(ib.prior_fields, '$.category_id'),
+           categorized_by = json_extract(ib.prior_fields, '$.categorized_by'),
+           categorization_reason = json_extract(ib.prior_fields, '$.categorization_reason'),
+           memo = json_extract(ib.prior_fields, '$.memo'),
+           payee_id = json_extract(ib.prior_fields, '$.payee_id')
+         FROM import_batch_rows ib
+         WHERE ib.batch_id = ?1 AND ib.transaction_id = transactions.id
+           AND ib.outcome = 'matched' AND ib.prior_fields IS NOT NULL",
+    )
+    .bind(batch_id)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
 /// An opening balance the import moved back over its rows goes back where it was.
 async fn restore_openings(
     tx: &mut sqlx::SqliteConnection,
@@ -235,7 +268,8 @@ async fn clear_bank_categories(
     Ok(())
 }
 
-/// The payees and tags a batch's inserted rows used, to tidy once the rows are gone.
+/// The payees and tags a batch's rows used (the inserted ones, and those it gave matched rows), to
+/// tidy once the rows are gone or have theirs back.
 struct Used {
     payees: Vec<i64>,
     tags: Vec<i64>,
@@ -245,13 +279,16 @@ impl Used {
     async fn of(tx: &mut sqlx::SqliteConnection, batch_id: i64) -> Result<Used, sqlx::Error> {
         let payees = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             "SELECT DISTINCT payee_id FROM transactions
-             WHERE payee_id IS NOT NULL AND id IN {INSERTED}"
+             WHERE payee_id IS NOT NULL AND (id IN {INSERTED} OR id IN {MATCHED})"
         )))
         .bind(batch_id)
         .fetch_all(&mut *tx)
         .await?;
         let tags = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-            "SELECT DISTINCT tag_id FROM transaction_tags WHERE transaction_id IN {INSERTED}"
+            "SELECT DISTINCT tag_id FROM transaction_tags WHERE transaction_id IN {INSERTED}
+             UNION SELECT added.value FROM import_batch_rows ib,
+               json_each(ib.prior_fields, '$.tags_added') added
+             WHERE ib.batch_id = ?1 AND ib.outcome = 'matched' AND ib.prior_fields IS NOT NULL"
         )))
         .bind(batch_id)
         .fetch_all(&mut *tx)

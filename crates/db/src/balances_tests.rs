@@ -549,6 +549,7 @@ async fn an_older_import_moves_the_opening_back_without_changing_drift_and_undo_
             file_name: "demo.zip",
             imported_by: user,
             today: date("2026-10-28"),
+            new_rows: &std::collections::HashSet::new(),
         },
     )
     .await

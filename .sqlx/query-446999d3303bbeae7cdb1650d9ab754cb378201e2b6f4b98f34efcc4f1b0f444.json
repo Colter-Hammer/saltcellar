@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM transaction_splits WHERE transaction_id IN (\n           SELECT transaction_id FROM import_batch_rows\n           WHERE batch_id = ? AND outcome = 'matched'\n             AND json_extract(prior_fields, '$.split_added') = 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "446999d3303bbeae7cdb1650d9ab754cb378201e2b6f4b98f34efcc4f1b0f444"
+}

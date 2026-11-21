@@ -1,0 +1,88 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT category_id, categorized_by, categorization_reason, memo, payee_id,\n                 EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)\n                   AS \"split!: bool\",\n                 (source = 'manual' OR updated_by IS NOT NULL) AS \"households!: bool\"\n               FROM transactions t WHERE t.id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "category_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "category_id"
+          }
+        }
+      },
+      {
+        "name": "categorized_by",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorized_by"
+          }
+        }
+      },
+      {
+        "name": "categorization_reason",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "categorization_reason"
+          }
+        }
+      },
+      {
+        "name": "memo",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "memo"
+          }
+        }
+      },
+      {
+        "name": "payee_id",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "payee_id"
+          }
+        }
+      },
+      {
+        "name": "split!: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "households!: bool",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "ef7403670acb68b320d815d71db62d88c8d3de9f04193ffb147e2a97da9ca8b3"
+}
