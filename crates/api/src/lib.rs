@@ -14,6 +14,7 @@ mod household;
 mod import;
 mod manual;
 mod middleware;
+mod ofx_import;
 mod profile;
 mod reset;
 mod schedule;
@@ -108,6 +109,9 @@ pub use simplefin::{ClaimPolicy, SecretKey};
         csv_import::read,
         csv_import::preview,
         csv_import::commit,
+        ofx_import::read,
+        ofx_import::preview,
+        ofx_import::commit,
         batches::list,
         batches::undo
     ),
@@ -343,7 +347,7 @@ pub fn router(state: AppState) -> Router {
         .route("/imports/actual", post(import::upload))
         .route("/imports/actual/{id}", get(import::get))
         .route("/imports/actual/{id}/commit", post(import::commit))
-        .merge(csv_import::routes())
+        .merge(csv_import::routes().merge(ofx_import::routes()))
         .route(
             "/category-groups/{id}",
             patch(categories::change_group).delete(categories::delete_group),

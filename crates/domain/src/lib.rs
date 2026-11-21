@@ -16,6 +16,7 @@ pub mod login;
 pub mod manual;
 pub mod matching;
 mod money;
+pub mod ofx;
 pub mod profile;
 mod setup_code;
 pub mod sync_health;

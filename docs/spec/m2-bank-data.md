@@ -235,6 +235,7 @@ Mainly for entering something on a synced account before the bank sends it (a ch
 - **Balances:** a file never writes a balance. Rows older than the opening date move the opening balance back (drift unchanged).
 - **Undo** deletes the rows the batch inserted (asking first if any were edited) and clears bank categories it set. It never deletes rows sync has since adopted.
 - **Sync adopts imported rows** (step 4 above).
+- **OFX details** *(agent)*: one small reader in `domain::ofx` for OFX 1.x (SGML) and 2.x (XML); QFX and QBO are read the same way. A row's date is `DTPOSTED`; `DTUSER`, when it differs, is the other date matching may use. The description is `NAME` (or the bill payee's), else `MEMO`; `MEMO` is the memo when it says more. A transaction with no FITID gets a hash of its fields as its `import_ref`. The file's account is pre-selected when exactly one open account's name ends its digits in the last 4 of `ACCTID` ("Card 0042"); otherwise the household chooses. A file holding more than one account's statement is refused ("Download one account at a time"). A Windows-1252 file (`CHARSET:1252`) is decoded as such in the browser.
 
 ## Import from Actual becomes overlap-aware
 

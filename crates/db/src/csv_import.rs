@@ -1,5 +1,5 @@
-//! CSV import (docs/spec/m2-bank-data.md#csv-and-ofxqfx-import): the mappings saved per account,
-//! the rows an import is matched against, and committing one as an import batch.
+//! CSV and OFX import (docs/spec/m2-bank-data.md#csv-and-ofxqfx-import): the mappings saved per
+//! account, the rows an import is matched against, and committing one as an import batch.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -34,6 +34,22 @@ pub async fn import_account_exists(pool: &SqlitePool, id: i64) -> Result<bool, E
     )
     .fetch_one(pool)
     .await?)
+}
+
+/// The accounts that can take a file, by id and name: open ones that keep rows.
+///
+/// # Errors
+/// If the database fails.
+pub async fn import_accounts(pool: &SqlitePool) -> Result<Vec<(i64, String)>, Error> {
+    Ok(sqlx::query!(
+        r#"SELECT id AS "id!: i64", name FROM accounts
+           WHERE closed = 0 AND has_transactions = 1 ORDER BY sort_order, id"#
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|row| (row.id, row.name))
+    .collect())
 }
 
 /// The mappings saved for an account, the latest saved first.
@@ -200,9 +216,6 @@ pub async fn commit_csv_import(
     commit: CsvCommit<'_>,
 ) -> Result<CsvCommitted, Error> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
-    let account_id = commit.account_id;
-    let entries = plan(&mut tx, account_id, commit.rows).await?;
-
     let mapping_id = sqlx::query_scalar!(
         r#"INSERT INTO import_mappings (account_id, header_signature, config)
            VALUES (?, ?, ?)
@@ -210,33 +223,111 @@ pub async fn commit_csv_import(
              DO UPDATE SET config = excluded.config,
                            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
            RETURNING id AS "id!: i64""#,
-        account_id,
+        commit.account_id,
         commit.header_signature,
         commit.config
     )
     .fetch_one(&mut *tx)
     .await?;
+    let done = write_batch(
+        &mut tx,
+        Batch {
+            account_id: commit.account_id,
+            format: "csv",
+            file_name: commit.file_name,
+            mapping_id: Some(mapping_id),
+            rows: commit.rows,
+            keep: commit.keep,
+            unreadable: commit.unreadable,
+            imported_by: commit.imported_by,
+            today: commit.today,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(done)
+}
+
+/// An OFX, QFX or QBO import to commit: a CSV one's fields, without a mapping.
+#[derive(Debug)]
+pub struct OfxCommit<'a> {
+    pub account_id: i64,
+    pub file_name: &'a str,
+    /// The statement's transactions, each with its FITID as the `import_ref`.
+    pub rows: Vec<FileRow>,
+    pub keep: &'a BTreeSet<usize>,
+    pub unreadable: u64,
+    pub imported_by: i64,
+    pub today: Date,
+}
+
+/// Commits an OFX import (`format = 'ofx'`) as [`commit_csv_import`] does a CSV one, with no
+/// mapping to save.
+///
+/// # Errors
+/// If the database fails.
+pub async fn commit_ofx_import(
+    pool: &SqlitePool,
+    commit: OfxCommit<'_>,
+) -> Result<CsvCommitted, Error> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let done = write_batch(
+        &mut tx,
+        Batch {
+            account_id: commit.account_id,
+            format: "ofx",
+            file_name: commit.file_name,
+            mapping_id: None,
+            rows: commit.rows,
+            keep: commit.keep,
+            unreadable: commit.unreadable,
+            imported_by: commit.imported_by,
+            today: commit.today,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(done)
+}
+
+/// A file's rows to write as one import batch.
+struct Batch<'a> {
+    account_id: i64,
+    format: &'static str,
+    file_name: &'a str,
+    mapping_id: Option<i64>,
+    rows: Vec<FileRow>,
+    keep: &'a BTreeSet<usize>,
+    unreadable: u64,
+    imported_by: i64,
+    today: Date,
+}
+
+async fn write_batch(tx: &mut SqliteConnection, batch: Batch<'_>) -> Result<CsvCommitted, Error> {
+    let account_id = batch.account_id;
+    let entries = plan(&mut *tx, account_id, batch.rows).await?;
     let batch_id = sqlx::query_scalar!(
         r#"INSERT INTO import_batches
              (account_id, format, file_name, mapping_id, added, matched, skipped, imported_by)
-           VALUES (?, 'csv', ?, ?, 0, 0, 0, ?) RETURNING id AS "id!: i64""#,
+           VALUES (?, ?, ?, ?, 0, 0, 0, ?) RETURNING id AS "id!: i64""#,
         account_id,
-        commit.file_name,
-        mapping_id,
-        commit.imported_by
+        batch.format,
+        batch.file_name,
+        batch.mapping_id,
+        batch.imported_by
     )
     .fetch_one(&mut *tx)
     .await?;
 
-    let quiet_before = commit
+    let quiet_before = batch
         .today
         .plus_days(-QUIET_AFTER_DAYS)
-        .unwrap_or(commit.today);
+        .unwrap_or(batch.today);
     let mut done = CsvCommitted {
         batch_id,
         added: 0,
         matched: 0,
-        skipped: commit.unreadable,
+        skipped: batch.unreadable,
     };
     for entry in entries {
         let row = &entry.row;
@@ -244,18 +335,18 @@ pub async fn commit_csv_import(
             Outcome::Seen => done.matched += 1,
             Outcome::Matched(id) => {
                 done.matched += 1;
-                matched_row(&mut tx, batch_id, id, row).await?;
+                matched_row(&mut *tx, batch_id, id, row).await?;
             }
-            Outcome::Check(_) if !commit.keep.contains(&row.row) => done.skipped += 1,
+            Outcome::Check(_) if !batch.keep.contains(&row.row) => done.skipped += 1,
             Outcome::New | Outcome::Check(_) => {
                 done.added += 1;
-                new_row(&mut tx, batch_id, account_id, row, row.date < quiet_before).await?;
+                new_row(&mut *tx, batch_id, account_id, row, row.date < quiet_before).await?;
             }
         }
     }
 
     // Rows older than the opening date move the opening balance back; Undo puts it back.
-    if let Some(before) = crate::balances::move_opening_back(&mut tx, account_id).await? {
+    if let Some(before) = crate::balances::move_opening_back(&mut *tx, account_id).await? {
         let (minor, date) = (before.balance.minor(), before.date.to_string());
         sqlx::query!(
             "INSERT INTO import_batch_openings
@@ -284,7 +375,6 @@ pub async fn commit_csv_import(
     )
     .execute(&mut *tx)
     .await?;
-    tx.commit().await?;
     Ok(done)
 }
 

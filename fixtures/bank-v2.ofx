@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?OFX OFXHEADER="200" VERSION="220" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+<OFX>
+  <SIGNONMSGSRSV1>
+    <SONRS>
+      <STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>
+      <DTSERVER>20261005120000</DTSERVER>
+      <LANGUAGE>ENG</LANGUAGE>
+    </SONRS>
+  </SIGNONMSGSRSV1>
+  <BANKMSGSRSV1>
+    <STMTTRNRS>
+      <TRNUID>0</TRNUID>
+      <STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>
+      <STMTRS>
+        <CURDEF>USD</CURDEF>
+        <BANKACCTFROM>
+          <BANKID>000000000</BANKID>
+          <ACCTID>000000000077</ACCTID>
+          <ACCTTYPE>CHECKING</ACCTTYPE>
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+          <DTSTART>20260901</DTSTART>
+          <DTEND>20261001</DTEND>
+          <STMTTRN>
+            <TRNTYPE>DIRECTDEP</TRNTYPE>
+            <DTPOSTED>20260901</DTPOSTED>
+            <TRNAMT>1500.00</TRNAMT>
+            <FITID>DEMO-V2-0001</FITID>
+            <NAME>DEMO PAYROLL</NAME>
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>CHECK</TRNTYPE>
+            <DTPOSTED>20260905</DTPOSTED>
+            <TRNAMT>-80.25</TRNAMT>
+            <FITID>DEMO-V2-0002</FITID>
+            <CHECKNUM>101</CHECKNUM>
+            <PAYEE>
+              <NAME>DEMO LANDSCAPING</NAME>
+              <ADDR1>1 Demo Way</ADDR1>
+              <CITY>Demo</CITY>
+              <STATE>NA</STATE>
+              <POSTALCODE>00000</POSTALCODE>
+              <PHONE>000-0000</PHONE>
+            </PAYEE>
+            <MEMO>CHECK 101</MEMO>
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>XFER</TRNTYPE>
+            <DTPOSTED>20260915</DTPOSTED>
+            <TRNAMT>-300.00</TRNAMT>
+            <FITID>DEMO-V2-0003</FITID>
+            <NAME>TRANSFER TO SAVINGS</NAME>
+            <BANKACCTTO>
+              <BANKID>000000000</BANKID>
+              <ACCTID>000000000088</ACCTID>
+              <ACCTTYPE>SAVINGS</ACCTTYPE>
+            </BANKACCTTO>
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>DEBIT</TRNTYPE>
+            <DTPOSTED>20260920</DTPOSTED>
+            <TRNAMT>-4.50</TRNAMT>
+            <FITID>DEMO-V2-0004</FITID>
+            <NAME>DEMO CAFE</NAME>
+          </STMTTRN>
+        </BANKTRANLIST>
+        <LEDGERBAL><BALAMT>1115.25</BALAMT><DTASOF>20261001</DTASOF></LEDGERBAL>
+      </STMTRS>
+    </STMTTRNRS>
+  </BANKMSGSRSV1>
+</OFX>

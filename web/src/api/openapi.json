@@ -1982,6 +1982,179 @@
         }
       }
     },
+    "/api/v1/imports/ofx/commit": {
+      "post": {
+        "tags": [
+          "ofx_import"
+        ],
+        "summary": "`POST /api/v1/imports/ofx/commit`: imports the file as one import batch.",
+        "operationId": "commitOfxImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfxCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Imported, as one import batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvImportDone"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_ofx`, `empty_file`, `several_accounts`, or `nothing_readable`: no transaction reads.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/ofx/preview": {
+      "post": {
+        "tags": [
+          "ofx_import"
+        ],
+        "summary": "`POST /api/v1/imports/ofx/preview`: what Import would do with the file; nothing is written.",
+        "operationId": "previewOfxImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfxRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "How many rows are new, already there or to check.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: there's no such account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_ofx`, `empty_file` or `several_accounts`, as for read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/ofx/read": {
+      "post": {
+        "tags": [
+          "ofx_import"
+        ],
+        "summary": "`POST /api/v1/imports/ofx/read`: reads a file's statement and finds its account.",
+        "operationId": "readOfxFile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfxReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The statement's account digits, the account to pre-select and what it holds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfxRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_required`: no live session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_ofx`: no `<OFX>` element; `empty_file`: no statement; `several_accounts`: statements for more than one account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/{id}/undo": {
       "post": {
         "tags": [
@@ -5917,6 +6090,113 @@
             "$ref": "#/components/schemas/CategoryGroupKind"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "OfxCommitRequest": {
+        "type": "object",
+        "description": "A file to import, with the household's decisions.",
+        "required": [
+          "account_id",
+          "file_name",
+          "content",
+          "keep"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string",
+            "description": "The file's name, for Settings › Imports."
+          },
+          "keep": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The places (`row`) of the rows to check that should be added; the rest are skipped."
+          }
+        }
+      },
+      "OfxRead": {
+        "type": "object",
+        "description": "What a file holds, and the account it's likely for.",
+        "required": [
+          "last_four",
+          "account_id",
+          "transactions",
+          "first_date",
+          "last_date"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The one account whose name ends in those digits, to pre-select; null for none or several."
+          },
+          "first_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first and last posting days, `YYYY-MM-DD`; null with no transactions."
+          },
+          "last_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_four": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last 4 digits of the bank's id for the account; null when the file has none."
+          },
+          "transactions": {
+            "type": "integer",
+            "description": "Transactions that read.",
+            "minimum": 0
+          }
+        }
+      },
+      "OfxReadRequest": {
+        "type": "object",
+        "description": "An OFX, QFX or QBO file, sent for reading.",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The file's text, as is."
+          }
+        }
+      },
+      "OfxRequest": {
+        "type": "object",
+        "description": "A file and the account to import it into.",
+        "required": [
+          "account_id",
+          "content"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
             "type": "string"
           }
         }

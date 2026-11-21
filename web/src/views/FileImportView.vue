@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// Import a file (docs/spec/m2-bank-data.md#csv-and-ofxqfx-import), for a CSV: file → mapping →
-// preview → done. The file's text stays in the browser and goes along with each step, so the
-// server keeps nothing between them *(agent)*. A file whose header the account has a saved mapping
-// for skips the mapping step; nothing is written until Import on the preview step, which is one
-// import batch that Settings › Imports can undo.
+// Import a file (docs/spec/m2-bank-data.md#csv-and-ofxqfx-import). A CSV goes file → mapping →
+// preview → done; an OFX, QFX or QBO file needs no mapping, and its account is pre-selected by the
+// last 4 digits of the file's account id. The file's text stays in the browser and goes along with
+// each step, so the server keeps nothing between them *(agent)*. A CSV whose header the account has
+// a saved mapping for skips the mapping step; nothing is written until Import on the preview step,
+// which is one import batch that Settings › Imports can undo.
 import { computed, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { RouterLink, useRoute } from 'vue-router'
@@ -17,6 +18,7 @@ import {
   previewCsvImport,
   readCsvFile,
 } from '@/api/csvImport'
+import { type OfxRead, commitOfxImport, previewOfxImport, readOfxFile } from '@/api/ofxImport'
 import Money from '@/components/Money.vue'
 import {
   columnOptions,
@@ -30,9 +32,11 @@ import {
   startMapping,
   withAmountKind,
 } from '@/lib/csvImport'
+import { useFormatting } from '@/lib/format'
+import { decodeFile, describeOfxRead, isOfx } from '@/lib/ofxImport'
 
-const steps = ['File', 'Mapping', 'Preview', 'Done']
 const step = ref(1)
+const formatting = useFormatting()
 const route = useRoute()
 const queryClient = useQueryClient()
 
@@ -53,6 +57,21 @@ const usedSaved = ref(false)
 const preview = ref<CsvPreview | null>(null)
 const kept = ref<Set<number>>(new Set())
 const done = ref<CsvImportDone | null>(null)
+const kind = ref<'csv' | 'ofx'>('csv')
+const ofxRead = ref<OfxRead | null>(null)
+// The account the file's digits chose is still the one chosen.
+const preselected = computed(
+  () => ofxRead.value !== null && ofxRead.value.account_id === accountId.value,
+)
+// An OFX file has no mapping step.
+const steps = computed(() =>
+  [
+    { at: 1, name: 'File' },
+    { at: 2, name: 'Mapping' },
+    { at: 3, name: 'Preview' },
+    { at: 4, name: 'Done' },
+  ].filter((s) => kind.value === 'csv' || s.at !== 2),
+)
 const busy = ref(false)
 const error = ref('')
 
@@ -70,18 +89,25 @@ async function choose(event: Event) {
   // So choosing the same file again reads it again.
   input.value = ''
   error.value = ''
-  if (accountId.value === null) {
-    error.value = 'Choose the account first.'
-    return
-  }
   if (file.size > MAX_FILE_BYTES) {
     error.value = 'This file is over 10 MB, more than a bank statement should be.'
     return
   }
   busy.value = true
   try {
-    const text = await file.text()
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    if (isOfx(file.name, new TextDecoder('latin1').decode(bytes.subarray(0, 512)))) {
+      await chooseOfx(file.name, decodeFile(bytes))
+      return
+    }
+    if (accountId.value === null) {
+      error.value = 'Choose the account first.'
+      return
+    }
+    const text = new TextDecoder().decode(bytes)
     const found = await readCsvFile(accountId.value, text)
+    kind.value = 'csv'
+    ofxRead.value = null
     fileName.value = file.name
     content.value = text
     read.value = found
@@ -95,6 +121,21 @@ async function choose(event: Event) {
   } finally {
     busy.value = false
   }
+}
+
+/** An OFX file: its account pre-selected by its digits, then straight to the preview. */
+async function chooseOfx(name: string, text: string) {
+  const found = await readOfxFile(text)
+  kind.value = 'ofx'
+  ofxRead.value = found
+  fileName.value = name
+  content.value = text
+  read.value = mapping.value = null
+  usedSaved.value = false
+  kept.value = new Set()
+  const suggested = choices.value.find((a) => a.id === found.account_id)
+  if (suggested) accountId.value = suggested.id
+  if (accountId.value !== null) await showPreview()
 }
 
 // ── Step 2: Mapping ──
@@ -143,11 +184,17 @@ function amountColumn(event: Event, which: 'column' | 'debit' | 'credit') {
 // ── Step 3: Preview ──
 
 async function showPreview() {
-  if (accountId.value === null || mapping.value === null) return
+  if (accountId.value === null) return
   error.value = ''
   busy.value = true
   try {
-    preview.value = await previewCsvImport(accountId.value, content.value, mapping.value)
+    if (kind.value === 'ofx') {
+      preview.value = await previewOfxImport(accountId.value, content.value)
+    } else if (mapping.value !== null) {
+      preview.value = await previewCsvImport(accountId.value, content.value, mapping.value)
+    } else {
+      return
+    }
     kept.value = new Set()
     step.value = 3
   } catch (failure) {
@@ -171,21 +218,24 @@ function changeMapping() {
 
 function back() {
   error.value = ''
-  step.value = usedSaved.value ? 1 : 2
+  step.value = usedSaved.value || kind.value === 'ofx' ? 1 : 2
 }
 
 async function commit() {
-  if (accountId.value === null || mapping.value === null || preview.value === null) return
+  if (accountId.value === null || preview.value === null) return
   error.value = ''
   busy.value = true
   try {
-    done.value = await commitCsvImport({
+    const request = {
       accountId: accountId.value,
       fileName: fileName.value,
       content: content.value,
-      mapping: mapping.value,
       keep: keptRows(preview.value.check, kept.value),
-    })
+    }
+    if (kind.value === 'ofx') done.value = await commitOfxImport(request)
+    else if (mapping.value !== null)
+      done.value = await commitCsvImport({ ...request, mapping: mapping.value })
+    else return
     // Rows, balances and the imports list all changed.
     await queryClient.invalidateQueries()
     step.value = 4
@@ -197,7 +247,8 @@ async function commit() {
 }
 
 function another() {
-  read.value = mapping.value = preview.value = done.value = null
+  read.value = mapping.value = preview.value = done.value = ofxRead.value = null
+  kind.value = 'csv'
   fileName.value = content.value = error.value = ''
   step.value = 1
 }
@@ -210,14 +261,14 @@ const buttonClass = 'inline-flex items-center rounded-md border px-3 py-2 disabl
   <div class="flex max-w-3xl flex-col gap-5 p-4 lg:max-w-5xl lg:px-6">
     <ol aria-label="Steps" class="flex gap-1 text-xs">
       <li
-        v-for="(name, i) in steps"
-        :key="name"
+        v-for="(s, i) in steps"
+        :key="s.name"
         class="flex-1"
-        :aria-current="i + 1 === step ? 'step' : undefined"
+        :aria-current="s.at === step ? 'step' : undefined"
       >
-        <div class="h-1 rounded-full" :class="i + 1 <= step ? 'bg-primary' : 'bg-muted'" />
-        <div class="mt-1" :class="i + 1 === step ? 'font-medium' : 'text-muted-foreground'">
-          {{ i + 1 }}. {{ name }}
+        <div class="h-1 rounded-full" :class="s.at <= step ? 'bg-primary' : 'bg-muted'" />
+        <div class="mt-1" :class="s.at === step ? 'font-medium' : 'text-muted-foreground'">
+          {{ i + 1 }}. {{ s.name }}
         </div>
       </li>
     </ol>
@@ -235,15 +286,15 @@ const buttonClass = 'inline-flex items-center rounded-md border px-3 py-2 disabl
         </select>
       </div>
       <div class="flex flex-col gap-1.5">
-        <label for="csv-file" class="text-sm font-medium">CSV file</label>
+        <label for="csv-file" class="text-sm font-medium">Bank file</label>
         <p id="csv-file-hint" class="text-sm text-muted-foreground">
-          A file from your bank's site. Nothing is imported until you've seen the preview and chosen
-          Import.
+          A CSV, OFX, QFX or QBO file from your bank's site. For an OFX file the account is chosen
+          from the file. Nothing is imported until you've seen the preview and chosen Import.
         </p>
         <input
           id="csv-file"
           type="file"
-          accept=".csv,text/csv,text/plain"
+          accept=".csv,.ofx,.qfx,.qbo,text/csv,text/plain,application/x-ofx"
           aria-describedby="csv-file-hint"
           class="rounded-md border p-2"
           :disabled="busy"
@@ -251,6 +302,34 @@ const buttonClass = 'inline-flex items-center rounded-md border px-3 py-2 disabl
         />
       </div>
       <p v-if="busy" role="status" class="text-sm text-muted-foreground">Reading…</p>
+      <div
+        v-if="kind === 'ofx' && ofxRead"
+        aria-label="OFX file"
+        role="group"
+        class="flex flex-col gap-3 rounded-xl border p-3"
+      >
+        <p class="text-sm">
+          <span class="font-medium">{{ fileName }}</span
+          >: {{ describeOfxRead(ofxRead, formatting) }}.
+        </p>
+        <p v-if="accountId === null" class="text-sm text-muted-foreground">
+          {{
+            ofxRead.last_four === null
+              ? 'Choose the account it’s for, then Preview.'
+              : `No one account’s name ends in ${ofxRead.last_four}: choose the account it’s for, then Preview.`
+          }}
+        </p>
+        <div class="flex justify-end">
+          <button
+            type="button"
+            :class="buttonClass"
+            :disabled="busy || accountId === null"
+            @click="showPreview"
+          >
+            Preview
+          </button>
+        </div>
+      </div>
     </section>
 
     <section
@@ -456,6 +535,15 @@ const buttonClass = 'inline-flex items-center rounded-md border px-3 py-2 disabl
     </section>
 
     <section v-else-if="step === 3 && preview" aria-label="Preview" class="flex flex-col gap-4">
+      <p v-if="kind === 'ofx'" class="text-sm text-muted-foreground">
+        Into {{ accountName
+        }}{{
+          preselected && ofxRead?.last_four
+            ? `, chosen by the file's account ending ${ofxRead.last_four}`
+            : ''
+        }}.
+        <button type="button" class="underline" @click="back">Change the account</button>
+      </p>
       <p v-if="usedSaved" class="text-sm text-muted-foreground">
         Using the mapping saved for {{ accountName }}.
         <button type="button" class="underline" @click="changeMapping">Change the mapping</button>

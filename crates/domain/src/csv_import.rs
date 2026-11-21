@@ -242,7 +242,7 @@ pub fn header_signature(records: &[Vec<String>], skip_rows: usize) -> String {
     hex(&Sha256::digest(text.as_bytes()))
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     let mut text = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         let _ = write!(text, "{byte:02x}");

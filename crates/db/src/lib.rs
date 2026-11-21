@@ -54,8 +54,8 @@ pub use connection_accounts::{
     track_connection_account,
 };
 pub use csv_import::{
-    CsvCommit, CsvCommitted, SavedMapping, commit_csv_import, csv_matched_rows,
-    import_account_exists, import_mappings, plan_csv_import,
+    CsvCommit, CsvCommitted, OfxCommit, SavedMapping, commit_csv_import, commit_ofx_import,
+    csv_matched_rows, import_account_exists, import_accounts, import_mappings, plan_csv_import,
 };
 pub use dropped::{DroppedRow, RestoreError, dropped_rows, restore_dropped};
 pub use household::{Household, household};

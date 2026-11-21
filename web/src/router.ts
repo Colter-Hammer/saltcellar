@@ -7,7 +7,7 @@ import AccountsView from '@/views/AccountsView.vue'
 import AccountView from '@/views/AccountView.vue'
 import BankConnectionView from '@/views/BankConnectionView.vue'
 import CategoriesView from '@/views/CategoriesView.vue'
-import CsvImportView from '@/views/CsvImportView.vue'
+import FileImportView from '@/views/FileImportView.vue'
 import ImportsView from '@/views/ImportsView.vue'
 import ImportView from '@/views/ImportView.vue'
 import LoginView from '@/views/LoginView.vue'
@@ -61,7 +61,7 @@ export function createAppRouter(history: RouterHistory): Router {
       },
       {
         path: '/import/file',
-        component: CsvImportView,
+        component: FileImportView,
         meta: { title: 'Import a file', tab: 'more' },
       },
       {
