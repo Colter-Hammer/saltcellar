@@ -2,13 +2,21 @@
 //! undoing one.
 
 use axum::Json;
+use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::error::{Body, ErrorEnvelope, Id};
 use crate::{ApiError, AppState};
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/imports", get(list))
+        .route("/imports/{id}/undo", post(undo))
+}
 
 /// One import batch.
 #[derive(Serialize, ToSchema)]

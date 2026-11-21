@@ -7,6 +7,7 @@ pub mod accounts;
 pub mod actual;
 pub mod balances;
 pub mod categories;
+pub mod csv_import;
 mod currency;
 mod date;
 pub mod feed;

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET bank_category = ? WHERE id = ? AND bank_category IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c0e9c80bd44c9ee867f8884ca4d03d94db100d8a1bf6b1a90e0d56dae8796902"
+}

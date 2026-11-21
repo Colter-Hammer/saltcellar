@@ -1228,6 +1228,7 @@ mod bank;
 #[path = "tests/categories.rs"]
 mod categories;
 mod connection_accounts;
+mod csv_import;
 mod import;
 mod manual;
 mod manual_adoption;

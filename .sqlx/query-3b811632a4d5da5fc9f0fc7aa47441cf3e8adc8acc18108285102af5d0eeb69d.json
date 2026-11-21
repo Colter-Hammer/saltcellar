@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET bank_category = NULL\n         WHERE id IN (SELECT transaction_id FROM import_batch_rows\n                      WHERE batch_id = ? AND set_bank_category = 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3b811632a4d5da5fc9f0fc7aa47441cf3e8adc8acc18108285102af5d0eeb69d"
+}

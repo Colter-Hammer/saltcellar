@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT r.import_ref, COUNT(*) AS \"count!: i64\"\n           FROM import_batch_rows r\n           JOIN import_batches b ON b.id = r.batch_id AND b.undone_at IS NULL\n           JOIN transactions t ON t.id = r.transaction_id\n           WHERE t.account_id = ? GROUP BY r.import_ref",
+  "describe": {
+    "columns": [
+      {
+        "name": "import_ref",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_batch_rows",
+            "name": "import_ref"
+          }
+        }
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "60285cb76c4eedb2c861d55e42d517586a622f7a31e5c6e05ec3e60ea005520c"
+}

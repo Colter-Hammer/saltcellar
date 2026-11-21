@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE import_batches SET added = ?, matched = ?, skipped = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "40e0a0db76a926c7d18869d48f97caeabb451b2318016797e71fddac38ad3ba9"
+}

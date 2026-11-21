@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO transactions\n             (account_id, date, amount_minor, status, raw_description, bank_category, memo,\n              source, dedupe_key, review_quiet)\n           VALUES (?, ?, ?, 'posted', ?, ?, ?, 'import', ?, ?)\n           RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "transactions",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f45180d903e1fb31d43a6b3ff4fc276a3903e24fa7e24d2872b467aba464cdf2"
+}

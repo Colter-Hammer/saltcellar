@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT header_signature, config FROM import_mappings\n         WHERE account_id = ? ORDER BY updated_at DESC, id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "header_signature",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_mappings",
+            "name": "header_signature"
+          }
+        }
+      },
+      {
+        "name": "config",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "import_mappings",
+            "name": "config"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d7ab119c0460db27c9d91788b7b049ffe17863643c8e613b9fd4ea7c0c2e390f"
+}
