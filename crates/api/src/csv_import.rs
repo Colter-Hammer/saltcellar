@@ -287,7 +287,18 @@ pub async fn preview(
     JsonBody(body): JsonBody<CsvRequest>,
 ) -> Result<Json<CsvPreview>, ApiError> {
     let loaded = load(&state, &body).await?;
-    let entries = db::plan_csv_import(&state.pool, body.account_id, loaded.read.rows).await?;
+    Ok(Json(
+        preview_of(&state, body.account_id, loaded.read).await?,
+    ))
+}
+
+/// What importing `read` into an account would do: shared with the OFX import.
+pub(crate) async fn preview_of(
+    state: &AppState,
+    account_id: i64,
+    read: csv::Read,
+) -> Result<CsvPreview, ApiError> {
+    let entries = db::plan_csv_import(&state.pool, account_id, read.rows).await?;
     let counts = csv::counts(&entries);
 
     let sample = entries
@@ -322,15 +333,14 @@ pub async fn preview(
             _ => None,
         })
         .collect();
-    Ok(Json(CsvPreview {
+    Ok(CsvPreview {
         new: counts.new,
         already: counts.already,
         to_check: counts.check,
-        unreadable: loaded.read.unreadable.len() as u64,
+        unreadable: read.unreadable.len() as u64,
         sample,
         check,
-        problems: loaded
-            .read
+        problems: read
             .unreadable
             .iter()
             .take(SHOWN_PROBLEMS)
@@ -339,7 +349,7 @@ pub async fn preview(
                 why: problem.why.to_owned(),
             })
             .collect(),
-    }))
+    })
 }
 
 fn preview_row(row: &csv::FileRow) -> CsvPreviewRow {
@@ -431,15 +441,18 @@ pub async fn commit(
     )
     .await?;
     tracing::info!(batch = done.batch_id, "imported a CSV file");
-    Ok((
-        StatusCode::CREATED,
-        Json(CsvImportDone {
+    Ok((StatusCode::CREATED, Json(done.into())))
+}
+
+impl From<db::CsvCommitted> for CsvImportDone {
+    fn from(done: db::CsvCommitted) -> Self {
+        CsvImportDone {
             batch_id: done.batch_id,
             added: done.added,
             matched: done.matched,
             skipped: done.skipped,
-        }),
-    ))
+        }
+    }
 }
 
 /// A file read through a mapping.
@@ -490,7 +503,7 @@ async fn load(state: &AppState, request: &CsvRequest) -> Result<Loaded, ApiError
     })
 }
 
-async fn check_account(state: &AppState, id: i64) -> Result<(), ApiError> {
+pub(crate) async fn check_account(state: &AppState, id: i64) -> Result<(), ApiError> {
     if db::import_account_exists(&state.pool, id).await? {
         Ok(())
     } else {

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO import_batches\n             (account_id, format, file_name, mapping_id, added, matched, skipped, imported_by)\n           VALUES (?, 'csv', ?, ?, 0, 0, 0, ?) RETURNING id AS \"id!: i64\"",
+  "query": "INSERT INTO import_batches\n             (account_id, format, file_name, mapping_id, added, matched, skipped, imported_by)\n           VALUES (?, ?, ?, ?, 0, 0, 0, ?) RETURNING id AS \"id!: i64\"",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 5
     },
     "nullable": [
       false
     ]
   },
-  "hash": "2fdcb76d634c588f32105e36e74ec3e952db4d222a878d6b5299889e1ff1bd4b"
+  "hash": "c8fea52effc92779c12c6d5a319bacdc5d8fb8bef17f059928f4015c3ff06ae8"
 }

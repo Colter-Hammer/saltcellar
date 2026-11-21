@@ -594,6 +594,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/ofx/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/ofx/commit`: imports the file as one import batch. */
+        post: operations["commitOfxImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/ofx/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/ofx/preview`: what Import would do with the file; nothing is written. */
+        post: operations["previewOfxImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/ofx/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/imports/ofx/read`: reads a file's statement and finds its account. */
+        post: operations["readOfxFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/{id}/undo": {
         parameters: {
             query?: never;
@@ -1939,6 +1990,42 @@ export interface components {
             icon?: string | null;
             kind: components["schemas"]["CategoryGroupKind"];
             name: string;
+        };
+        /** @description A file to import, with the household's decisions. */
+        OfxCommitRequest: {
+            /** Format: int64 */
+            account_id: number;
+            content: string;
+            /** @description The file's name, for Settings › Imports. */
+            file_name: string;
+            /** @description The places (`row`) of the rows to check that should be added; the rest are skipped. */
+            keep: number[];
+        };
+        /** @description What a file holds, and the account it's likely for. */
+        OfxRead: {
+            /**
+             * Format: int64
+             * @description The one account whose name ends in those digits, to pre-select; null for none or several.
+             */
+            account_id: number | null;
+            /** @description The first and last posting days, `YYYY-MM-DD`; null with no transactions. */
+            first_date: string | null;
+            last_date: string | null;
+            /** @description The last 4 digits of the bank's id for the account; null when the file has none. */
+            last_four: string | null;
+            /** @description Transactions that read. */
+            transactions: number;
+        };
+        /** @description An OFX, QFX or QBO file, sent for reading. */
+        OfxReadRequest: {
+            /** @description The file's text, as is. */
+            content: string;
+        };
+        /** @description A file and the account to import it into. */
+        OfxRequest: {
+            /** Format: int64 */
+            account_id: number;
+            content: string;
         };
         /** @description A payee, as the entry form offers it. */
         Payee: {
@@ -3961,6 +4048,150 @@ export interface operations {
                 };
             };
             /** @description `empty_file`: the file has no records. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    commitOfxImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfxCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Imported, as one import batch. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvImportDone"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_ofx`, `empty_file`, `several_accounts`, or `nothing_readable`: no transaction reads. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    previewOfxImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfxRequest"];
+            };
+        };
+        responses: {
+            /** @description How many rows are new, already there or to check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvPreview"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_found`: there's no such account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_ofx`, `empty_file` or `several_accounts`, as for read. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    readOfxFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfxReadRequest"];
+            };
+        };
+        responses: {
+            /** @description The statement's account digits, the account to pre-select and what it holds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfxRead"];
+                };
+            };
+            /** @description `login_required`: no live session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `not_ofx`: no `<OFX>` element; `empty_file`: no statement; `several_accounts`: statements for more than one account. */
             422: {
                 headers: {
                     [name: string]: unknown;

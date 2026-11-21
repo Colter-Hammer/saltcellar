@@ -23,7 +23,7 @@ test('map, preview, import, import again, and undo', async ({ page }) => {
   await page.getByRole('main').getByRole('link', { name: 'Import a file' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Import a file')
   await expect(page.getByLabel('Account')).toHaveText(/Fake file account/)
-  await page.getByLabel('CSV file').setInputFiles(fixture('bank-signed.csv'))
+  await page.getByLabel('Bank file').setInputFiles(fixture('bank-signed.csv'))
 
   // The header says what's where; nothing is written until Import.
   const mapping = page.getByRole('region', { name: 'Mapping' })
@@ -48,7 +48,7 @@ test('map, preview, import, import again, and undo', async ({ page }) => {
   // The same file again: same header, so no mapping step, and nothing is added.
   await page.goto('/import/file')
   await page.getByLabel('Account').selectOption({ label: 'Fake file account' })
-  await page.getByLabel('CSV file').setInputFiles(fixture('bank-signed.csv'))
+  await page.getByLabel('Bank file').setInputFiles(fixture('bank-signed.csv'))
   await expect(preview.getByTestId('preview-summary')).toHaveText(
     '0 new, 5 already there, 0 to check',
   )
@@ -59,7 +59,7 @@ test('map, preview, import, import again, and undo', async ({ page }) => {
   // Another header brings its own mapping: debit and credit columns.
   await done.getByRole('button', { name: 'Import another file' }).click()
   await page.getByLabel('Account').selectOption({ label: 'Fake file account' })
-  await page.getByLabel('CSV file').setInputFiles(fixture('bank-debit-credit.csv'))
+  await page.getByLabel('Bank file').setInputFiles(fixture('bank-debit-credit.csv'))
   await expect(mapping.getByLabel('Debit column (money out)')).toHaveValue('3')
   await expect(mapping.getByLabel('Credit column (money in)')).toHaveValue('4')
   await expect(mapping.getByLabel('Date format')).toHaveValue('mdy')

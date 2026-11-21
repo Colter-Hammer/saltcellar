@@ -1233,6 +1233,7 @@ mod import;
 mod manual;
 mod manual_adoption;
 mod matching;
+mod ofx_import;
 mod schedule;
 mod sync;
 mod sync_flags;
