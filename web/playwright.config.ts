@@ -3,7 +3,8 @@
 // log in E2E_APP_LOGS, where the setup test finds the setup code, and a command that runs `budget`
 // in it in E2E_APP_EXEC, for the reset link. The milestone smoke tests in e2e/smoke/ claim a fresh
 // install of their own, at E2E_SMOKE_BASE_URL with its log in E2E_SMOKE_APP_LOGS, so they run
-// beside the rest without sharing its state. Beside the main install runs a fake SimpleFIN Bridge
+// beside the rest without sharing its state; milestone 2's does the same at E2E_M2_BASE_URL (log in
+// E2E_M2_APP_LOGS) against a fake Bridge of its own at E2E_M2_BRIDGE_URL. Beside the main install runs a fake SimpleFIN Bridge
 // it can claim, whose setup tokens the tests mint at E2E_BRIDGE_URL.
 import { defineConfig, devices } from '@playwright/test'
 import { STORAGE_STATE } from './e2e/login-state.js'
@@ -22,10 +23,19 @@ export default defineConfig({
     // Each milestone's main flow, from the setup wizard on, on an install of its own.
     {
       name: 'smoke',
-      testMatch: 'smoke/*.spec.ts',
+      testMatch: 'smoke/m1.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.E2E_SMOKE_BASE_URL ?? 'http://localhost:8081',
+      },
+    },
+    // Milestone 2's, on a third install: it has a secret key and its own fake Bridge.
+    {
+      name: 'smoke-m2',
+      testMatch: 'smoke/m2.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.E2E_M2_BASE_URL ?? 'http://localhost:8183',
       },
     },
     // The fresh install is claimed first, through the setup wizard, on a phone.

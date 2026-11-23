@@ -255,7 +255,13 @@ jobs:
             -e BUDGET_SECRET_KEY="$(openssl rand -base64 32)" -e BUDGET_SIMPLEFIN_CLAIM_HOSTS=bridge:8190 -e BUDGET_SYNC_COOLDOWN_MINUTES=0 -e BUDGET_SYNC_REQUEST_CAP=100 \
             saltcellar:e2e
           docker run -d --name smoke -p 127.0.0.1:8081:8080 saltcellar:e2e
-          for container in app smoke; do
+          # Milestone 2's smoke install, with a secret key and a fake Bridge of its own.
+          docker run -d --name bridge-m2 --network e2e -p 127.0.0.1:8184:8190 saltcellar-fake:e2e \
+            --listen 0.0.0.0:8190 --public-host bridge-m2:8190 --currency EUR
+          docker run -d --name smoke-m2 --network e2e -p 127.0.0.1:8183:8080 \
+            -e BUDGET_SECRET_KEY="$(openssl rand -base64 32)" -e BUDGET_SIMPLEFIN_CLAIM_HOSTS=bridge-m2:8190 -e BUDGET_SYNC_COOLDOWN_MINUTES=0 -e BUDGET_SYNC_REQUEST_CAP=100 \
+            saltcellar:e2e
+          for container in app smoke smoke-m2; do
             for _ in $(seq 60); do
               [ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy ] && continue 2
               sleep 1
@@ -274,12 +280,17 @@ jobs:
           E2E_SMOKE_BASE_URL: http://localhost:8081
           E2E_SMOKE_APP_LOGS: docker logs smoke
           E2E_BRIDGE_URL: http://localhost:8182
+          E2E_M2_BASE_URL: http://localhost:8183
+          E2E_M2_APP_LOGS: docker logs smoke-m2
+          E2E_M2_BRIDGE_URL: http://localhost:8184
       - name: The app's logs
         if: failure()
         run: |
           docker logs app
           docker logs smoke
+          docker logs smoke-m2
           docker logs bridge
+          docker logs bridge-m2
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
