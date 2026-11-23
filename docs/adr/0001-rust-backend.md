@@ -11,3 +11,4 @@ The backend is Rust with axum and sqlx, even though the owner's strongest stack 
 
 - Categorization logic stays in-process in Rust; methods must be ones that are practical to hand-write without Python's ML ecosystem.
 - Slower compiles and code the owner reads less fluently; keep it plain and well commented.
+- An optional LLM categorizer, if ever added, would be an adapter over HTTP rather than in-process ML, so it fits this decision. See [the M3 note](../spec/m3-categorization-review.md#possible-later-an-llm-categorizer-not-v1).

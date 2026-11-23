@@ -71,7 +71,7 @@ Over the payee's whole history (no window), among rows with a category:
 
 ### 6. Classifier (suggestions only)
 
-For payees with no usable history: a character n-gram TF-IDF + logistic regression model over the normalized payee, raw description and amount band, written in Rust. It **never auto-applies** in v1 (on the owner's history it was right only 42% of the time top-1, 70% within the top 3, and no confidence level reached 98% precision). Review shows its top 3 when history has nothing. Retrains nightly and after each Review session.
+For payees with no usable history: a character n-gram TF-IDF + logistic regression model over the normalized payee, raw description and amount band, written in Rust. It **never auto-applies** in v1 (on the owner's history it was right only 42% of the time top-1, 70% within the top 3, and no confidence level reached 98% precision). Review shows its top 3 when history has nothing. Retrains nightly and after each Review session. A pluggable LLM layer is a possible later addition ([below](#possible-later-an-llm-categorizer-not-v1)).
 
 ### 7. Decide
 
@@ -141,3 +141,19 @@ Proposes fixes for past categories that disagree with a payee's strong majority.
 ## Accuracy
 
 **More › Categorizer accuracy.** Last 90 days: rows auto-applied; the share of auto-applied rows later changed, by layer (rule / history); how often the top Review suggestion was picked (the classifier's report card). A warning shows when the changed share is above 2%. Below that, an all-time chart of overall accuracy by month. Nothing self-adjusts: thresholds change only in code.
+
+## Possible later: an LLM categorizer (not v1)
+
+*(Owner idea, not agreed or scheduled; recorded so its implications aren't lost. Nothing here is built or promised.)*
+
+A server could be configured with an LLM, local (an Ollama-style server) or hosted, that categorizes transactions the history vote can't, as far as it can be trusted to. It would be a pipeline layer after step 5 and before or beside the classifier of step 6, switched on by configuration, off by default.
+
+Implications to settle before building it:
+
+- **Privacy.** A hosted model sends payees, descriptions and amounts off the household's machine. That cuts against the home-network-only stance (see [Users and scale](README.md#users-and-scale)), so a hosted model needs an explicit opt-in naming what leaves; a local model doesn't. Send the minimum (normalized payee, amount band, the category list), not account names or balances.
+- **Trust.** It starts suggestions-only, like the classifier. Auto-apply needs the same bar as everything else (about 98% precision, measured), and the accuracy screen would report it as its own layer so the owner can see whether it earns that. Thresholds stay in code. A person's choice still wins ([User choices win](#user-choices-win)).
+- **Plugin shape.** Prefer a narrow `Categorizer` trait in `domain` with the HTTP client in an adapter crate (the way `simplefin` is split), talking to an OpenAI-compatible endpoint, over dynamic loading of plugins. That keeps `domain` free of network and async code ([ADR-0007](../adr/0007-generated-api-contract.md)) and covers both local and hosted models with one adapter.
+- **Cost and speed.** A call per new transaction is slow and, if hosted, costs money. Cache by normalized payee: the answer is per payee, not per row, so each payee is asked about once.
+- **Determinism and tests.** Model output varies. Tests use a fake model server, like the fake SimpleFIN Bridge, and the pipeline treats any failure or timeout as "no suggestion", never as a blocked sync.
+- **Portability.** No endpoint, key or model name in the repo or defaults ([ADR-0008](../adr/0008-nothing-personal-in-the-repo.md)); all of it is configuration, and the key is a secret.
+- **Interaction with step 6.** The n-gram classifier could stay as the offline fallback, or be retired if the LLM beats it on the accuracy screen.
