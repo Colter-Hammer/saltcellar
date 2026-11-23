@@ -10,7 +10,7 @@ Implementation issues are GitHub Issues, mirrored as local markdown under `.scra
 
 ### Implementing an issue
 
-The rules for building one, from what to read to the PR and the report: `docs/agents/implementing-an-issue.md`. A brief only needs the issue number. Run `just check-quiet`, not `just check`, so the output stays short.
+The rules for building one, from what to read to the PR and the report: `docs/agents/implementing-an-issue.md`. A brief only needs the issue number. Run `just check-quiet-fast`, not `just check`, so the output stays short.
 
 ### Triage labels
 

@@ -10,7 +10,7 @@ Where: **hook** = local `lefthook` hook (`pre-commit`, `commit-msg`, `pre-push`)
 | --- | --- | --- |
 | Changes reach `main` by pull request only: no direct pushes, no force-pushes, no deletion, no bypass for admins. | GitHub branch protection on `main` | GitHub |
 | Every CI job passes on a branch that is up to date with `main`. | Branch protection requires each job in `ci.yml` and `pr-title.yml` | GitHub |
-| `just check` runs exactly what CI runs. | CI job `just-check` runs the recipe beside the per-check jobs | CI |
+| `just check` runs exactly what CI runs. | CI job `just-check` runs the recipe on every push to `main` (skipped on PRs, where the per-check jobs run the same checks) | CI |
 | PR titles are Conventional Commits; PRs are squash-merged with the title as the commit subject. | CI job `pr-title` (`.github/workflows/pr-title.yml`); squash is the only merge method | CI, GitHub |
 | Dependencies stay current: grouped weekly updates, lockfile maintenance on, actions pinned by digest. | Renovate (`renovate.json`) | GitHub |
 
