@@ -31,6 +31,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 - `just check` runs exactly what CI runs. Run it before opening a PR. `just --list` shows each check as its own recipe (`just clippy`, `just test`, …).
 - `just dev` runs the API and the frontend together: open <http://localhost:5173>. Vite reloads on every change and proxies `/api` to the API on port 8080; `BUDGET_LISTEN=127.0.0.1:8090 just dev` moves both.
 - `just dev-api` runs only the server, on <http://localhost:8080>, with its database in `./data/` (git-ignored). `BUDGET_LISTEN=127.0.0.1:8090 just dev-api` picks another port. The server also serves the frontend from `web/dist` once it's built (`npm --prefix web run build`).
+- `just check-fast` is `just check` without the app-image e2e, which CI runs on every PR. `just check-quiet-fast` is its one-line-per-check form.
 - `just check-quiet` runs the same checks with one line each, showing only a failing check's last lines (full logs in `target/check-quiet/`). It's for agents, whose context pays for every line.
 - `just e2e` builds the app image, starts it with compose on a fresh volume at <http://localhost:8180> (`E2E_PORT` moves it) and runs the Playwright tests in `web/e2e/` against it. The first test claims the install through the setup wizard, reading the setup code from the container's log (`E2E_APP_LOGS` is the command that prints it); the rest run logged in. The milestone smoke tests in `web/e2e/smoke/` run beside them on a second fresh install at <http://localhost:8181> (`E2E_SMOKE_PORT`), set up from the start by the test itself; milestone 2's smoke test runs on a third, with a secret key and a fake SimpleFIN Bridge of its own, at <http://localhost:8183> (`E2E_M2_PORT`; the Bridge at `E2E_M2_BRIDGE_PORT`, 8184). Tests use fake data only.
 - After adding or changing frontend dependencies, commit `web/package-lock.json` with `web/package.json`; CI installs with `npm ci`.
@@ -39,7 +40,7 @@ Installed per user (no `sudo`), on `PATH` from `~/.local/bin` and `~/.cargo/bin`
 - After changing a route or a type the API sends or takes, run `just gen-api` and commit `web/src/api/openapi.json` and `web/src/api/generated/` with the Rust change. The frontend imports those types only through `web/src/api/`.
 - A schema change is a new file in `migrations/`; a migration already on `main` is never edited.
 - When `just coverage` or `just web-coverage` says a floor can go up, raise it in `coverage-floors.txt` in the same PR.
-- The hooks run the fast subset on every commit and push, and pre-push also runs `just e2e` when the checked-out commit is being pushed, so commit or stash first and expect a few minutes. Don't skip them: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.
+- The hooks run the guards on what is staged at each commit and over the commits being pushed at each push. The e2e run is left to CI, so run `just e2e` yourself when a change touches the image, a migration or a UI flow. Don't skip the hooks: CI runs the same checks over the full history, so a skipped hook only moves the failure to the PR.
 
 ## Pull requests
 

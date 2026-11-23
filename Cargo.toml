@@ -54,3 +54,8 @@ panic = "deny"
 todo = "deny"
 dbg_macro = "deny"
 print_stdout = "deny"
+
+# Faster dev and test builds: line tables keep backtraces readable, and the full debug info that
+# slows linking and fills target/ is dropped.
+[profile.dev]
+debug = "line-tables-only"

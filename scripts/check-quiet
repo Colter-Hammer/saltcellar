@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# `just check-quiet`: every recipe `just check` runs, one line each, and only a failing recipe's
+# `just check-quiet [check-fast]`: every recipe `just check` (or `check-fast`) runs, one line each, and only a failing recipe's
 # last lines. The full output of each goes to target/check-quiet/<recipe>.log. Meant for agents,
 # whose context pays for every line of output; people can keep using `just check`.
 set -uo pipefail
 
+target=${1:-check}
+
 logs=target/check-quiet
 mkdir -p "$logs"
 mapfile -t recipes < <(just --dump --dump-format json |
-  python3 -c "import json, sys; print(*(d['recipe'] for d in json.load(sys.stdin)['recipes']['check']['dependencies']), sep='\n')")
+  python3 -c "import json, sys; print(*(d['recipe'] for d in json.load(sys.stdin)['recipes'][sys.argv[1]]['dependencies']), sep='\n')" "$target")
 
 failed=()
 for recipe in "${recipes[@]}"; do
