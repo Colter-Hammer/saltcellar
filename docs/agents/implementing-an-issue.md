@@ -21,9 +21,9 @@ The rules every agent follows when it builds an implementation issue, so a brief
 ## Check
 
 - While iterating, run only the tests you're changing (`cargo nextest run -p <crate> <filter>`, `npm --prefix web run test -- <file>`).
-- Before pushing, run `just check-quiet-fast` once. It prints one line per check and only a failing check's last lines; the full logs are in `target/check-quiet/`. It skips the e2e check, which the pre-push hook runs next. `just check-quiet` runs everything, e2e included.
+- Before pushing, run `just check-quiet-fast` once. It prints one line per check and only a failing check's last lines; the full logs are in `target/check-quiet/`. It skips the e2e check, which CI runs on the PR. Run `just e2e` (or `just check-quiet`) yourself when the change touches the image, a migration or a UI flow.
 - Manual testing is required in every test session, and you do it yourself: start the real app (and the fake SimpleFIN Bridge when sync is involved), drive the change in a browser with a Playwright script, and screenshot every screen and state that matters, on a phone and a desktop where layout matters. Cover as much as you can: before and after, edge cases, errors. Never hand the owner click-through steps instead. Fake data only. Check each screenshot actually shows what you meant to capture.
-- Commit everything before pushing: the pre-push hook runs `just e2e` (under `flock /tmp/saltcellar-e2e.lock`, so parallel pushes take turns) and refuses a push with uncommitted tracked changes. Never `--no-verify`.
+- The pre-push hook runs the guards (leak, file rule, gitleaks) over the commits being pushed. Never `--no-verify`.
 
 ## Open the PR
 

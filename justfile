@@ -27,7 +27,7 @@ dev-api:
 # Every check CI runs.
 check: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations api-contract web-typecheck web-lint web-format web-knip web-test web-coverage web-build e2e
 
-# Every check except the app-image e2e, which the pre-push hook and CI's e2e job run anyway.
+# Every check except the app-image e2e, which CI's e2e job runs on every PR.
 check-fast: leak-guard file-rule gitleaks fmt clippy deny layering test coverage sqlx-offline migrations api-contract web-typecheck web-lint web-format web-knip web-test web-coverage web-build
 
 # `check`, one line per check; a failing one shows its last lines and the full log path. For agents.
